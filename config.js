@@ -22,22 +22,21 @@ window.RANKING_CONFIG = {
 
   // ---------------- SISTEMA DE PONTOS ----------------
   // Cada partida registrada vale pontos pela massa. Os pontos somam.
-  // Pode mudar os números à vontade (do maior pro menor ou não, tanto faz).
-  PONTOS: [
-    { minimo: 100000, pontos: 10 },  // 100K ou mais
-    { minimo: 50000,  pontos: 5 },   // 50K a 99.999
-    { minimo: 25000,  pontos: 2 },   // 25K a 49.999
-    { minimo: 10000,  pontos: 1 },   // 10K a 24.999
-  ],                                 // abaixo de 10K: 0 pontos
+  // Ex.: 99.000 = 99 pts · 100.000 = 100 + 30 = 130 pts · 250.000 = 250 + 60 = 310 pts
+  PONTOS: {
+    POR_MIL: 1,        // pontos a cada 1.000 de massa
+    META: 100000,      // a cada meta batida (100K, 200K, 300K ... 1M)
+    BONUS_META: 30,    // ganha esse bônus por meta
+  },
 
   // Patentes: o jogador sobe conforme junta pontos (pode mudar nomes e números)
   PATENTES: [
     { nome: "Recruta",     pontos: 0 },
-    { nome: "Guerreiro",   pontos: 10 },
-    { nome: "Elite",       pontos: 25 },
-    { nome: "Mestre",      pontos: 50 },
-    { nome: "Grão-Mestre", pontos: 100 },
-    { nome: "Lendário",    pontos: 200 },
+    { nome: "Guerreiro",   pontos: 100 },
+    { nome: "Elite",       pontos: 300 },
+    { nome: "Mestre",      pontos: 600 },
+    { nome: "Grão-Mestre", pontos: 1200 },
+    { nome: "Lendário",    pontos: 2500 },
   ],
 
   // Massa que conta como "100K+" (o placar de quantas vezes cada um passou)

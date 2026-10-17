@@ -107,18 +107,18 @@
   }
 
   // ---------- pontos ----------
+  // 1 ponto a cada 1.000 de massa + bônus a cada meta batida (100K, 200K ... 1M)
   const MARCO = Number(CFG.MARCO) || 100000;
-  const FAIXAS = (Array.isArray(CFG.PONTOS) && CFG.PONTOS.length ? CFG.PONTOS : [
-    { minimo: 100000, pontos: 10 },
-    { minimo: 50000, pontos: 5 },
-    { minimo: 25000, pontos: 2 },
-    { minimo: 10000, pontos: 1 },
-  ]).map((f) => ({ minimo: Number(f.minimo) || 0, pontos: Number(f.pontos) || 0 }))
-    .sort((a, b) => b.minimo - a.minimo);
-  function pontosDe(massa) {
-    const f = FAIXAS.find((x) => massa >= x.minimo);
-    return f ? f.pontos : 0;
+  const REGRA = CFG.PONTOS && !Array.isArray(CFG.PONTOS) ? CFG.PONTOS : {};
+  const POR_MIL = REGRA.POR_MIL != null ? Number(REGRA.POR_MIL) || 0 : 1;
+  const META = Number(REGRA.META) || 100000;
+  const BONUS_META = REGRA.BONUS_META != null ? Number(REGRA.BONUS_META) || 0 : 30;
+  function detalhePontos(massa) {
+    const base = Math.floor(massa / 1000) * POR_MIL;
+    const metas = Math.floor(massa / META);
+    return { base, metas, bonus: metas * BONUS_META, total: base + metas * BONUS_META };
   }
+  const pontosDe = (massa) => detalhePontos(massa).total;
   const marcoTxt = fmtK(MARCO) + '+';
   function fmtK(n) { return n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : fmt(n); }
   const ptsTxt = (n) => `${fmt(n)} ${n === 1 ? 'pt' : 'pts'}`;
@@ -290,11 +290,11 @@
     if (r.erro) { box.classList.add('ruim'); box.replaceChildren('Não entendi esse número. Escreve tipo 52430 ou 52 mil.'); return; }
     if (r.decimal) { box.classList.add('alerta'); box.replaceChildren(el('span', { class: 'ml-aviso', text: `Massa não tem vírgula. Era ${fmt(r.sugestao)}?` }), usar(r.sugestao)); return; }
     if (r.valor > MASSA_MAX) { box.classList.add('ruim'); box.replaceChildren(`${fmt(r.valor)} passa de ${fmt(MASSA_MAX)}. Confere o número.`); return; }
-    const pts = pontosDe(r.valor);
+    const d = detalhePontos(r.valor);
     box.replaceChildren(...[
       el('span', { class: 'ml-rot', text: 'VAI ENTRAR COMO' }),
       el('b', { text: fmt(r.valor) }),
-      el('span', { class: 'ml-pts', text: `${pts ? '+' + ptsTxt(pts) : 'sem pontos'}${r.valor >= MARCO ? ' · ' + marcoTxt : ''}` }),
+      el('span', { class: 'ml-pts', text: `${d.total ? '+' + ptsTxt(d.total) : 'sem pontos'}${d.bonus ? ` (${fmt(d.base)} + ${fmt(d.bonus)} de bônus)` : ''}${r.valor >= MARCO ? ' · ' + marcoTxt : ''}` }),
       r.pequeno ? el('span', { class: 'ml-aviso' }, `Só ${fmt(r.valor)} de massa? Se for ${fmt(r.sugestao)}: `, usar(r.sugestao)) : null,
     ].filter(Boolean));
     if (r.pequeno) box.classList.add('alerta');
@@ -872,7 +872,8 @@
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       return el('tr', { class: i === 0 ? 'topo1' : null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null)),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
+          el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
         el('td', { class: `dir ${modo === 'massa' ? 'num' : 'sec'}`, text: fmt(j.melhor.mass) }),
@@ -915,23 +916,29 @@
   }
 
   function renderTabelaPontos() {
-    const linhas = FAIXAS.map((f, i) => el('li', { class: i === 0 ? 'topo' : null },
-      el('span', { text: i === 0 ? `${fmtK(f.minimo)} ou mais` : `${fmtK(f.minimo)} a ${fmt(FAIXAS[i - 1].minimo - 1)}` }),
-      el('b', { text: ptsTxt(f.pontos) })));
-    const menor = FAIXAS[FAIXAS.length - 1];
-    if (menor && menor.minimo > 0) linhas.push(el('li', null, el('span', { text: `abaixo de ${fmtK(menor.minimo)}` }), el('b', { text: '0 pts' })));
-    $('tabelaPontos').replaceChildren(...linhas);
+    const linha = (rot, val, cls) => el('li', { class: cls }, el('span', { text: rot }), el('b', { text: val }));
+    const exemplo = (m) => {
+      const d = detalhePontos(m);
+      return linha(`${fmt(m)} de massa`, d.bonus ? `${fmt(d.base)} + ${fmt(d.bonus)} = ${ptsTxt(d.total)}` : ptsTxt(d.total), d.bonus ? 'topo' : null);
+    };
+    const exemplos = [50000, META - 1000, META, Math.round(META * 2.5), MASSA_MAX].filter((m, i, a) => m > 0 && m <= MASSA_MAX && a.indexOf(m) === i);
+    $('tabelaPontos').replaceChildren(...[
+      linha('a cada 1.000 de massa', ptsTxt(POR_MIL)),
+      BONUS_META ? linha(`bônus a cada ${fmtK(META)} (${fmtK(META)}, ${fmtK(META * 2)}, ${fmtK(META * 3)}…)`, `+${ptsTxt(BONUS_META)}`, 'topo') : null,
+      el('li', { class: 'tp-sep', text: 'EXEMPLOS' }),
+      ...exemplos.map(exemplo),
+    ].filter(Boolean));
   }
 
   // ---------- patentes ----------
   const CORES_PATENTE = ['#A8998B', '#B98BFF', '#3BA4FF', '#FFB347', '#FF7A1A', '#FFD84D', '#FF5AA0', '#3DDC84'];
   const PATENTES = (Array.isArray(CFG.PATENTES) && CFG.PATENTES.length ? CFG.PATENTES : [
     { nome: 'Recruta', pontos: 0 },
-    { nome: 'Guerreiro', pontos: 10 },
-    { nome: 'Elite', pontos: 25 },
-    { nome: 'Mestre', pontos: 50 },
-    { nome: 'Grão-Mestre', pontos: 100 },
-    { nome: 'Lendário', pontos: 200 },
+    { nome: 'Guerreiro', pontos: 100 },
+    { nome: 'Elite', pontos: 300 },
+    { nome: 'Mestre', pontos: 600 },
+    { nome: 'Grão-Mestre', pontos: 1200 },
+    { nome: 'Lendário', pontos: 2500 },
   ]).map((x) => ({ nome: String(x.nome || '?'), pontos: Number(x.pontos) || 0 }))
     .sort((a, b) => a.pontos - b.pontos)
     .map((x, i) => ({ ...x, nivel: i, cor: CORES_PATENTE[i % CORES_PATENTE.length] }));
@@ -984,11 +991,11 @@
     return `a semana fecha em ${d} ${d === 1 ? 'dia' : 'dias'}${h % 24 ? ` e ${h % 24} h` : ''}`;
   }
   function partidasPara(falta) {
-    // quantas partidas da faixa mais alta cobrem a diferença
-    const topo = FAIXAS[0];
-    if (!topo || !topo.pontos) return '';
-    const n = Math.ceil(falta / topo.pontos);
-    return ` (${n} ${n === 1 ? 'partida' : 'partidas'} de ${fmtK(topo.minimo)}+)`;
+    // quantas partidas de 100K cobrem a diferença
+    const vale = pontosDe(META);
+    if (!vale) return '';
+    const n = Math.ceil(falta / vale);
+    return ` (${n} ${n === 1 ? 'partida' : 'partidas'} de ${fmtK(META)})`;
   }
 
   function renderDestaques(ctx) {
