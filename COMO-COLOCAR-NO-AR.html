@@ -65,7 +65,7 @@ code{background:var(--painel);border:1px solid var(--linha);padding:1px 6px;bord
       <ol>
         <li>Se recebeu um arquivo <code>.zip</code>, clique nele com o botão direito e escolha <b>Extrair tudo</b>.</li>
         <li>Dentro da pasta, dê dois cliques no <code>index.html</code>. O site abre no navegador em <b>modo demonstração</b>, com dados de exemplo.</li>
-        <li>Lá embaixo, em <span class="btn-nome">Área do dono</span>, use o PIN <code>1234</code> pra ver como registrar. Nesse modo nada é salvo, é só pra testar.</li>
+        <li>Lá embaixo, em <span class="btn-nome">Área do admin</span>, entre com qualquer e-mail e a senha <code>1234</code> pra ver como registrar. Nesse modo nada é salvo, é só pra testar.</li>
       </ol>
     </div>
   </section>
@@ -95,9 +95,16 @@ code{background:var(--painel);border:1px solid var(--linha);padding:1px 6px;bord
         <li>Na pasta do site, abra o arquivo <code>supabase-setup.sql</code> com o <b>Bloco de Notas</b> (botão direito → Abrir com). Aperte <b>Ctrl+A</b>, depois <b>Ctrl+C</b>.</li>
         <li>Volte no Supabase, clique na área de texto, aperte <b>Ctrl+V</b> e clique em <span class="btn-nome">Run</span>. Tem que aparecer <b>Success. No rows returned</b>.</li>
       </ol>
-      <p style="margin-top:14px"><b>Agora crie o seu PIN de dono.</b> Apague tudo do SQL Editor, cole a linha abaixo, troque o texto entre aspas pelo seu PIN e clique em <span class="btn-nome">Run</span>:</p>
-      <div class="codigo"><button class="copiar" type="button" data-copiar="pin">Copiar</button><pre id="pin">update public.admin_config set pin = 'escreva-seu-pin-aqui' where id = 1;</pre></div>
-      <div class="alerta">Use um PIN difícil, tipo uma frase: <code>cobr-reino-das-cobras-2026</code>. Passe só pro dono do clã: quem tem o PIN consegue registrar e apagar massas.</div>
+      <p style="margin-top:14px"><b>Agora crie a conta de admin.</b> Cada admin (dono, vice…) tem o próprio e-mail e senha. Ninguém mais consegue registrar ou apagar.</p>
+      <ol>
+        <li>No menu da esquerda, vá em <b>Authentication → Sign In / Providers</b> e <b>desligue</b> <b>Allow new users to sign up</b>. Clique em <span class="btn-nome">Save changes</span>. Assim ninguém cria conta sozinho.</li>
+        <li>Vá em <b>Authentication → Users</b>, clique em <span class="btn-nome">Add user</span> → <b>Create new user</b>. Coloque o e-mail e uma senha forte, deixe marcado <b>Auto Confirm User</b> e clique em <span class="btn-nome">Create user</span>.</li>
+        <li>Volte no <b>SQL Editor</b>, apague tudo, cole a linha abaixo trocando o nome e o e-mail, e clique em <span class="btn-nome">Run</span>:</li>
+      </ol>
+      <div class="codigo"><button class="copiar" type="button" data-copiar="admin">Copiar</button><pre id="admin">insert into public.admins (user_id, nome)
+select id, 'Seu nome' from auth.users where email = 'seu@email.com'
+on conflict (user_id) do update set nome = excluded.nome;</pre></div>
+      <div class="dica">Tem que aparecer <b>Success. 1 rows affected</b>. Se aparecer <b>0 rows</b>, o e-mail não bate com o do usuário criado.<br>Pra ter mais de um admin, repita os passos 2 e 3 pra cada pessoa. Cada um usa a própria senha: <b>não compartilhe a sua</b>.</div>
       <p style="margin-top:14px"><b>Por último, pegue os dois códigos do seu banco.</b> Clique em <span class="btn-nome">Connect</span> no topo da página (ou vá em <b>Project Settings → API Keys</b>) e deixe aberto. Você vai precisar de:</p>
       <ul>
         <li><b>Project URL</b>: algo como <code>https://abcdxyz.supabase.co</code></li>
@@ -136,7 +143,7 @@ SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIs...",</pre></div>
       <ol start="4">
         <li>Clique em <span class="btn-nome">Commit changes…</span> e depois em <span class="btn-nome">Commit changes</span> de novo.</li>
       </ol>
-      <div class="dica">Essa chave pode ficar visível no GitHub, ela foi feita pra isso. O banco só deixa visitante <b>ver</b> o ranking. Registrar e apagar só funciona com o seu PIN.</div>
+      <div class="dica">Essa chave pode ficar visível no GitHub, ela foi feita pra isso. O banco só deixa visitante <b>ver</b> o ranking. Registrar e apagar só funciona pra quem entra com uma conta de admin.</div>
     </div>
   </section>
 
@@ -158,22 +165,24 @@ SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIs...",</pre></div>
 
   <section class="secao">
     <h2>MANDE ISTO PRO DONO DO CLÃ</h2>
-    <p>Copie, troque o <b>[LINK]</b> e o <b>[PIN]</b> e mande no WhatsApp. Com isso ele já sabe usar tudo pelo celular.</p>
+    <p>Copie, troque o <b>[LINK]</b>, o <b>[E-MAIL]</b> e a <b>[SENHA]</b> e mande no WhatsApp <b>só pra ele</b>, no privado. Com isso ele já sabe usar tudo pelo celular.</p>
     <div class="codigo"><button class="copiar" type="button" data-copiar="msgDono">Copiar</button><pre id="msgDono" class="msg">Fala! O site do ranking do clã tá no ar 🐍
 [LINK]
 
-Manda esse link no grupo. Todo mundo vê o ranking, mas só você registra as massas. Pelo celular:
+Manda esse link no grupo. Todo mundo vê o ranking e o próprio perfil (toca no nome), mas só você registra as massas. Pelo celular:
 
-1. Abre o link, desce até o fim e toca em "Área do dono".
-2. Digita o PIN: [PIN]
-   Deixa marcado "Lembrar neste aparelho" que não precisa digitar de novo.
+1. Abre o link, desce até o fim e toca em "Área do admin".
+2. Entra com o e-mail [E-MAIL] e a senha [SENHA].
+   O celular fica logado, não precisa digitar de novo.
 3. Vai aparecer "Registrar massa". Escreve o nick do jogador, a massa e anexa o print da galeria.
 4. Toca em "Colocar no ranking". Os pontos, patentes e medalhas atualizam sozinhos.
 
 Errou? Em "Partidas recentes" cada partida tem uma lixeira.
 
 Elenco: em "Jogadores do clã" aparece o quadro "Cadastrar jogadores". Cola os nicks de todo mundo do clã (um por linha) e toca em Cadastrar. No lápis de cada jogador dá pra trocar nick, cargo ou marcar que saiu do clã. O botão "Baixar tabela" baixa a planilha com a pontuação de todos.
-Não passa o PIN pra ninguém.
+Não passa a senha pra ninguém. Se outra pessoa precisar ajudar, eu crio uma conta só pra ela.
+
+Perfil: cada membro toca no próprio nome, vê posições, medalhas e partidas, e toca em "Sou eu" pra ter o atalho "Meu perfil" no topo. O botão "Compartilhar" copia o link do perfil.
 
 Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira um app no celular.</pre></div>
 
@@ -185,15 +194,18 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
       <li><b>Exigir print pra registrar:</b> troque <code>PRINT_OBRIGATORIO: false</code> por <code>true</code>.</li>
       <li><b>Trocar a logo:</b> suba outra imagem com o nome <code>logo-cobr.webp</code> (<b>Add file → Upload files</b>).</li>
       <li><b>Nomes e pontos das patentes:</b> mude em <code>PATENTES</code>.</li>
-      <li><b>Trocar o PIN:</b> rode de novo, no SQL Editor do Supabase, a linha do PIN do passo 3, com o PIN novo, e avise o dono.</li>
-      <li><b>Corrigir um nick escrito errado:</b> na Área do dono, em <b>Jogadores do clã</b>, toque no <b>lápis</b> do jogador e troque o nick. As partidas dele mudam junto.</li>
+      <li><b>Trocar a senha de um admin:</b> no Supabase, em <b>Authentication → Users</b>, clique nos 3 pontinhos do usuário e escolha <b>Send password recovery</b> (ou apague e crie de novo, repetindo o passo 3).</li>
+      <li><b>Tirar o acesso de um admin:</b> em <b>Authentication → Users</b>, apague o usuário. Ele perde o acesso na hora.</li>
+      <li><b>Ver quem fez o quê:</b> em <b>Table Editor → admin_log</b> fica registrado cada registro, edição e exclusão, com o e-mail de quem fez.</li>
+      <li><b>Corrigir um nick escrito errado:</b> na Área do admin, em <b>Jogadores do clã</b>, toque no <b>lápis</b> do jogador e troque o nick. As partidas dele mudam junto.</li>
       <li><b>Nomes dos cargos:</b> por padrão são Líder, Vice-líder e Membro. Pra mudar, adicione no <code>config.js</code> uma linha como <code>CARGOS: ["Líder", "Vice-líder", "Elite", "Membro"],</code> (o primeiro é o mais alto).</li>
     </ul>
 
-    <h2 style="margin-top:36px">ATUALIZAR PRA VERSÃO COM CADASTRO DE JOGADORES</h2>
-    <p>Pra quem já tinha o site no ar antes do cadastro de jogadores:</p>
+    <h2 style="margin-top:36px">ATUALIZAR UM SITE QUE JÁ ESTÁ NO AR</h2>
+    <p>Pra quem já tinha o site no ar (inclusive a versão antiga com PIN):</p>
     <ol>
-      <li>No Supabase, abra o <b>SQL Editor</b>, cole o <code>supabase-setup.sql</code> novo inteiro e clique em <b>Run</b>. Não apaga nada nem muda o PIN. Quem já tem partida entra no elenco sozinho.</li>
+      <li>No Supabase, abra o <b>SQL Editor</b>, cole o <code>supabase-setup.sql</code> novo inteiro e clique em <b>Run</b>. Não apaga partidas nem jogadores. O PIN antigo deixa de existir.</li>
+      <li>Crie a conta de admin (passo 3, a parte “Agora crie a conta de admin”).</li>
       <li>No GitHub, clique em <b>Add file → Upload files</b> e suba só <code>index.html</code>, <code>app.js</code> e <code>style.css</code>. Clique em <span class="btn-nome">Commit changes</span>.</li>
     </ol>
     <div class="alerta"><b>Não suba o <code>config.js</code> desta pasta.</b> O do GitHub já tem os seus códigos do Supabase; o desta pasta está em branco e deixaria o site em modo demonstração.</div>
@@ -201,8 +213,10 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
     <ul>
       <li><b>Aparece "Modo demonstração" no site publicado:</b> o <code>config.js</code> não foi salvo com os códigos. Refaça o passo 5.</li>
       <li><b>"Não consegui ler o ranking":</b> um dos códigos do <code>config.js</code> está errado (confira se não sobrou espaço ou faltou aspas), ou o script do passo 3 não rodou.</li>
-      <li><b>PIN não entra:</b> rode de novo a linha do PIN do passo 3.</li>
-      <li><b>Erro ao enviar com print:</b> rode de novo o <code>supabase-setup.sql</code> inteiro. Pode rodar quantas vezes quiser, ele não apaga nada nem muda o PIN.</li>
+      <li><b>"E-mail ou senha errados":</b> confira o e-mail em <b>Authentication → Users</b>. Se esqueceu a senha, veja “Trocar a senha de um admin” acima.</li>
+      <li><b>"Essa conta não tem acesso de admin":</b> a conta existe, mas falta a linha do <code>insert into public.admins</code> do passo 3.</li>
+      <li><b>"Muitas tentativas":</b> o Supabase bloqueia por alguns minutos quem erra a senha muitas vezes. É proteção, espere e tente de novo.</li>
+      <li><b>Erro ao enviar com print:</b> rode de novo o <code>supabase-setup.sql</code> inteiro. Pode rodar quantas vezes quiser, ele não apaga nada.</li>
       <li><b>O site parou depois de muitos dias sem uso:</b> no plano grátis, o Supabase pausa o banco depois de uma semana sem nenhum acesso. Entre no Supabase e clique em <span class="btn-nome">Restore project</span>. Com o clã usando, isso não acontece.</li>
     </ul>
   </section>

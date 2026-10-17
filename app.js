@@ -18,7 +18,7 @@
   let partidas = [];          // todas as pontuações, mais novas primeiro
   let periodo = 'mes';        // abre na temporada (mês atual)
   let modo = CFG.RANKING_POR === 'massa' ? 'massa' : 'pontos';
-  let pinAdmin = null;
+  let admin = null;           // { nome } quando quem está usando é admin (login do Supabase)
   let arquivoPrint = null;
   let apagarId = null;
   let jogadores = [];         // elenco do clã (tabela players)
@@ -82,16 +82,6 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, 3800);
   }
-  // PIN do dono: "lembrar" guarda no aparelho; senão só até fechar a aba
-  function guardarPin(pin, lembrar) {
-    try { localStorage.removeItem('ranking_pin'); sessionStorage.removeItem('ranking_pin'); } catch (e) {}
-    if (!pin) return;
-    try { (lembrar ? localStorage : sessionStorage).setItem('ranking_pin', pin); } catch (e) {}
-  }
-  function lerPin() {
-    try { return localStorage.getItem('ranking_pin') || sessionStorage.getItem('ranking_pin'); } catch (e) { return null; }
-  }
-
   function urlPrint(p) {
     if (p.print_url) return p.print_url;
     if (!p.print_path || !sb) return null;
@@ -219,7 +209,8 @@
   }
   const nomeMes = (t) => new Date(t).toLocaleDateString('pt-BR', { month: 'long' });
 
-  function montarConquistas() {
+  // k0 = só os momentos de um jogador; limite = quantos devolver
+  function montarConquistas(k0 = null, limite = 6) {
     const eventos = [];
     const melhores = new Map();
     const cems = new Map();
@@ -232,22 +223,22 @@
       if (p.mass >= MARCO) {
         const n = (cems.get(k) || 0) + 1;
         cems.set(k, n);
-        eventos.push({ tipo: 'cem', quando: p.created_at, partes: [b(nome), ' fez ', b(marcoTxt), ` (${fmt(p.mass)})`, n > 1 ? ` · ${n}ª vez` : ' pela primeira vez'] });
+        eventos.push({ chave: k, tipo: 'cem', quando: p.created_at, partes: [b(nome), ' fez ', b(marcoTxt), ` (${fmt(p.mass)})`, n > 1 ? ` · ${n}ª vez` : ' pela primeira vez'] });
         marcou = true;
       }
       const antes = melhores.get(k) || 0;
       if (p.mass <= antes) continue;
       melhores.set(k, p.mass);
       if (!lider || p.mass > lider.massa) {
-        if (!lider) eventos.push({ tipo: 'topo', quando: p.created_at, partes: [b(nome), ' abriu o ranking com ', b(fmt(p.mass))] });
-        else if (lider.chave === k) eventos.push({ tipo: 'topo', quando: p.created_at, partes: [b(nome), ' aumentou o recorde do clã para ', b(fmt(p.mass))] });
-        else eventos.push({ tipo: 'topo', quando: p.created_at, partes: [b(nome), ' passou ', b(lider.nome), ' e agora tem o recorde do clã: ', b(fmt(p.mass))] });
+        if (!lider) eventos.push({ chave: k, tipo: 'topo', quando: p.created_at, partes: [b(nome), ' abriu o ranking com ', b(fmt(p.mass))] });
+        else if (lider.chave === k) eventos.push({ chave: k, tipo: 'topo', quando: p.created_at, partes: [b(nome), ' aumentou o recorde do clã para ', b(fmt(p.mass))] });
+        else eventos.push({ chave: k, tipo: 'topo', quando: p.created_at, partes: [b(nome), ' passou ', b(lider.nome), ' e agora tem o recorde do clã: ', b(fmt(p.mass))] });
         lider = { chave: k, nome, massa: p.mass };
       } else if (antes > 0 && !marcou) {
-        eventos.push({ tipo: 'recorde', quando: p.created_at, partes: [b(nome), ' bateu o próprio recorde: ', b(fmt(p.mass))] });
+        eventos.push({ chave: k, tipo: 'recorde', quando: p.created_at, partes: [b(nome), ' bateu o próprio recorde: ', b(fmt(p.mass))] });
       }
     }
-    return eventos.reverse().slice(0, 6);
+    return eventos.filter((e) => !k0 || e.chave === k0).reverse().slice(0, limite);
   }
   function b(t) { return el('b', { text: t }); }
 
@@ -279,18 +270,20 @@
     renderPartidas();
     renderJogadores();
 
-    // só o dono vê os formulários
-    $('registrar').hidden = !pinAdmin;
-    $('comoEntrar').hidden = !!pinAdmin;
-    $('btnTopoRegistrar').hidden = !pinAdmin;
-    $('bbRegistrar').hidden = !pinAdmin;
-    $('bbBusca').hidden = !!pinAdmin;
-    $('formCadastro').hidden = !pinAdmin || !elencoOk;
-    $('avisoElenco').hidden = !pinAdmin || elencoOk;
-    document.body.classList.toggle('modo-dono', !!pinAdmin);
+    // só admin vê os formulários (e o banco confere de novo em cada ação)
+    $('registrar').hidden = !admin;
+    $('comoEntrar').hidden = !!admin;
+    $('btnTopoRegistrar').hidden = !admin;
+    $('bbRegistrar').hidden = !admin;
+    $('bbBusca').hidden = !!admin;
+    $('formCadastro').hidden = !admin || !elencoOk;
+    $('avisoElenco').hidden = !admin || elencoOk;
+    document.body.classList.toggle('modo-dono', !!admin);
 
-    if (pinAdmin) renderSugNick();
+    if (admin) renderSugNick();
     if ($('dlgBusca').open) renderBusca();
+    if (perfilAtual) renderPerfil();
+    renderEu();
   }
 
   // ---------- nicks pra tocar e preencher no registro ----------
@@ -485,10 +478,10 @@
       avatarDe(r.nick, ptsGeral, 'av-p'),
       el('button', { type: 'button', class: 'link-nome forte', onclick: () => abrirPerfil(r.chave), 'aria-label': `Ver perfil de ${comTag(r.nick)}` }, r.nick),
       !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null,
-      r.semCadastro && pinAdmin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null));
+      r.semCadastro && admin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null));
   }
   function celEditar(r) {
-    if (!pinAdmin) return null;
+    if (!admin) return null;
     return el('td', { class: 'dir' }, r.id
       ? el('button', { type: 'button', class: 'editar', 'aria-label': `Editar ${r.nick}`, onclick: () => abrirEditar(r) }, svg(ICONE_LAPIS, 18))
       : null);
@@ -535,7 +528,7 @@
       { id: 'cem', rot: marcoTxt, ord: true, dir: true },
       { id: 'ultima', rot: 'ÚLTIMA', ord: true, dir: true },
     ];
-    if (pinAdmin) colunas.push({ rot: '' });
+    if (admin) colunas.push({ rot: '' });
     if (!colunas.some((c) => c.id === ordJog.campo)) ordJog = { campo: 'pontos', desc: true };
     cabecalho(colunas);
 
@@ -631,7 +624,7 @@
       { id: 'total', rot: 'TOTAL', ord: true, dir: true, titulo: tipo === 'semanas' ? 'Pontos das últimas 8 semanas' : 'Pontos dos últimos 6 meses' },
       ...cols.map((c, i) => ({ id: `c${i}`, rot: c.rot, ord: true, dir: true, titulo: c.titulo })),
     ];
-    if (pinAdmin) colunas.push({ rot: '' });
+    if (admin) colunas.push({ rot: '' });
     if (!colunas.some((c) => c.id === ordJog.campo)) ordJog = { campo: 'total', desc: true };
     cabecalho(colunas);
 
@@ -676,7 +669,7 @@
     if (buscaJog) return `Ninguém com "${buscaJog}" no nome.`;
     if (filtroJog === 'ex') return 'Nenhum ex-membro.';
     if (filtroJog === 'parados') return 'Todo mundo jogou nesse período. Clã ativo!';
-    return pinAdmin ? 'Nenhum jogador cadastrado ainda. Cadastre o elenco no quadro acima.' : 'Nenhum jogador cadastrado ainda.';
+    return admin ? 'Nenhum jogador cadastrado ainda. Cadastre o elenco no quadro acima.' : 'Nenhum jogador cadastrado ainda.';
   }
 
   // ---------- baixar planilha (CSV que abre no Excel e no Google Planilhas) ----------
@@ -728,7 +721,7 @@
     const cargo = $('fCargo').value || CARGO_PADRAO;
     if (!nicks.length) return erroCadastro('Escreve pelo menos um nick.');
     if (nicks.length > 200) return erroCadastro('No máximo 200 de uma vez.');
-    if (!pinAdmin) return erroCadastro('Entre na área do dono para cadastrar.');
+    if (!admin) return erroCadastro('Entre na área do admin para cadastrar.');
     erroCadastro(null);
     const voltam = nicks.filter((n) => exMembro(chave(n))).length;
     const btn = $('btnCadastrar');
@@ -745,10 +738,7 @@
         }
         indexarElenco();
       } else {
-        const r = await sb.rpc('admin_add_players', { pin_try: pinAdmin, p_nicks: nicks, p_cargo: cargo });
-        if (r.error) throw new Error(r.error.message);
-        if (r.data === -1) { sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
-        n = r.data;
+        n = await rpcAdmin('admin_add_players', { p_nicks: nicks, p_cargo: cargo });
         await carregar();
       }
       $('fNicks').value = '';
@@ -763,6 +753,7 @@
       toast(partes.join(' · ') + '.');
     } catch (e) {
       console.error(e);
+      if (erroSessao(e)) return;
       erroCadastro('Não deu pra cadastrar agora. (' + (e.message || 'erro') + ')');
     } finally {
       btn.disabled = false;
@@ -814,11 +805,9 @@
         partidas.forEach((p) => { if (chave(p.player) === antigo) p.player = nick; });
         indexarElenco();
       } else {
-        const res = await sb.rpc('admin_update_player', { pin_try: pinAdmin, p_id: r.id, p_nick: nick, p_cargo: cargo, p_ativo: ativo });
-        if (res.error) throw new Error(res.error.message);
-        if (res.data === 'pin') { $('dlgJogador').close(); sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
-        if (res.data === 'nick_em_uso') return erroJogador('Esse nick já está no elenco.');
-        if (res.data !== 'ok') throw new Error(res.data);
+        const res = await rpcAdmin('admin_update_player', { p_id: r.id, p_nick: nick, p_cargo: cargo, p_ativo: ativo });
+        if (res === 'nick_em_uso') return erroJogador('Esse nick já está no elenco.');
+        if (res !== 'ok') throw new Error(res);
         await carregar();
       }
       $('dlgJogador').close();
@@ -826,6 +815,7 @@
       toast(ativo === r.ativo ? `${comTag(nick)} atualizado.` : ativo ? `${comTag(nick)} voltou pro clã.` : `${comTag(nick)} agora é ex-membro.`);
     } catch (e) {
       console.error(e);
+      if (erroSessao(e)) { $('dlgJogador').close(); return; }
       erroJogador('Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
     } finally {
       btn.disabled = false;
@@ -841,10 +831,8 @@
         jogadores = jogadores.filter((x) => x.id !== r.id);
         indexarElenco();
       } else {
-        const res = await sb.rpc('admin_delete_player', { pin_try: pinAdmin, p_id: r.id });
-        if (res.error) throw new Error(res.error.message);
-        if (res.data === 'pin') { $('dlgJogador').close(); sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
-        if (res.data === 'tem_partidas') return erroJogador('Ele tem partidas. Desmarque "Ainda está no clã" em vez de apagar.');
+        const res = await rpcAdmin('admin_delete_player', { p_id: r.id });
+        if (res === 'tem_partidas') return erroJogador('Ele tem partidas. Desmarque "Ainda está no clã" em vez de apagar.');
         await carregar();
       }
       $('dlgJogador').close();
@@ -852,6 +840,7 @@
       toast(`${comTag(r.nick)} saiu do elenco.`);
     } catch (e) {
       console.error(e);
+      if (erroSessao(e)) { $('dlgJogador').close(); return; }
       erroJogador('Não deu pra apagar agora. (' + (e.message || 'erro') + ')');
     }
   }
@@ -940,8 +929,8 @@
 
   function renderPartidas() {
     const ul = $('listaPartidas');
-    $('adminTag').hidden = !pinAdmin;
-    const lista = partidas.slice(0, pinAdmin ? 200 : 12);
+    $('adminTag').hidden = !admin;
+    const lista = partidas.slice(0, admin ? 200 : 12);
     if (!lista.length) { ul.replaceChildren(el('li', { class: 'vazio', text: 'Nenhuma partida registrada ainda.' })); return; }
     ul.replaceChildren(...lista.map((p) => {
       const url = urlPrint(p);
@@ -955,7 +944,7 @@
           el('span', { class: 'partida-nome', text: comTag(limparNick(p.player)) }),
           el('span', { class: 'partida-massa' }, fmt(p.mass), p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
           el('span', { class: 'partida-data', text: `${pts ? '+' + ptsTxt(pts) : 'sem pontos'} · ${haQuanto(p.created_at)}` })),
-        pinAdmin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null
+        admin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null
       );
     }));
   }
@@ -1012,23 +1001,29 @@
   }
 
   // ---------- medalhas ----------
+  // prog = [quanto tem, quanto precisa] pras trancadas; quando = data em que conquistou (quando dá pra saber)
   function medalhasDe(j, ctx) {
     const sem = ctx.semana.find((x) => x.chave === j.chave);
     const recorde = j.melhor ? j.melhor.mass : 0;
     const titulos = (ctx.titulos && ctx.titulos.get(j.chave)) || 0;
-    const clube = (vezes, id, icone) => ({ id, nome: `Clube ${fmtK(MARCO * vezes)}`, como: `1 partida de ${fmtK(MARCO * vezes)}+`, ok: recorde >= MARCO * vezes, icone });
+    const minhas = j.chave ? partidas.filter((p) => chave(p.player) === j.chave).reverse() : []; // mais antigas primeiro
+    const quando = (teste, n = 1) => { let c = 0; for (const p of minhas) if (teste(p) && ++c >= n) return p.created_at; return null; };
+    const clube = (vezes, id, icone) => ({
+      id, nome: `Clube ${fmtK(MARCO * vezes)}`, como: `1 partida de ${fmtK(MARCO * vezes)}+`, ok: recorde >= MARCO * vezes, icone,
+      prog: [recorde, MARCO * vezes], quando: quando((p) => p.mass >= MARCO * vezes),
+    });
     return [
       { id: 'rei', nome: 'Rei do clã', como: '1º lugar em pontos', ok: ctx.pontos[0] && ctx.pontos[0].chave === j.chave, icone: ICONE_COROA },
       { id: 'recorde', nome: 'Recordista', como: 'maior massa do clã', ok: ctx.massa[0] && ctx.massa[0].chave === j.chave, icone: '<path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/>' },
       { id: 'semana', nome: 'Cobra da semana', como: 'mais pontos na semana', ok: ctx.semana[0] && ctx.semana[0].chave === j.chave && ctx.semana[0].pontos > 0, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>' },
-      { id: 'clube', nome: `Clube ${marcoTxt}`, como: `1 partida de ${marcoTxt}`, ok: j.cem >= 1, icone: '<circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/>' },
-      { id: 'maquina', nome: `Máquina de ${fmtK(MARCO)}`, como: `5 partidas de ${marcoTxt}`, ok: j.cem >= 5, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
+      { id: 'clube', nome: `Clube ${marcoTxt}`, como: `1 partida de ${marcoTxt}`, ok: j.cem >= 1, icone: '<circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/>', prog: [recorde, MARCO], quando: quando((p) => p.mass >= MARCO) },
+      { id: 'maquina', nome: `Máquina de ${fmtK(MARCO)}`, como: `5 partidas de ${marcoTxt}`, ok: j.cem >= 5, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', prog: [j.cem, 5], quando: quando((p) => p.mass >= MARCO, 5) },
       clube(2, 'clube2', '<path d="M7 17l5-5 5 5M7 11l5-5 5 5"/>'),
       clube(5, 'clube5', '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/>'),
       clube(10, 'clube10', '<path d="M3 20l6-10 4 6 3-4 5 8z"/><path d="M9 10V4l4 2-4 2"/>'),
       { id: 'campeao', nome: titulos > 1 ? `Campeão ${titulos}×` : 'Campeão de temporada', como: 'ganhar uma temporada (1º do mês)', ok: titulos > 0, icone: ICONE_TROFEU },
-      { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>' },
-      { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>' },
+      { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>', prog: [sem ? sem.qtd : 0, 3] },
+      { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>', prog: [j.qtd, 10], quando: quando(() => true, 10) },
     ];
   }
   function contexto() {
@@ -1193,74 +1188,240 @@
     </svg>`;
   }
 
-  function mostrarPerfil() {
-    const dlg = $('dlgPerfil');
-    if (!dlg.open) dlg.showModal();
-    dlg.scrollTop = 0;
-  }
   function chipsCadastro(r) {
     if (!r) return [];
     const desde = r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '') : '';
     return [chipCargo(r), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null, desde ? el('span', { class: 'sec', text: `no clã desde ${desde}` }) : null];
   }
 
+
+  const SEMANA_MS = 7 * 86400000;
+  let perfilAtual = null;     // chave do jogador aberto
+  let rolagemAntes = 0;       // onde a pessoa estava no ranking antes de abrir
+  let perfilMais = false;     // histórico completo aberto
+  const ICONE_VOLTAR = '<path d="M15 5l-7 7 7 7"/>';
+  const ICONE_LINK = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
+  const ICONE_EU = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>';
+
+  // "este sou eu": cada um marca o próprio perfil no aparelho e acha ele no topo
+  function lerEu() { try { return localStorage.getItem('ranking_eu') || null; } catch (e) { return null; } }
+  function guardarEu(k) { try { if (k) localStorage.setItem('ranking_eu', k); else localStorage.removeItem('ranking_eu'); } catch (e) {} }
+  function renderEu() {
+    const k = lerEu();
+    const r = k && listaElenco().find((x) => x.chave === k);
+    const btn = $('btnEu');
+    btn.hidden = !r;
+    if (!r) return;
+    const pts = (montarRanking('geral', 'pontos', true).find((x) => x.chave === k) || { pontos: 0 }).pontos;
+    btn.replaceChildren(avatarDe(r.nick, pts, 'av-p'), el('span', { class: 'btn-txt', text: 'Meu perfil' }));
+    btn.setAttribute('aria-label', `Meu perfil: ${comTag(r.nick)}`);
+  }
+
+  function chaveDaUrl() {
+    const q = new URLSearchParams(location.search).get('jogador');
+    return q ? chave(q) : null;
+  }
+  function linkPerfil(nome) { return `${location.origin}${location.pathname}?jogador=${encodeURIComponent(nome)}`; }
+
   function abrirPerfil(k) {
-    const ctx = contexto();
+    if (document.querySelector('dialog[open]')) document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+    if (!perfilAtual) rolagemAntes = scrollY;
     const r = elenco.get(k);
+    const nome = r ? r.nick : (montarRanking('geral', 'pontos', true).find((x) => x.chave === k) || {}).nome;
+    if (!nome) return;
+    history.pushState({ perfil: k, doSite: true }, '', `?jogador=${encodeURIComponent(nome)}`);
+    perfilMais = false;
+    mostrarRota(true);
+  }
+  function fecharPerfil() {
+    if (history.state && history.state.doSite) { history.back(); return; }
+    history.pushState({}, '', location.pathname);
+    mostrarRota();
+  }
+  function mostrarRota(novo = false) {
+    const k = chaveDaUrl();
+    const antes = perfilAtual;
+    perfilAtual = k;
+    $('principal').hidden = !!k;
+    $('perfilPagina').hidden = !k;
+    document.body.classList.toggle('vendo-perfil', !!k);
+    if (k) {
+      renderPerfil();
+      if (novo || antes !== k) scrollTo(0, 0);
+    } else {
+      document.title = `Ranking Clã ${TAG}`;
+      if (antes) scrollTo(0, rolagemAntes);
+    }
+  }
+
+  async function compartilharPerfil(nome) {
+    const url = linkPerfil(nome);
+    const dados = { title: `${comTag(nome)} · Ranking Clã ${TAG}`, text: `Perfil de ${comTag(nome)} no ranking do clã`, url };
+    try {
+      if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share(dados); return; }
+      await navigator.clipboard.writeText(url);
+      toast('Link do perfil copiado.');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      prompt('Copie o link do perfil:', url);
+    }
+  }
+
+  // posição do jogador num ranking e quanto mudou desde uma data
+  function posicao(lista, k) { const i = lista.findIndex((x) => x.chave === k); return i < 0 ? 0 : i + 1; }
+
+  function renderPerfil() {
+    const k = perfilAtual;
+    const box = $('perfilCorpo');
+    const r = elenco.get(k);
+    const ctx = contexto();
     const j = ctx.pontos.find((x) => x.chave === k) || montarRanking('geral', 'pontos', true).find((x) => x.chave === k);
-    if (!j) {
-      // cadastrado, mas ainda sem partida
-      if (!r) return;
-      $('perfilCorpo').replaceChildren(
-        el('div', { class: 'perfil-topo' },
-          avatarDe(r.nick, 0, 'av-g'),
-          el('div', { class: 'perfil-id' },
-            el('h2', { id: 'perfilNome', text: comTag(r.nick) }),
-            el('div', { class: 'perfil-chips' }, chipPatente(0, 'patente-g'), ...chipsCadastro(r)))),
-        el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Manda o print da primeira pro dono do clã!' }));
-      mostrarPerfil();
+    const nome = j ? j.nome : r ? r.nick : null;
+
+    const barra = el('div', { class: 'pp-barra' },
+      el('button', { type: 'button', class: 'btn btn-sec pp-voltar', onclick: fecharPerfil }, svg(ICONE_VOLTAR, 18), 'Ranking'),
+      nome ? el('div', { class: 'pp-acoes' },
+        el('button', { type: 'button', class: `btn btn-sec ${lerEu() === k ? 'pp-eu-on' : ''}`, 'aria-pressed': String(lerEu() === k), onclick: () => {
+          guardarEu(lerEu() === k ? null : k);
+          renderEu();
+          renderPerfil();
+          toast(lerEu() === k ? 'Pronto! Seu perfil fica no botão do topo.' : 'Perfil desmarcado.');
+        } }, svg(ICONE_EU, 18), el('span', { class: 'btn-txt', text: lerEu() === k ? 'Este sou eu' : 'Sou eu' })),
+        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
+
+    if (!nome) {
+      document.title = `Jogador não encontrado · Ranking Clã ${TAG}`;
+      box.replaceChildren(barra, el('p', { class: 'vazio', text: 'Não achei esse jogador. Confere o nick no link ou procure na busca.' }));
       return;
     }
-    const posP = ctx.pontos.findIndex((x) => x.chave === k) + 1;
-    const posM = ctx.massa.findIndex((x) => x.chave === k) + 1;
-    const pat = patenteDe(j.pontos);
+    document.title = `${comTag(nome)} · Ranking Clã ${TAG}`;
+
+    const pts = j ? j.pontos : 0;
+    const pat = patenteDe(pts);
+    const ativo = !r || r.ativo;
+
+    // cabeçalho
+    const posGeral = posicao(ctx.pontos, k);
+    const topo = el('header', { class: 'pp-topo', style: `--pc:${pat.atual.cor}` },
+      el('div', { class: 'pp-id' },
+        avatarDe(nome, pts, 'av-xg'),
+        el('div', { class: 'pp-nome-box' },
+          el('span', { class: 'pp-tag', text: `[${TAG}]` }),
+          el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
+          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipsCadastro(r)))),
+      posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
+        el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
+        el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
+
+    if (!j) {
+      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Manda o print da primeira pro dono do clã!' }));
+      return;
+    }
+
+    // posições: geral, temporada, semana, maior massa (com quanto subiu/caiu na última semana)
+    const semanaPassada = Date.now() - SEMANA_MS;
+    const antes = montarRanking('geral', 'pontos', false, semanaPassada);
+    const mov = (() => {
+      const a = posicao(antes, k);
+      if (!posGeral) return null;
+      if (!a) return { cls: 'novo', txt: 'novo no ranking' };
+      const d = a - posGeral;
+      return d > 0 ? { cls: 'sobe', txt: `▲ subiu ${d} em 7 dias` } : d < 0 ? { cls: 'desce', txt: `▼ caiu ${-d} em 7 dias` } : { cls: 'igual', txt: 'estável em 7 dias' };
+    })();
+    const mes = montarRanking('mes', 'pontos');
+    const sem = ctx.semana;
+    const cartao = (rot, pos, total, sub, extra) => el('div', { class: `pp-posc ${pos ? 'p' + pos : 'sem-pos'}` },
+      el('span', { class: 'pstat-rot', text: rot }),
+      el('span', { class: 'pp-posc-num', text: pos ? `#${pos}` : '—' }),
+      el('span', { class: 'pp-posc-sub', text: pos ? `de ${total} · ${sub}` : sub }),
+      extra || null);
+    const jMes = mes.find((x) => x.chave === k), jSem = sem.find((x) => x.chave === k);
+    const posicoes = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppPos' },
+      el('h2', { class: 'perfil-h3', id: 'ppPos', text: 'POSIÇÕES' }),
+      el('div', { class: 'pp-posicoes' },
+        cartao('GERAL', posGeral, ctx.pontos.length, ptsTxt(pts), mov ? el('span', { class: `pp-mov ${mov.cls}`, text: mov.txt }) : null),
+        cartao('TEMPORADA', posicao(mes, k), mes.length, jMes ? ptsTxt(jMes.pontos) : 'sem partida neste mês'),
+        cartao('SEMANA', posicao(sem, k), sem.length, jSem ? ptsTxt(jSem.pontos) : 'sem partida nesta semana'),
+        cartao('MAIOR MASSA', posicao(ctx.massa, k), ctx.massa.length, `recorde ${fmt(j.melhor.mass)}`)));
+
+    // patente
+    const prog = el('div', { class: 'perfil-prog', style: `--pc:${pat.atual.cor}` },
+      el('div', { class: 'prog-linha' },
+        el('span', { text: pat.atual.nome }),
+        el('span', { class: 'sec', text: pat.prox ? `${fmt(pts)} / ${fmt(pat.prox.pontos)} pts` : `${fmt(pts)} pts` }),
+        el('span', { text: pat.prox ? pat.prox.nome : 'NÍVEL MÁXIMO' })),
+      el('div', { class: 'barra barra-pat', role: 'progressbar', 'aria-label': 'Progresso da patente', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pat.progresso * 100)) },
+        el('span', { style: `width:${Math.round(pat.progresso * 100)}%` })),
+      el('div', { class: 'prog-sub', text: pat.prox ? `Faltam ${ptsTxt(pat.prox.pontos - pts)} pra virar ${pat.prox.nome}${partidasPara(pat.prox.pontos - pts)}` : 'Chegou no topo. Agora é defender o trono.' }));
+
+    // números
     const minhas = partidas.filter((p) => chave(p.player) === k); // mais novas primeiro
     const media = Math.round(minhas.reduce((s, p) => s + p.mass, 0) / Math.max(1, minhas.length));
-    const meds = medalhasDe(j, ctx);
-    const ganhas = meds.filter((m) => m.ok).length;
-    const ultimas = minhas.slice(0, 20).reverse();
+    const numeros = el('div', { class: 'perfil-stats' },
+      ...[['PONTOS', fmt(pts), 'laranja'], ['RECORDE', fmt(j.melhor.mass), ''], ['MÉDIA', fmt(media), ''], ['PARTIDAS', fmt(j.qtd), ''], [marcoTxt, `${j.cem}×`, j.cem ? 'laranja' : ''], ['ÚLTIMA', haQuanto(j.ultima), 'pstat-txt']]
+        .map(([rot, v, c]) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: rot }), el('span', { class: `pstat-num ${c}`, text: v }))));
 
+    // medalhas: conquistadas primeiro; as trancadas mostram quanto falta
+    const meds = medalhasDe(j, ctx);
+    const ganhas = meds.filter((m) => m.ok);
+    const ordem = [...ganhas, ...meds.filter((m) => !m.ok).sort((a, b) => progMed(b) - progMed(a))];
+    const medalhas = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppMed' },
+      el('h2', { class: 'perfil-h3', id: 'ppMed' }, 'MEDALHAS ', el('span', { class: 'sec', text: `${ganhas.length} de ${meds.length}` })),
+      el('ul', { class: 'medalhas' }, ...ordem.map((m) => el('li', { class: `medalha ${m.ok ? 'ok' : 'trancada'}`, title: m.como },
+        el('span', { class: 'med-ic', 'aria-hidden': 'true' }, svg(m.icone, 20)),
+        el('span', { class: 'med-txt' },
+          el('b', { text: m.nome }),
+          el('span', { text: m.ok ? (m.quando ? `conquistada ${haQuanto(m.quando)}` : 'conquistada') : m.como }),
+          !m.ok && m.prog ? el('span', { class: 'med-prog', 'aria-label': `${m.prog[0]} de ${m.prog[1]}` },
+            el('span', { class: 'med-prog-barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(progMed(m) * 100)}%` })),
+            el('span', { class: 'med-prog-txt', text: progTxt(m.prog) })) : null)))));
+
+    // evolução
+    const ultimas = minhas.slice(0, 20).reverse();
     const g = document.createElement('div');
     g.className = 'grafico-box';
     g.innerHTML = grafico(ultimas);
 
-    $('perfilCorpo').replaceChildren(
-      el('div', { class: 'perfil-topo', style: `--pc:${pat.atual.cor}` },
-        avatarDe(j.nome, j.pontos, 'av-g'),
-        el('div', { class: 'perfil-id' },
-          el('h2', { id: 'perfilNome', text: comTag(j.nome) }),
-          el('div', { class: 'perfil-chips' }, chipPatente(j.pontos, 'patente-g'),
-            posP ? el('span', { class: 'sec', text: `#${posP} em pontos · #${posM} em massa` }) : null,
-            ...chipsCadastro(r)))),
-      el('div', { class: 'perfil-prog', style: `--pc:${pat.atual.cor}` },
-        el('div', { class: 'prog-linha' },
-          el('span', { text: pat.atual.nome }),
-          el('span', { class: 'sec', text: pat.prox ? `${fmt(j.pontos)} / ${fmt(pat.prox.pontos)} pts` : `${fmt(j.pontos)} pts` }),
-          el('span', { text: pat.prox ? pat.prox.nome : 'NÍVEL MÁXIMO' })),
-        el('div', { class: 'barra barra-pat', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(pat.progresso * 100)}%` })),
-        el('div', { class: 'prog-sub', text: pat.prox ? `Faltam ${ptsTxt(pat.prox.pontos - j.pontos)} pra virar ${pat.prox.nome}${partidasPara(pat.prox.pontos - j.pontos)}` : 'Chegou no topo. Agora é defender o trono.' })),
-      el('div', { class: 'perfil-stats' },
-        ...[['PONTOS', fmt(j.pontos), 'laranja'], [marcoTxt, `${j.cem}×`, j.cem ? 'laranja' : ''], ['RECORDE', fmt(j.melhor.mass), ''], ['MÉDIA', fmt(media), ''], ['PARTIDAS', fmt(j.qtd), '']]
-          .map(([r, v, c]) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: r }), el('span', { class: `pstat-num ${c}`, text: v })))),
-      el('h3', { class: 'perfil-h3', text: ultimas.length > 1 ? `ÚLTIMAS ${ultimas.length} PARTIDAS` : 'PARTIDAS' }),
-      g,
-      el('h3', { class: 'perfil-h3' }, `MEDALHAS `, el('span', { class: 'sec', text: `${ganhas}/${meds.length}` })),
-      el('ul', { class: 'medalhas' }, ...meds.map((m) => el('li', { class: `medalha ${m.ok ? 'ok' : 'trancada'}`, title: m.como },
-        el('span', { class: 'med-ic', 'aria-hidden': 'true' }, svg(m.icone, 20)),
-        el('span', { class: 'med-txt' }, el('b', { text: m.nome }), el('span', { text: m.ok ? 'conquistada' : m.como })))))
-    );
-    mostrarPerfil();
+    // momentos marcantes do jogador
+    const ev = montarConquistas(k, 8);
+    const momentos = ev.length ? el('section', { class: 'pp-sec', 'aria-labelledby': 'ppMom' },
+      el('h2', { class: 'perfil-h3', id: 'ppMom', text: 'MOMENTOS' }),
+      el('ul', { class: 'pp-momentos conquistas-lista' }, ...ev.map((e) => el('li', null,
+        el('span', { class: `bola ${e.tipo}`, 'aria-hidden': 'true' }),
+        el('span', { class: 'txt' }, e.partes),
+        el('span', { class: 'quando', text: dataCurta(e.quando) }))))) : null;
+
+    // histórico de partidas
+    const recordeId = j.melhor.id;
+    const mostrar = perfilMais ? minhas : minhas.slice(0, 10);
+    const historico = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppHist' },
+      el('h2', { class: 'perfil-h3', id: 'ppHist' }, 'PARTIDAS ', el('span', { class: 'sec', text: fmt(minhas.length) })),
+      el('ul', { class: 'pp-hist' }, ...mostrar.map((p) => {
+        const url = urlPrint(p);
+        const pp = pontosDe(p.mass);
+        return el('li', { class: `pp-hist-item ${p.mass >= MARCO ? 'cem' : ''}` },
+          url
+            ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${fmt(p.mass)}`, onclick: () => abrirPrint(p) }, el('img', { src: url, alt: '', loading: 'lazy' }))
+            : el('span', { class: 'mini', text: 'sem print' }),
+          el('div', { class: 'pp-hist-info' },
+            el('span', { class: 'partida-massa' }, fmt(p.mass),
+              p.id === recordeId ? el('span', { class: 'chip', text: 'RECORDE' }) : null,
+              p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
+            el('span', { class: 'partida-data', text: new Date(p.created_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(/\./g, '') })),
+          el('span', { class: 'pp-hist-pts', text: pp ? `+${ptsTxt(pp)}` : '0 pts' }));
+      })),
+      minhas.length > mostrar.length ? el('button', { type: 'button', class: 'btn btn-sec pp-mais', onclick: () => { perfilMais = true; renderPerfil(); } }, `Ver todas as ${fmt(minhas.length)} partidas`) : null);
+
+    box.replaceChildren(barra, topo,
+      el('div', { class: 'pp-grade' },
+        el('div', { class: 'pp-col' }, posicoes, prog, numeros,
+          el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g),
+          medalhas),
+        el('div', { class: 'pp-col' }, momentos, historico)));
   }
+  // massa vira 121K/200K pra caber; contagem fica 4/5
+  const progTxt = ([a, b]) => (b >= 10000 ? `${fmt(Math.floor(Math.min(a, b) / 1000))}K/${fmtK(b)}` : `${fmt(Math.min(a, b))}/${fmt(b)}`);
+  const progMed = (m) => (m.prog ? Math.min(1, m.prog[0] / m.prog[1]) : 0);
 
   // ---------- print ----------
   function abrirPrint(p) {
@@ -1324,7 +1485,7 @@
       return mostrarErro(`Só ${fmt(massa)} de massa? Se for ${fmt(lida.sugestao)}, toque em × MIL. Se for ${fmt(massa)} mesmo, toque em COLOCAR NO RANKING de novo.`);
     }
     if (PRINT_OBRIGATORIO && !arquivoPrint) return mostrarErro('Escolhe o print da partida. Ele é a prova da massa.');
-    if (!pinAdmin) return mostrarErro('Entre na área do dono para registrar.');
+    if (!admin) return mostrarErro('Entre na área do admin para registrar.');
     mostrarErro(null);
 
     const btn = $('btnEnviar');
@@ -1345,7 +1506,11 @@
           const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
           print_path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
           const up = await sb.storage.from(BUCKET).upload(print_path, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
-          if (up.error) throw new Error('print: ' + up.error.message);
+          if (up.error) {
+            // só admin logado envia print; se a sessão caiu, o armazenamento recusa
+            if (/row-level security|unauthorized|jwt/i.test(up.error.message)) { await sairAdmin(true); throw Object.assign(new Error('sessão'), { sessao: true }); }
+            throw new Error('print: ' + up.error.message);
+          }
         }
       }
       if (DEMO) {
@@ -1355,9 +1520,7 @@
         else jogadores.push({ id: 'dj-' + Date.now(), nick: nome, cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
         indexarElenco();
       } else {
-        const ins = await sb.rpc('admin_add_score', { pin_try: pinAdmin, p_player: nome, p_mass: massa, p_print_path: print_path });
-        if (ins.error) throw new Error(ins.error.message);
-        if (ins.data !== true) { sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
+        await rpcAdmin('admin_add_score', { p_player: nome, p_mass: massa, p_print_path: print_path });
         await carregar();
       }
       $('fNome').value = '';
@@ -1388,6 +1551,7 @@
       $('fNome').focus();
     } catch (e) {
       console.error(e);
+      if (erroSessao(e)) return;
       mostrarErro('Não deu pra enviar agora. Confere a internet e tenta de novo. (' + (e.message || 'erro') + ')');
     } finally {
       btn.disabled = false;
@@ -1395,35 +1559,78 @@
     }
   }
 
-  // ---------- admin ----------
-  async function conferirPin(pin) {
-    if (DEMO) return pin === '1234';
-    const r = await sb.rpc('admin_check', { pin_try: pin });
-    if (r.error) throw new Error(r.error.message);
-    return r.data === true;
+  // ---------- admin (login com e-mail e senha, pelo Supabase Auth) ----------
+  // Quem decide se a conta é admin é o banco (tabela admins): cada função de
+  // registrar/apagar confere de novo lá. O site só mostra ou esconde os botões.
+  async function lerAdmin() {
+    if (DEMO) return admin;
+    const { data } = await sb.auth.getSession();
+    if (!data.session) return null;
+    const r = await sb.rpc('admin_eu');
+    return !r.error && r.data ? { nome: r.data } : null;
+  }
+  function aplicarAdmin(novo) {
+    admin = novo;
+    $('btnAdmin').textContent = admin ? `Sair da área do admin (${admin.nome})` : 'Área do admin';
+    render();
+  }
+
+  // chama uma função de admin no banco; se a sessão caiu, sai do modo admin
+  async function rpcAdmin(nome, args) {
+    const r = await sb.rpc(nome, args);
+    if (r.error) {
+      if (r.error.code === '42501' || /jwt|permission denied|acesso negado/i.test(r.error.message)) {
+        await sairAdmin(true);
+        throw Object.assign(new Error('sessão de admin acabou'), { sessao: true });
+      }
+      throw new Error(r.error.message);
+    }
+    return r.data;
+  }
+  function erroSessao(e) {
+    if (!e || !e.sessao) return false;
+    toast('Sua sessão de admin acabou. Entre de novo.', true);
+    return true;
+  }
+
+  function msgLogin(error) {
+    if (error.status === 429 || /rate limit|too many/i.test(error.message)) return 'Muitas tentativas. Espera alguns minutos e tenta de novo.';
+    if (/invalid login credentials/i.test(error.message)) return 'E-mail ou senha errados.';
+    if (/email not confirmed/i.test(error.message)) return 'Esse e-mail ainda não foi confirmado.';
+    return 'Não consegui entrar agora. Tenta de novo.';
   }
 
   async function entrarAdmin(ev) {
     ev.preventDefault();
-    const pin = $('fPin').value.trim();
+    const email = $('fEmail').value.trim();
+    const senha = $('fSenha').value;
     const erro = $('erroAdmin');
+    const btn = $('btnEntrar');
+    const falhar = (msg) => { erro.textContent = msg; erro.hidden = false; };
     erro.hidden = true;
+    if (!email || !senha) return falhar('Preencha o e-mail e a senha.');
+    btn.disabled = true;
     try {
-      if (await conferirPin(pin)) {
-        pinAdmin = pin;
-        guardarPin(pin, $('fLembrar').checked);
-        $('dlgAdmin').close();
-        $('btnAdmin').textContent = 'Sair da área do dono';
-        render();
-        toast('Área do dono liberada. Já pode registrar massas.');
-        $('registrar').scrollIntoView({ behavior: 'smooth' });
+      let novo;
+      if (DEMO) {
+        if (senha !== '1234') return falhar('E-mail ou senha errados. (Na demonstração, a senha é 1234.)');
+        novo = { nome: email.split('@')[0] };
       } else {
-        erro.textContent = 'PIN errado.';
-        erro.hidden = false;
+        const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+        if (error) return falhar(msgLogin(error));
+        novo = await lerAdmin();
+        if (!novo) { await sb.auth.signOut(); return falhar('Essa conta não tem acesso de admin.'); }
       }
+      $('fSenha').value = '';
+      $('dlgAdmin').close();
+      aplicarAdmin(novo);
+      toast(`Bem-vindo, ${novo.nome}. Área do admin liberada.`);
+      if (!perfilAtual) $('registrar').scrollIntoView({ behavior: 'smooth' });
     } catch (e) {
-      erro.textContent = 'Não consegui conferir o PIN agora. Tenta de novo.';
-      erro.hidden = false;
+      console.error(e);
+      falhar('Não consegui entrar agora. Confere a internet e tenta de novo.');
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -1441,23 +1648,24 @@
       if (DEMO) {
         partidas = partidas.filter((p) => p.id !== id);
       } else {
-        const r = await sb.rpc('admin_delete_score', { score_id: id, pin_try: pinAdmin });
-        if (r.error) throw new Error(r.error.message);
-        if (r.data !== true) { sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
+        const caminho = await rpcAdmin('admin_delete_score', { p_id: id });
+        // apaga o print junto pra não sobrar imagem perdida no armazenamento
+        if (caminho) await sb.storage.from(BUCKET).remove([caminho]);
         await carregar();
       }
       render();
       toast('Pontuação apagada.');
     } catch (e) {
-      toast('Não deu pra apagar agora. Tenta de novo.', true);
+      if (!erroSessao(e)) toast('Não deu pra apagar agora. Tenta de novo.', true);
     }
   }
 
-  function sairAdmin() {
-    pinAdmin = null;
-    guardarPin(null);
-    $('btnAdmin').textContent = 'Área do dono';
-    render();
+  async function sairAdmin(silencioso = false) {
+    const era = admin;
+    admin = null;
+    if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
+    aplicarAdmin(null);
+    if (era && !silencioso) toast('Você saiu da área do admin.');
   }
 
   // ---------- dados ----------
@@ -1619,17 +1827,34 @@
 
     // admin
     $('btnAdmin').addEventListener('click', () => {
-      if (pinAdmin) { sairAdmin(); return; }
-      $('fPin').value = '';
+      if (admin) { sairAdmin(); return; }
+      $('fSenha').value = '';
       $('erroAdmin').hidden = true;
       $('dlgAdmin').showModal();
+      ($('fEmail').value ? $('fSenha') : $('fEmail')).focus();
     });
     $('btnCancelarAdmin').addEventListener('click', () => $('dlgAdmin').close());
     $('formAdmin').addEventListener('submit', entrarAdmin);
     $('btnNaoApagar').addEventListener('click', () => $('dlgConfirma').close());
     $('btnSimApagar').addEventListener('click', confirmarApagar);
+    // o PIN antigo ficava salvo no aparelho; não serve mais pra nada
+    try { localStorage.removeItem('ranking_pin'); sessionStorage.removeItem('ranking_pin'); } catch (e) {}
+
+    // perfil: página com link próprio, botão voltar do celular/navegador funciona
+    $('btnEu').addEventListener('click', () => { const k = lerEu(); if (k) abrirPerfil(k); });
+    addEventListener('popstate', () => mostrarRota());
+    // atalhos (#ranking, #jogadores...) com o perfil aberto: volta pro ranking e rola até lá
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href^="#"]');
+      if (!a || !perfilAtual) return;
+      e.preventDefault();
+      history.pushState({}, '', location.pathname + a.getAttribute('href'));
+      mostrarRota();
+      const alvo = a.getAttribute('href').length > 1 && document.querySelector(a.getAttribute('href'));
+      if (alvo) alvo.scrollIntoView(); else scrollTo(0, 0);
+    });
     // fechar janelas tocando fora delas
-    ['dlgPrint', 'dlgPerfil', 'dlgBusca'].forEach((id) => $(id).addEventListener('click', (e) => {
+    ['dlgPrint', 'dlgBusca'].forEach((id) => $(id).addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       if (e.target === e.currentTarget && fora) e.currentTarget.close();
@@ -1641,6 +1866,7 @@
       jogadores = elencoDemo();
       indexarElenco();
       render();
+      mostrarRota();
       ligarTempoReal();
       return;
     }
@@ -1650,14 +1876,13 @@
       return;
     }
     sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
-    const pinSalvo = lerPin();
+    // sessão expirou ou saiu em outra aba: some o modo admin
+    sb.auth.onAuthStateChange((evento) => { if (evento === 'SIGNED_OUT' && admin) setTimeout(() => aplicarAdmin(null), 0); });
     carregar()
       .then(async () => {
-        if (pinSalvo && await conferirPin(pinSalvo).catch(() => false)) {
-          pinAdmin = pinSalvo;
-          $('btnAdmin').textContent = 'Sair da área do dono';
-        }
-        render();
+        admin = await lerAdmin().catch(() => null);
+        aplicarAdmin(admin);
+        mostrarRota();
         ligarTempoReal();
       })
       .catch((e) => {

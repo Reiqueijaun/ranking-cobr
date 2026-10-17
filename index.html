@@ -34,6 +34,7 @@
       <a href="#hall">Hall da fama</a>
       <a href="#partidas">Partidas</a>
     </nav>
+    <button type="button" class="btn-eu" id="btnEu" hidden></button>
     <button type="button" class="btn-busca" id="btnBusca" aria-label="Buscar jogador" title="Buscar jogador (atalho: /)">
       <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     </button>
@@ -50,7 +51,7 @@
   </div>
 </div>
 
-<main>
+<main id="principal">
   <section class="hero wrap">
     <div class="hero-logo"><img src="logo-cobr.webp" alt="Escudo do clã COBR" width="220" height="220"></div>
     <div class="hero-txt">
@@ -267,16 +268,20 @@
   <section class="wrap bloco" id="partidas">
     <div class="bloco-topo">
       <h2>PARTIDAS RECENTES</h2>
-      <span class="admin-tag" id="adminTag" hidden>MODO DONO</span>
+      <span class="admin-tag" id="adminTag" hidden>MODO ADMIN</span>
     </div>
     <ul class="partidas" id="listaPartidas"></ul>
   </section>
 </main>
 
+<main id="perfilPagina" class="perfil-pagina" hidden>
+  <div class="wrap" id="perfilCorpo"></div>
+</main>
+
 <footer class="rodape">
   <div class="wrap rodape-in">
     <span>Clã <span data-tag>COBR</span> · Ranking de massa do slither.io</span>
-    <button type="button" class="link-btn" id="btnAdmin">Área do dono</button>
+    <button type="button" class="link-btn" id="btnAdmin">Área do admin</button>
   </div>
 </footer>
 
@@ -286,23 +291,20 @@
   <p id="legendaPrint"></p>
 </dialog>
 
-<dialog id="dlgPerfil" class="dlg dlg-perfil" aria-labelledby="perfilNome">
-  <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
-  <div id="perfilCorpo"></div>
-</dialog>
-
-<dialog id="dlgAdmin" class="dlg">
-  <form id="formAdmin" class="form-admin">
-    <h2 class="laranja">ÁREA DO DONO</h2>
-    <p>Digite o PIN para registrar e apagar massas.</p>
-    <label for="fPin">PIN</label>
-    <input id="fPin" type="password" autocomplete="current-password" required>
-    <label class="check" for="fLembrar"><input id="fLembrar" type="checkbox" checked> Lembrar neste aparelho</label>
+<dialog id="dlgAdmin" class="dlg" aria-labelledby="tituloAdmin">
+  <form id="formAdmin" class="form-admin" novalidate>
+    <h2 class="laranja" id="tituloAdmin">ÁREA DO ADMIN</h2>
+    <p>Entre com a sua conta de administrador do clã.</p>
+    <label for="fEmail">E-MAIL</label>
+    <input id="fEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required>
+    <label for="fSenha">SENHA</label>
+    <input id="fSenha" type="password" autocomplete="current-password" required>
     <p class="erro" id="erroAdmin" role="alert" hidden></p>
     <div class="linha-btns">
       <button type="button" class="btn btn-sec" id="btnCancelarAdmin">Cancelar</button>
-      <button type="submit" class="btn btn-pri">Entrar</button>
+      <button type="submit" class="btn btn-pri" id="btnEntrar">Entrar</button>
     </div>
+    <p class="form-nota">Esqueceu a senha? Peça pro dono do site trocar no painel do Supabase.</p>
   </form>
 </dialog>
 

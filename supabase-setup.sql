@@ -1,10 +1,13 @@
 -- =============================================================
 --  RANKING DO CLÃ — script do banco de dados (Supabase)
 --  Cole TUDO no SQL Editor do Supabase e clique em "Run".
---  Pode rodar de novo sem problema se precisar.
+--  Pode rodar de novo sem problema: não apaga partidas nem jogadores.
 --
---  Depois de rodar, defina o PIN do dono com o comando do guia
---  COMO-COLOCAR-NO-AR.html (passo 3). O PIN NÃO fica neste arquivo, assim ninguém descobre.
+--  Segurança:
+--  - Qualquer um VÊ o ranking. Ninguém de fora consegue gravar nada.
+--  - Registrar, editar e apagar: só quem entra com e-mail e senha
+--    E está na tabela "admins". Quem confere isso é o banco, não o site.
+--  - Como criar um admin: guia COMO-COLOCAR-NO-AR.html (passo 3).
 -- =============================================================
 
 -- 1) Tabela das pontuações
@@ -26,96 +29,11 @@ drop policy if exists "todos leem" on public.scores;
 create policy "todos leem" on public.scores
   for select to anon, authenticated using (true);
 
--- Ninguém de fora registra direto. Só o DONO, pela função com PIN abaixo.
+-- Ninguém registra direto na tabela. Registrar e apagar: só admin, pelas funções do passo 3.
 drop policy if exists "todos registram" on public.scores;
-revoke insert on public.scores from anon, authenticated;
-
--- Registrar e apagar: só o dono, pelas funções com PIN abaixo.
 
 
--- 2) PIN do dono (fica guardado escondido, o site não consegue ler)
-create table if not exists public.admin_config (
-  id   int primary key default 1 check (id = 1),
-  pin  text not null
-);
-alter table public.admin_config enable row level security;
-revoke all on public.admin_config from anon, authenticated;
--- (sem políticas e sem permissão = ninguém de fora lê esta tabela)
-
--- Valor provisório. Enquanto não for trocado, a área do dono fica TRANCADA.
--- Para definir o seu PIN, rode no SQL Editor (fora deste arquivo):
---   update public.admin_config set pin = 'seu-pin-bem-longo' where id = 1;
-insert into public.admin_config (id, pin)
-values (1, 'TROQUE-ESTE-PIN')
-on conflict (id) do nothing;
-
-create or replace function public.admin_check(pin_try text)
-returns boolean
-language plpgsql security definer set search_path = public
-as $$
-declare ok boolean;
-begin
-  select exists(select 1 from admin_config where id = 1 and pin = pin_try and pin <> 'TROQUE-ESTE-PIN') into ok;
-  if not ok then perform pg_sleep(1); end if;   -- atrasa quem tenta adivinhar
-  return ok;
-end;
-$$;
-
-create or replace function public.admin_delete_score(score_id uuid, pin_try text)
-returns boolean
-language plpgsql security definer set search_path = public
-as $$
-begin
-  if not exists(select 1 from admin_config where id = 1 and pin = pin_try and pin <> 'TROQUE-ESTE-PIN') then
-    perform pg_sleep(1);
-    return false;
-  end if;
-  delete from scores where id = score_id;
-  return true;
-end;
-$$;
-
-create or replace function public.admin_add_score(pin_try text, p_player text, p_mass integer, p_print_path text default null)
-returns boolean
-language plpgsql security definer set search_path = public
-as $$
-begin
-  if not exists(select 1 from admin_config where id = 1 and pin = pin_try and pin <> 'TROQUE-ESTE-PIN') then
-    perform pg_sleep(1);
-    return false;
-  end if;
-  insert into scores (player, mass, print_path) values (btrim(p_player), p_mass, p_print_path);
-  -- quem joga entra (ou volta) pro elenco do clã automaticamente
-  update players set ativo = true where lower(btrim(nick)) = lower(btrim(p_player)) and not ativo;
-  insert into players (nick) values (btrim(p_player)) on conflict do nothing;
-  return true;
-end;
-$$;
-
-revoke all on function public.admin_add_score(text, text, integer, text) from public;
-grant execute on function public.admin_add_score(text, text, integer, text) to anon, authenticated;
-revoke all on function public.admin_check(text) from public;
-revoke all on function public.admin_delete_score(uuid, text) from public;
-grant execute on function public.admin_check(text) to anon, authenticated;
-grant execute on function public.admin_delete_score(uuid, text) to anon, authenticated;
-
-
--- 3) Pasta pública para os prints (até 3 MB, só imagens).
---    Um print só aparece no site quando o dono registra a partida.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('prints', 'prints', true, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do update
-  set public = true,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists "todos enviam print" on storage.objects;
-create policy "todos enviam print" on storage.objects
-  for insert to anon, authenticated
-  with check (bucket_id = 'prints');
-
-
--- 4) Elenco do clã: todos os jogadores cadastrados, mesmo quem ainda não pontuou
+-- 2) Elenco do clã: todos os jogadores cadastrados, mesmo quem ainda não pontuou
 create table if not exists public.players (
   id          uuid primary key default gen_random_uuid(),
   nick        text not null check (char_length(btrim(nick)) between 1 and 24),
@@ -139,14 +57,109 @@ from public.scores
 order by lower(btrim(player)), created_at desc
 on conflict do nothing;
 
--- Cadastrar vários de uma vez. Devolve quantos entraram (-1 = PIN errado).
-create or replace function public.admin_add_players(pin_try text, p_nicks text[], p_cargo text default 'Membro')
+
+-- 3) Administradores: login de verdade (e-mail + senha do Supabase Auth).
+--    Não existe mais PIN. Cada admin tem a própria conta, e só quem está
+--    na tabela "admins" consegue registrar, editar ou apagar.
+--    Como criar um admin: veja o guia COMO-COLOCAR-NO-AR.html (passo 3).
+
+-- o sistema antigo de PIN sai de vez
+drop function if exists public.admin_check(text);
+drop function if exists public.admin_delete_score(uuid, text);
+drop function if exists public.admin_add_score(text, text, integer, text);
+drop function if exists public.admin_add_players(text, text[], text);
+drop function if exists public.admin_update_player(text, uuid, text, text, boolean);
+drop function if exists public.admin_delete_player(text, uuid);
+drop table if exists public.admin_config;
+
+create table if not exists public.admins (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  nome        text not null default '' check (char_length(nome) <= 40),
+  created_at  timestamptz not null default now()
+);
+alter table public.admins enable row level security;
+revoke all on public.admins from anon, authenticated;
+-- (sem políticas = ninguém de fora lê nem mexe nesta tabela)
+
+-- Histórico de tudo que os admins fazem (veja em Table Editor > admin_log)
+create table if not exists public.admin_log (
+  id          bigint generated always as identity primary key,
+  user_id     uuid,
+  email       text,
+  acao        text not null,
+  detalhe     jsonb,
+  created_at  timestamptz not null default now()
+);
+alter table public.admin_log enable row level security;
+revoke all on public.admin_log from anon, authenticated;
+
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from admins where user_id = auth.uid());
+$$;
+
+create or replace function public.exigir_admin(p_acao text, p_detalhe jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  insert into admin_log (user_id, email, acao, detalhe)
+  values (auth.uid(), auth.jwt() ->> 'email', p_acao, p_detalhe);
+end;
+$$;
+
+-- Devolve o nome do admin logado (ou null se não for admin)
+create or replace function public.admin_eu()
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select coalesce(nullif(btrim(nome), ''), auth.jwt() ->> 'email') from admins where user_id = auth.uid();
+$$;
+
+create or replace function public.admin_add_score(p_player text, p_mass integer, p_print_path text default null)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare novo uuid;
+begin
+  perform exigir_admin('registrar', jsonb_build_object('jogador', p_player, 'massa', p_mass));
+  insert into scores (player, mass, print_path) values (btrim(p_player), p_mass, p_print_path)
+  returning id into novo;
+  -- quem joga entra (ou volta) pro elenco do clã automaticamente
+  update players set ativo = true where lower(btrim(nick)) = lower(btrim(p_player)) and not ativo;
+  insert into players (nick) values (btrim(p_player)) on conflict do nothing;
+  return novo;
+end;
+$$;
+
+-- Devolve o print_path da partida apagada (pro site apagar a imagem também)
+create or replace function public.admin_delete_score(p_id uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare r scores%rowtype;
+begin
+  select * into r from scores where id = p_id;
+  if not found then return null; end if;
+  perform exigir_admin('apagar partida', jsonb_build_object('jogador', r.player, 'massa', r.mass, 'data', r.created_at));
+  delete from scores where id = p_id;
+  return coalesce(r.print_path, '');
+end;
+$$;
+
+-- Cadastrar vários de uma vez. Devolve quantos entraram.
+create or replace function public.admin_add_players(p_nicks text[], p_cargo text default 'Membro')
 returns integer
 language plpgsql security definer set search_path = public
 as $$
 declare n integer;
 begin
-  if not admin_check(pin_try) then return -1; end if;
+  perform exigir_admin('cadastrar jogadores', jsonb_build_object('nicks', p_nicks, 'cargo', p_cargo));
   -- ex-membro cadastrado de novo volta pro clã
   update players set ativo = true
     where not ativo and lower(btrim(nick)) in (select lower(btrim(x)) from unnest(p_nicks) x);
@@ -162,14 +175,14 @@ end;
 $$;
 
 -- Editar nick, cargo e se ainda está no clã. Trocar o nick troca nas partidas também.
--- Devolve: ok | pin | nick_em_uso | nao_existe
-create or replace function public.admin_update_player(pin_try text, p_id uuid, p_nick text, p_cargo text, p_ativo boolean)
+-- Devolve: ok | nick_em_uso | nao_existe
+create or replace function public.admin_update_player(p_id uuid, p_nick text, p_cargo text, p_ativo boolean)
 returns text
 language plpgsql security definer set search_path = public
 as $$
 declare antigo text;
 begin
-  if not admin_check(pin_try) then return 'pin'; end if;
+  perform exigir_admin('editar jogador', jsonb_build_object('id', p_id, 'nick', p_nick, 'cargo', p_cargo, 'ativo', p_ativo));
   select nick into antigo from players where id = p_id;
   if not found then return 'nao_existe'; end if;
   if exists(select 1 from players where lower(btrim(nick)) = lower(btrim(p_nick)) and id <> p_id) then
@@ -186,13 +199,13 @@ end;
 $$;
 
 -- Apagar do elenco (só quem não tem partida, pra corrigir cadastro errado).
--- Devolve: ok | pin | tem_partidas
-create or replace function public.admin_delete_player(pin_try text, p_id uuid)
+-- Devolve: ok | tem_partidas
+create or replace function public.admin_delete_player(p_id uuid)
 returns text
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if not admin_check(pin_try) then return 'pin'; end if;
+  perform exigir_admin('apagar jogador', jsonb_build_object('id', p_id));
   if exists(select 1 from scores s join players p on lower(btrim(s.player)) = lower(btrim(p.nick)) where p.id = p_id) then
     return 'tem_partidas';
   end if;
@@ -201,12 +214,48 @@ begin
 end;
 $$;
 
-revoke all on function public.admin_add_players(text, text[], text) from public;
-revoke all on function public.admin_update_player(text, uuid, text, text, boolean) from public;
-revoke all on function public.admin_delete_player(text, uuid) from public;
-grant execute on function public.admin_add_players(text, text[], text) to anon, authenticated;
-grant execute on function public.admin_update_player(text, uuid, text, text, boolean) to anon, authenticated;
-grant execute on function public.admin_delete_player(text, uuid) to anon, authenticated;
+-- Visitante (anon) não executa nada disso; admin logado (authenticated) sim,
+-- e mesmo assim cada função confere se ele está na tabela admins.
+revoke all on function public.is_admin() from public;
+revoke all on function public.exigir_admin(text, jsonb) from public;
+revoke all on function public.admin_eu() from public;
+revoke all on function public.admin_add_score(text, integer, text) from public;
+revoke all on function public.admin_delete_score(uuid) from public;
+revoke all on function public.admin_add_players(text[], text) from public;
+revoke all on function public.admin_update_player(uuid, text, text, boolean) from public;
+revoke all on function public.admin_delete_player(uuid) from public;
+revoke all on function public.exigir_admin(text, jsonb) from anon, authenticated;
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.admin_eu() to authenticated;
+grant execute on function public.admin_add_score(text, integer, text) to authenticated;
+grant execute on function public.admin_delete_score(uuid) to authenticated;
+grant execute on function public.admin_add_players(text[], text) to authenticated;
+grant execute on function public.admin_update_player(uuid, text, text, boolean) to authenticated;
+grant execute on function public.admin_delete_player(uuid) to authenticated;
+
+
+-- 4) Pasta pública para os prints (até 3 MB, só imagens).
+--    Todo mundo vê os prints; só admin logado envia ou apaga.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('prints', 'prints', true, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "todos enviam print" on storage.objects;
+drop policy if exists "admins enviam print" on storage.objects;
+drop policy if exists "admins veem print" on storage.objects;
+drop policy if exists "admins apagam print" on storage.objects;
+create policy "admins enviam print" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'prints' and public.is_admin());
+create policy "admins veem print" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'prints' and public.is_admin());
+create policy "admins apagam print" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'prints' and public.is_admin());
 
 
 -- 5) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
@@ -228,3 +277,13 @@ end;
 $$;
 
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
+--
+-- Pra dar acesso de admin a alguém (depois de criar a conta em
+-- Authentication > Users > Add user), rode, trocando o e-mail e o nome:
+--
+--   insert into public.admins (user_id, nome)
+--   select id, 'Denes' from auth.users where email = 'seu@email.com'
+--   on conflict (user_id) do update set nome = excluded.nome;
+--
+-- Pra tirar o acesso:
+--   delete from public.admins where user_id = (select id from auth.users where email = 'email@dele.com');
