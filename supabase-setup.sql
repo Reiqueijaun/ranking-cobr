@@ -145,8 +145,9 @@ as $$
 declare r scores%rowtype;
 begin
   select * into r from scores where id = p_id;
-  if not found then return null; end if;
-  perform exigir_admin('apagar partida', jsonb_build_object('jogador', r.player, 'massa', r.mass, 'data', r.created_at));
+  -- confere o admin antes de responder qualquer coisa
+  perform exigir_admin('apagar partida', jsonb_build_object('id', p_id, 'jogador', r.player, 'massa', r.mass, 'data', r.created_at));
+  if r.id is null then return null; end if;
   delete from scores where id = p_id;
   return coalesce(r.print_path, '');
 end;
@@ -413,8 +414,9 @@ as $$
 declare r torneio_lancamentos%rowtype;
 begin
   select * into r from torneio_lancamentos where id = p_id;
-  if not found then return null; end if;
-  perform exigir_admin('apagar resultado', jsonb_build_object('torneio', r.torneio_id, 'jogador', r.player_id, 'valor', r.valor));
+  -- confere o admin antes de responder qualquer coisa
+  perform exigir_admin('apagar resultado', jsonb_build_object('id', p_id, 'torneio', r.torneio_id, 'jogador', r.player_id, 'valor', r.valor));
+  if r.id is null then return null; end if;
   delete from torneio_lancamentos where id = p_id;
   return coalesce(r.print_path, '');
 end;
@@ -425,6 +427,20 @@ revoke all on function public.admin_salvar_chave(uuid, jsonb) from public;
 revoke all on function public.admin_apagar_torneio(uuid) from public;
 revoke all on function public.admin_add_lancamento(uuid, uuid, integer, text, text) from public;
 revoke all on function public.admin_apagar_lancamento(uuid) from public;
+-- O Supabase libera toda função nova pro visitante (anon) por padrão; aqui tira de todas as de admin
+revoke all on function public.is_admin() from anon;
+revoke all on function public.exigir_admin(text, jsonb) from anon;
+revoke all on function public.admin_eu() from anon;
+revoke all on function public.admin_add_score(text, integer, text) from anon;
+revoke all on function public.admin_delete_score(uuid) from anon;
+revoke all on function public.admin_add_players(text[], text) from anon;
+revoke all on function public.admin_update_player(uuid, text, text, boolean) from anon;
+revoke all on function public.admin_delete_player(uuid) from anon;
+revoke all on function public.admin_salvar_torneio(uuid, jsonb) from anon;
+revoke all on function public.admin_salvar_chave(uuid, jsonb) from anon;
+revoke all on function public.admin_apagar_torneio(uuid) from anon;
+revoke all on function public.admin_add_lancamento(uuid, uuid, integer, text, text) from anon;
+revoke all on function public.admin_apagar_lancamento(uuid) from anon;
 grant execute on function public.admin_salvar_torneio(uuid, jsonb) to authenticated;
 grant execute on function public.admin_salvar_chave(uuid, jsonb) to authenticated;
 grant execute on function public.admin_apagar_torneio(uuid) to authenticated;
