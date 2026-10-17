@@ -145,8 +145,9 @@ as $$
 declare r scores%rowtype;
 begin
   select * into r from scores where id = p_id;
-  if not found then return null; end if;
-  perform exigir_admin('apagar partida', jsonb_build_object('jogador', r.player, 'massa', r.mass, 'data', r.created_at));
+  -- confere o admin antes de responder qualquer coisa
+  perform exigir_admin('apagar partida', jsonb_build_object('id', p_id, 'jogador', r.player, 'massa', r.mass, 'data', r.created_at));
+  if r.id is null then return null; end if;
   delete from scores where id = p_id;
   return coalesce(r.print_path, '');
 end;
@@ -209,6 +210,11 @@ begin
   if exists(select 1 from scores s join players p on lower(btrim(s.player)) = lower(btrim(p.nick)) where p.id = p_id) then
     return 'tem_partidas';
   end if;
+  -- resultado lançado em torneio também conta como partida
+  if to_regclass('public.torneio_lancamentos') is not null
+     and exists(select 1 from torneio_lancamentos where player_id = p_id) then
+    return 'tem_partidas';
+  end if;
   delete from players where id = p_id;
   return 'ok';
 end;
@@ -258,9 +264,205 @@ create policy "admins apagam print" on storage.objects
   using (bucket_id = 'prints' and public.is_admin());
 
 
--- 5) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
+-- 5) Torneios e campeonatos. O dono cria pelo site (Área do admin):
+--    formato, o que conta (pontos, massa, kills...), datas, prêmios e quem joga.
+create table if not exists public.torneios (
+  id            uuid primary key default gen_random_uuid(),
+  nome          text not null check (char_length(btrim(nome)) between 1 and 60),
+  -- soma = quem soma mais · melhor = maior partida · melhores = soma das N melhores
+  -- meta = corrida até um número · mata = mata-mata (chaveamento 1 contra 1)
+  formato       text not null default 'soma' check (formato in ('soma', 'melhor', 'melhores', 'meta', 'mata')),
+  -- pontos e massa saem das partidas; custom = outra coisa (kills, abates...), com o nome em "unidade"
+  metrica       text not null default 'pontos' check (metrica in ('pontos', 'massa', 'custom')),
+  unidade       text not null default '' check (char_length(unidade) <= 20),
+  auto          boolean not null default true,   -- conta sozinho as partidas registradas no ranking
+  qtd           integer check (qtd is null or qtd between 1 and 100),          -- "melhores N"
+  meta          integer check (meta is null or meta between 1 and 100000000),  -- corrida
+  semente       text not null default 'ranking' check (semente in ('ranking', 'sorteio')),
+  inicio        timestamptz not null default now(),
+  fim           timestamptz,
+  encerrado_em  timestamptz,                    -- encerrado na mão antes da hora
+  todos         boolean not null default true,  -- true = o clã inteiro joga
+  participantes uuid[] not null default '{}' check (cardinality(participantes) <= 256),
+  premios       text[] not null default '{}' check (cardinality(premios) <= 5),
+  regras        text not null default '' check (char_length(regras) <= 2000),
+  chave         jsonb,                          -- chaveamento do mata-mata
+  publicado     boolean not null default true,  -- false = rascunho, só admin vê
+  created_at    timestamptz not null default now(),
+  check (fim is null or fim > inicio)
+);
+create index if not exists torneios_inicio_idx on public.torneios (inicio desc);
+
+-- Resultados lançados pelo dono (kills, massa de partida especial...)
+create table if not exists public.torneio_lancamentos (
+  id          uuid primary key default gen_random_uuid(),
+  torneio_id  uuid not null references public.torneios (id) on delete cascade,
+  player_id   uuid not null references public.players (id),
+  valor       integer not null check (valor between 0 and 100000000),
+  nota        text not null default '' check (char_length(nota) <= 80),
+  print_path  text check (print_path is null or char_length(print_path) <= 200),
+  created_at  timestamptz not null default now()
+);
+create index if not exists torneio_lanc_idx on public.torneio_lancamentos (torneio_id, created_at desc);
+
+alter table public.torneios enable row level security;
+alter table public.torneio_lancamentos enable row level security;
+grant select on public.torneios, public.torneio_lancamentos to anon, authenticated;
+revoke insert, update, delete on public.torneios, public.torneio_lancamentos from anon, authenticated;
+
+-- Todo mundo vê os torneios publicados; rascunho só admin vê
+drop policy if exists "todos veem torneios" on public.torneios;
+drop policy if exists "admins veem rascunhos" on public.torneios;
+create policy "todos veem torneios" on public.torneios
+  for select to anon using (publicado);
+create policy "admins veem rascunhos" on public.torneios
+  for select to authenticated using (publicado or public.is_admin());
+-- resultado aparece pra quem consegue ver o torneio
+drop policy if exists "todos veem resultados" on public.torneio_lancamentos;
+create policy "todos veem resultados" on public.torneio_lancamentos
+  for select to anon, authenticated
+  using (exists (select 1 from public.torneios t where t.id = torneio_id));
+
+-- Criar (p_id null) ou editar um torneio. Não mexe no chaveamento.
+create or replace function public.admin_salvar_torneio(p_id uuid, p_dados jsonb)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare novo uuid;
+begin
+  perform exigir_admin(case when p_id is null then 'criar torneio' else 'editar torneio' end,
+    jsonb_build_object('id', p_id, 'nome', p_dados ->> 'nome'));
+  if p_id is null then
+    insert into torneios (nome) values (btrim(p_dados ->> 'nome')) returning id into novo;
+  else
+    novo := p_id;
+    if not exists(select 1 from torneios where id = novo) then return null; end if;
+  end if;
+  update torneios set
+    nome          = btrim(p_dados ->> 'nome'),
+    formato       = coalesce(p_dados ->> 'formato', 'soma'),
+    metrica       = coalesce(p_dados ->> 'metrica', 'pontos'),
+    unidade       = left(coalesce(btrim(p_dados ->> 'unidade'), ''), 20),
+    auto          = coalesce((p_dados ->> 'auto')::boolean, true),
+    qtd           = (p_dados ->> 'qtd')::integer,
+    meta          = (p_dados ->> 'meta')::integer,
+    semente       = coalesce(p_dados ->> 'semente', 'ranking'),
+    inicio        = coalesce((p_dados ->> 'inicio')::timestamptz, now()),
+    fim           = (p_dados ->> 'fim')::timestamptz,
+    encerrado_em  = (p_dados ->> 'encerrado_em')::timestamptz,
+    todos         = coalesce((p_dados ->> 'todos')::boolean, true),
+    participantes = coalesce(array(select distinct x::uuid from jsonb_array_elements_text(coalesce(p_dados -> 'participantes', '[]')) x), '{}'),
+    premios       = coalesce(array(select left(btrim(x), 60) from jsonb_array_elements_text(coalesce(p_dados -> 'premios', '[]')) with ordinality as e(x, n) order by n), '{}'),
+    regras        = left(coalesce(p_dados ->> 'regras', ''), 2000),
+    publicado     = coalesce((p_dados ->> 'publicado')::boolean, true)
+  where id = novo;
+  return novo;
+end;
+$$;
+
+-- Salvar o chaveamento do mata-mata (montar, lançar resultado de duelo, refazer)
+create or replace function public.admin_salvar_chave(p_id uuid, p_chave jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('chaveamento', jsonb_build_object('torneio', p_id));
+  if p_chave is not null and octet_length(p_chave::text) > 100000 then
+    raise exception 'chaveamento grande demais';
+  end if;
+  update torneios set chave = p_chave where id = p_id;
+end;
+$$;
+
+-- Apagar um torneio. Devolve os prints dos resultados (pro site apagar as imagens).
+create or replace function public.admin_apagar_torneio(p_id uuid)
+returns text[]
+language plpgsql security definer set search_path = public
+as $$
+declare caminhos text[];
+begin
+  perform exigir_admin('apagar torneio', (select jsonb_build_object('id', id, 'nome', nome) from torneios where id = p_id));
+  select coalesce(array_agg(print_path) filter (where print_path is not null), '{}') into caminhos
+    from torneio_lancamentos where torneio_id = p_id;
+  delete from torneios where id = p_id;
+  return caminhos;
+end;
+$$;
+
+-- Lançar resultado. Quem ainda não estava inscrito entra no torneio.
+create or replace function public.admin_add_lancamento(p_torneio uuid, p_player uuid, p_valor integer, p_nota text default '', p_print_path text default null)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare novo uuid;
+begin
+  perform exigir_admin('lançar resultado', jsonb_build_object('torneio', p_torneio, 'jogador', p_player, 'valor', p_valor));
+  insert into torneio_lancamentos (torneio_id, player_id, valor, nota, print_path)
+    values (p_torneio, p_player, p_valor, left(coalesce(btrim(p_nota), ''), 80), p_print_path)
+    returning id into novo;
+  update torneios set participantes = array_append(participantes, p_player)
+    where id = p_torneio and not todos and not (p_player = any(participantes));
+  return novo;
+end;
+$$;
+
+-- Apagar resultado. Devolve o print_path (pro site apagar a imagem).
+create or replace function public.admin_apagar_lancamento(p_id uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare r torneio_lancamentos%rowtype;
+begin
+  select * into r from torneio_lancamentos where id = p_id;
+  -- confere o admin antes de responder qualquer coisa
+  perform exigir_admin('apagar resultado', jsonb_build_object('id', p_id, 'torneio', r.torneio_id, 'jogador', r.player_id, 'valor', r.valor));
+  if r.id is null then return null; end if;
+  delete from torneio_lancamentos where id = p_id;
+  return coalesce(r.print_path, '');
+end;
+$$;
+
+revoke all on function public.admin_salvar_torneio(uuid, jsonb) from public;
+revoke all on function public.admin_salvar_chave(uuid, jsonb) from public;
+revoke all on function public.admin_apagar_torneio(uuid) from public;
+revoke all on function public.admin_add_lancamento(uuid, uuid, integer, text, text) from public;
+revoke all on function public.admin_apagar_lancamento(uuid) from public;
+-- O Supabase libera toda função nova pro visitante (anon) por padrão; aqui tira de todas as de admin
+revoke all on function public.is_admin() from anon;
+revoke all on function public.exigir_admin(text, jsonb) from anon;
+revoke all on function public.admin_eu() from anon;
+revoke all on function public.admin_add_score(text, integer, text) from anon;
+revoke all on function public.admin_delete_score(uuid) from anon;
+revoke all on function public.admin_add_players(text[], text) from anon;
+revoke all on function public.admin_update_player(uuid, text, text, boolean) from anon;
+revoke all on function public.admin_delete_player(uuid) from anon;
+revoke all on function public.admin_salvar_torneio(uuid, jsonb) from anon;
+revoke all on function public.admin_salvar_chave(uuid, jsonb) from anon;
+revoke all on function public.admin_apagar_torneio(uuid) from anon;
+revoke all on function public.admin_add_lancamento(uuid, uuid, integer, text, text) from anon;
+revoke all on function public.admin_apagar_lancamento(uuid) from anon;
+grant execute on function public.admin_salvar_torneio(uuid, jsonb) to authenticated;
+grant execute on function public.admin_salvar_chave(uuid, jsonb) to authenticated;
+grant execute on function public.admin_apagar_torneio(uuid) to authenticated;
+grant execute on function public.admin_add_lancamento(uuid, uuid, integer, text, text) to authenticated;
+grant execute on function public.admin_apagar_lancamento(uuid) to authenticated;
+
+
+-- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'torneios'
+  ) then
+    alter publication supabase_realtime add table public.torneios;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'torneio_lancamentos'
+  ) then
+    alter publication supabase_realtime add table public.torneio_lancamentos;
+  end if;
   if not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'scores'

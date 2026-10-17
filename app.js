@@ -20,10 +20,14 @@
   let modo = CFG.RANKING_POR === 'massa' ? 'massa' : 'pontos';
   let admin = null;           // { nome } quando quem está usando é admin (login do Supabase)
   let arquivoPrint = null;
-  let apagarId = null;
   let jogadores = [];         // elenco do clã (tabela players)
   let elenco = new Map();     // chave do nick -> jogador do elenco
   let elencoOk = true;        // false se a tabela players ainda não existe no banco
+  let jogPorId = new Map();   // id do elenco -> jogador (torneios guardam o id, não o nick)
+  let torneios = [];          // tabela torneios (rascunho só vem pra admin)
+  let lancamentos = [];       // resultados lançados na mão nos torneios (kills, massa extra...)
+  let torneiosOk = true;      // false se as tabelas de torneio ainda não existem no banco
+  let torneioAtual = null;    // id do torneio aberto na página própria
   const CARGOS = (Array.isArray(CFG.CARGOS) && CFG.CARGOS.length ? CFG.CARGOS : ['Líder', 'Vice-líder', 'Membro'])
     .map((c) => String(c).trim().slice(0, 24)).filter(Boolean);
   const CARGO_PADRAO = CARGOS.includes('Membro') ? 'Membro' : CARGOS[CARGOS.length - 1];
@@ -45,7 +49,10 @@
   const limparNick = (v) => String(v || '').replace(reTag, '').replace(/\s+/g, ' ').trim().slice(0, 24);
   const chave = (nome) => limparNick(nome).toLocaleLowerCase('pt-BR');
   const comTag = (nome) => `[${TAG}] ${nome}`;
-  function indexarElenco() { elenco = new Map(jogadores.map((r) => [chave(r.nick), r])); }
+  function indexarElenco() {
+    elenco = new Map(jogadores.map((r) => [chave(r.nick), r]));
+    jogPorId = new Map(jogadores.map((r) => [r.id, r]));
+  }
   const exMembro = (k) => { const r = elenco.get(k); return !!r && !r.ativo; };
   const nomeDe = (k, bruto) => (elenco.get(k) ? elenco.get(k).nick : limparNick(bruto));
   // pra busca: sem acento e sem maiúscula ("Grão" acha com "grao")
@@ -61,9 +68,11 @@
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
       else n.setAttribute(k, v === true ? '' : v);
     }
-    for (const f of filhos.flat()) if (f != null) n.append(f.nodeType ? f : document.createTextNode(String(f)));
+    for (const f of filhos.flat()) if (f != null && f !== false) n.append(f.nodeType ? f : document.createTextNode(String(f)));
     return n;
   }
+  // replaceChildren que ignora os vazios (null vira texto "null" no replaceChildren puro)
+  function trocar(box, ...filhos) { box.replaceChildren(...filhos.flat().filter((f) => f != null && f !== false)); }
   function svg(path, size = 20, extra = '') {
     const w = document.createElement('span');
     w.innerHTML = `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${path}</svg>`;
@@ -244,6 +253,7 @@
 
   // ---------- desenho da página ----------
   function render() {
+    cachePts = null;
     const geralMassa = montarRanking('geral', 'massa');
     const geralPontos = montarRanking('geral', 'pontos');
     const rank = montarRanking(periodo, modo);
@@ -261,6 +271,7 @@
     const temps = montarTemporadas();
     const ctx = { pontos: geralPontos, massa: geralMassa, semana: montarRanking('semana', 'pontos'), temps, titulos: contarTitulos(temps) };
     renderDestaques(ctx);
+    renderTorneios();
     renderPodio(rank, ctx);
     renderTabela(rank, ctx);
     renderConquistas();
@@ -283,7 +294,9 @@
     if (admin) renderSugNick();
     if ($('dlgBusca').open) renderBusca();
     if (perfilAtual) renderPerfil();
+    if (torneioAtual) renderTorneioPagina();
     renderEu();
+    tickContagens();
   }
 
   // ---------- nicks pra tocar e preencher no registro ----------
@@ -363,6 +376,7 @@
     $('buscaAtalhos').hidden = !!q;
     $('buscaAtalhos').querySelector('[href="#hall"]').hidden = $('hall').hidden;
     $('buscaAtalhos').querySelector('[href="#temporadas"]').hidden = $('temporadas').hidden;
+    $('buscaAtalhos').querySelector('[href="#torneios"]').hidden = $('torneios').hidden;
     const ul = $('listaBusca');
     if (!achados.length) {
       ul.replaceChildren(el('li', { class: 'busca-vazio', text: q ? `Ninguém com "${bruto}" no nick.` : 'Nenhum jogador ainda.' }));
@@ -390,7 +404,7 @@
   function ligarBarraBaixo() {
     const links = [...document.querySelectorAll('#barraBaixo a[data-sec]')];
     // qual seção da página conta como qual botão
-    const alvos = [['ranking', 'ranking'], ['tabela', 'ranking'], ['temporadas', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
+    const alvos = [['torneios', 'torneios'], ['ranking', 'ranking'], ['tabela', 'ranking'], ['temporadas', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
     let pedido = false;
     const marcar = () => {
       pedido = false;
@@ -771,7 +785,7 @@
   function abrirEditar(r) {
     editJog = r;
     confirmarApagarJog = false;
-    const qtd = partidas.filter((p) => chave(p.player) === r.chave).length;
+    const qtd = partidas.filter((p) => chave(p.player) === r.chave).length + lancamentos.filter((l) => l.player_id === r.id).length;
     $('fJogNick').value = r.nick;
     opcoesCargo($('fJogCargo'), r.cargo);
     $('fJogAtivo').checked = r.ativo;
@@ -1006,6 +1020,7 @@
     const sem = ctx.semana.find((x) => x.chave === j.chave);
     const recorde = j.melhor ? j.melhor.mass : 0;
     const titulos = (ctx.titulos && ctx.titulos.get(j.chave)) || 0;
+    const tnVit = vitoriasTorneio(j.chave);
     const minhas = j.chave ? partidas.filter((p) => chave(p.player) === j.chave).reverse() : []; // mais antigas primeiro
     const quando = (teste, n = 1) => { let c = 0; for (const p of minhas) if (teste(p) && ++c >= n) return p.created_at; return null; };
     const clube = (vezes, id, icone) => ({
@@ -1022,6 +1037,7 @@
       clube(5, 'clube5', '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/>'),
       clube(10, 'clube10', '<path d="M3 20l6-10 4 6 3-4 5 8z"/><path d="M9 10V4l4 2-4 2"/>'),
       { id: 'campeao', nome: titulos > 1 ? `Campeão ${titulos}×` : 'Campeão de temporada', como: 'ganhar uma temporada (1º do mês)', ok: titulos > 0, icone: ICONE_TROFEU },
+      { id: 'torneio', nome: tnVit > 1 ? `Rei dos torneios ${tnVit}×` : 'Campeão de torneio', como: 'ganhar um torneio do clã', ok: tnVit > 0, icone: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.8 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0V2z"/>' },
       { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>', prog: [sem ? sem.qtd : 0, 3] },
       { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>', prog: [j.qtd, 10], quando: quando(() => true, 10) },
     ];
@@ -1225,7 +1241,7 @@
 
   function abrirPerfil(k) {
     if (document.querySelector('dialog[open]')) document.querySelectorAll('dialog[open]').forEach((d) => d.close());
-    if (!perfilAtual) rolagemAntes = scrollY;
+    if (!perfilAtual && !torneioAtual) rolagemAntes = scrollY;
     const r = elenco.get(k);
     const nome = r ? r.nick : (montarRanking('geral', 'pontos', true).find((x) => x.chave === k) || {}).nome;
     if (!nome) return;
@@ -1240,17 +1256,24 @@
   }
   function mostrarRota(novo = false) {
     const k = chaveDaUrl();
-    const antes = perfilAtual;
+    const tn = k ? null : torneioDaUrl();
+    const antes = perfilAtual, antesTn = torneioAtual;
     perfilAtual = k;
-    $('principal').hidden = !!k;
+    torneioAtual = tn;
+    $('principal').hidden = !!(k || tn);
     $('perfilPagina').hidden = !k;
-    document.body.classList.toggle('vendo-perfil', !!k);
+    $('torneioPagina').hidden = !tn;
+    document.body.classList.toggle('vendo-perfil', !!(k || tn));
     if (k) {
       renderPerfil();
       if (novo || antes !== k) scrollTo(0, 0);
+    } else if (tn) {
+      renderTorneioPagina();
+      tickContagens();
+      if (novo || antesTn !== tn) scrollTo(0, 0);
     } else {
       document.title = `Ranking Clã ${TAG}`;
-      if (antes) scrollTo(0, rolagemAntes);
+      if (antes || antesTn) scrollTo(0, rolagemAntes);
     }
   }
 
@@ -1308,7 +1331,7 @@
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
-          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipsCadastro(r)))),
+          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), chipTorneios(vitoriasTorneio(k)), ...chipsCadastro(r)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
@@ -1417,13 +1440,1235 @@
         el('div', { class: 'pp-col' }, posicoes, prog, numeros,
           el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g),
           medalhas),
-        el('div', { class: 'pp-col' }, momentos, historico)));
+        el('div', { class: 'pp-col' }, secaoTorneiosPerfil(k), momentos, historico)));
+  }
+  function chipTorneios(n) {
+    if (!n) return null;
+    return el('span', { class: 'titulo-chip tn-chip', title: `${n}× campeão de torneio` }, svg(ICONE_TROFEU, 12), `${n}× torneio`);
   }
   // massa vira 121K/200K pra caber; contagem fica 4/5
   const progTxt = ([a, b]) => (b >= 10000 ? `${fmt(Math.floor(Math.min(a, b) / 1000))}K/${fmtK(b)}` : `${fmt(Math.min(a, b))}/${fmt(b)}`);
   const progMed = (m) => (m.prog ? Math.min(1, m.prog[0] / m.prog[1]) : 0);
 
+  // ============================================================
+  //  TORNEIOS E CAMPEONATOS
+  //  O dono monta pelo site: formato, o que conta, datas, quem joga e prêmios.
+  //  A classificação é calculada aqui, do mesmo jeito que o ranking.
+  // ============================================================
+  const ICONE_ESPADAS = '<path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 17.5L21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>';
+  const ICONE_RELOGIO = '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>';
+  const ICONE_CONVERSA = '<path d="M4 20l1.4-4.2A8 8 0 1 1 8.2 18.6z"/>';
+  const ICONE_BANDEIRA = '<path d="M5 21V4M5 4h12l-2.5 4L17 12H5"/>';
+  const FORMATOS = {
+    soma: { nome: 'Quem soma mais', curto: 'SOMA TUDO', icone: '<path d="M5 20V12M12 20V5M19 20v-9"/>', desc: 'Todas as partidas somam. Vence o maior total.' },
+    melhor: { nome: 'Maior partida', curto: 'MAIOR PARTIDA', icone: '<path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/>', desc: 'Vale só a melhor partida de cada um.' },
+    melhores: { nome: 'Melhores partidas', curto: 'MELHORES', icone: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>', desc: 'Soma só as melhores de cada um. Jogar mais não dá vantagem.' },
+    meta: { nome: 'Corrida até a meta', curto: 'CORRIDA', icone: ICONE_BANDEIRA, desc: 'O primeiro a chegar no número vence.' },
+    mata: { nome: 'Mata-mata', curto: 'MATA-MATA', icone: ICONE_ESPADAS, desc: 'Duelos 1 contra 1. Perdeu, tá fora.' },
+  };
+  const formatoDe = (t) => FORMATOS[t.formato] || FORMATOS.soma;
+
+  // pontos do ranking geral de cada um (pra cor da patente no avatar e pra montar a chave)
+  let cachePts = null;
+  function ptsGeralDe(k) {
+    if (!cachePts) cachePts = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.pontos]));
+    return cachePts.get(k) || 0;
+  }
+
+  // até quando valem as partidas: o fim marcado ou a hora em que o dono encerrou
+  const fimTn = (t) => Math.min(t.fim ? Date.parse(t.fim) : Infinity, t.encerrado_em ? Date.parse(t.encerrado_em) : Infinity);
+  function statusTn(t) {
+    const agora = Date.now();
+    if (t.formato === 'mata') {
+      if (t.encerrado_em || campeaoMata(t)) return 'fim';
+    } else if (agora >= fimTn(t)) return 'fim';
+    return agora < Date.parse(t.inicio) ? 'breve' : 'vivo';
+  }
+  const torneiosVisiveis = () => (torneiosOk ? torneios.filter((t) => t.publicado || admin) : []);
+
+  function unidadeTn(t, n = 2) {
+    if (t.metrica === 'pontos') return n === 1 ? 'pt' : 'pts';
+    if (t.metrica === 'massa') return 'de massa';
+    return String(t.unidade || '').trim() || 'pts';
+  }
+  const valorTn = (t, v) => `${fmt(v)} ${unidadeTn(t, v)}`;
+  const nomeMetrica = (t) => (t.metrica === 'pontos' ? 'pontos' : t.metrica === 'massa' ? 'massa' : String(t.unidade || '').trim() || 'pontos');
+  const rotMetrica = (t) => nomeMetrica(t).toUpperCase();
+  const nickId = (id) => { const r = jogPorId.get(id); return r ? r.nick : '?'; };
+
+  function idsInscritos(t) {
+    if (t.todos) return jogadores.filter((r) => r.ativo).map((r) => r.id);
+    return [...new Set(t.participantes || [])].filter((id) => jogPorId.has(id));
+  }
+  // chave do nick -> nome de quem está inscrito
+  function inscritosTn(t) {
+    return new Map(idsInscritos(t).map((id) => { const r = jogPorId.get(id); return [chave(r.nick), r.nick]; }));
+  }
+
+  // tudo que conta no torneio: partidas do ranking no período (se ligado) + resultados lançados na mão
+  function entradasTn(t) {
+    const lista = [];
+    if (t.auto && t.metrica !== 'custom' && t.formato !== 'mata') {
+      const ini = Date.parse(t.inicio), fim = fimTn(t);
+      const insc = t.todos ? null : inscritosTn(t);
+      for (const p of partidas) {
+        const q = Date.parse(p.created_at);
+        if (q < ini || q >= fim) continue;
+        const k = chave(p.player);
+        if (insc && !insc.has(k)) continue;
+        lista.push({ id: p.id, k, nome: nomeDe(k, p.player), bruto: p.mass, quando: p.created_at, partida: p });
+      }
+    }
+    for (const l of lancamentos) {
+      if (l.torneio_id !== t.id) continue;
+      const r = jogPorId.get(l.player_id);
+      if (!r) continue;
+      lista.push({ id: l.id, k: chave(r.nick), nome: r.nick, bruto: l.valor, quando: l.created_at, lanc: l });
+    }
+    // em "pontos", o que entra é a massa e vira ponto pela mesma regra do ranking
+    for (const e of lista) e.valor = t.metrica === 'pontos' ? pontosDe(e.bruto) : e.bruto;
+    return lista.sort((a, b) => Date.parse(b.quando) - Date.parse(a.quando));
+  }
+
+  // classificação de torneio por pontos (todos os formatos menos o mata-mata)
+  function classificarTn(t, ents = entradasTn(t)) {
+    const mapa = new Map();
+    const linha = (k, nome) => {
+      let l = mapa.get(k);
+      if (!l) { l = { chave: k, nome, ents: [], total: 0, qtd: 0, quando: 0, chegou: null, contadas: new Set() }; mapa.set(k, l); }
+      return l;
+    };
+    for (const [k, nome] of inscritosTn(t)) linha(k, nome);
+    for (const e of ents) linha(e.k, e.nome).ents.push(e);
+    for (const l of mapa.values()) {
+      const crono = [...l.ents].sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
+      let contam = crono;
+      if (t.formato === 'melhor') contam = crono.length ? [crono.reduce((m, e) => (e.valor > m.valor ? e : m))] : [];
+      else if (t.formato === 'melhores') contam = [...crono].sort((a, b) => b.valor - a.valor || Date.parse(a.quando) - Date.parse(b.quando)).slice(0, Math.max(1, t.qtd || 3));
+      l.qtd = crono.length;
+      l.contadas = new Set(contam.map((e) => e.id));
+      l.total = contam.reduce((s, e) => s + e.valor, 0);
+      l.quando = contam.reduce((m, e) => Math.max(m, Date.parse(e.quando)), 0);
+      if (t.formato === 'meta' && t.meta) {
+        let s = 0;
+        for (const e of crono) { s += e.valor; if (s >= t.meta) { l.chegou = Date.parse(e.quando); break; } }
+      }
+    }
+    // empate: ganha quem chegou naquele número primeiro
+    const lista = [...mapa.values()].sort((a, b) => {
+      if (t.formato === 'meta' && (a.chegou || b.chegou)) return a.chegou && b.chegou ? a.chegou - b.chegou : a.chegou ? -1 : 1;
+      return b.total - a.total || (a.quando || Infinity) - (b.quando || Infinity) || a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+    lista.forEach((l, i) => { l.pos = i + 1; });
+    return lista;
+  }
+
+  // ---------- mata-mata ----------
+  // posições na chave: 1º pega o último, 2º o penúltimo... os favoritos só se cruzam no fim
+  function ordemSementes(n) {
+    let s = [1, 2];
+    while (s.length < n) { const m = s.length * 2 + 1; s = s.flatMap((x) => [x, m - x]); }
+    return s;
+  }
+  function montarSlots(ids) {
+    let tam = 2;
+    while (tam < ids.length) tam *= 2;
+    return ordemSementes(tam).map((sd) => ids[sd - 1] || null); // null = folga (passa direto)
+  }
+  // A chave guarda só a 1ª rodada e os resultados; as rodadas seguintes saem dos vencedores.
+  // Se um resultado antigo muda, o duelo seguinte volta a ficar em aberto sozinho.
+  function rodadasMata(t) {
+    const c = t.chave;
+    if (!c || !Array.isArray(c.slots) || c.slots.length < 2) return null;
+    const res = c.res || {};
+    const rodadas = [];
+    let atuais = c.slots;
+    for (let r = 0; atuais.length >= 2; r++) {
+      const jogos = [];
+      for (let i = 0; i < atuais.length; i += 2) {
+        const a = atuais[i] || null, b = atuais[i + 1] || null;
+        const j = { id: `${r}-${i / 2}`, r, a, b, va: null, vb: null, v: null, wo: false, bye: false };
+        if (r === 0 && (!a || !b)) { j.bye = true; j.v = a || b; }
+        else if (a && b) {
+          const x = res[j.id];
+          if (x && x.a === a && x.b === b && (x.v === a || x.v === b)) Object.assign(j, { va: x.va ?? null, vb: x.vb ?? null, v: x.v, wo: !!x.wo });
+        }
+        jogos.push(j);
+      }
+      rodadas.push(jogos);
+      atuais = jogos.map((j) => j.v);
+    }
+    return rodadas;
+  }
+  function campeaoMata(t) { const rs = rodadasMata(t); return rs ? rs[rs.length - 1][0].v : null; }
+  function nomeRodada(r, total) {
+    const falta = total - r;
+    return falta === 1 ? 'FINAL' : falta === 2 ? 'SEMIFINAL' : falta === 3 ? 'QUARTAS' : falta === 4 ? 'OITAVAS' : `${r + 1}ª RODADA`;
+  }
+  function naRodada(r, total) {
+    const falta = total - r;
+    return falta === 1 ? 'na final' : falta === 2 ? 'na semifinal' : falta === 3 ? 'nas quartas' : falta === 4 ? 'nas oitavas' : `na ${r + 1}ª rodada`;
+  }
+  // até onde cada um chegou: última rodada em que aparece e se perdeu nela
+  function chegadaMata(rodadas) {
+    const m = new Map();
+    for (const jogos of rodadas) for (const j of jogos) for (const id of [j.a, j.b]) if (id) m.set(id, { r: j.r, fora: !!j.v && j.v !== id, jogo: j });
+    return m;
+  }
+  // 1 = campeão, 2 = vice, 3 = semifinal, 0 = o resto
+  function lugarMata(rodadas, id) {
+    const c = chegadaMata(rodadas).get(id);
+    if (!c) return null;
+    const total = rodadas.length;
+    if (rodadas[total - 1][0].v === id) return { pos: 1, txt: 'Campeão' };
+    if (c.fora) return { pos: c.r === total - 1 ? 2 : c.r === total - 2 ? 3 : 0, txt: c.r === total - 1 ? 'Vice-campeão' : `Caiu ${naRodada(c.r, total)}` };
+    return { pos: 0, txt: `Está ${naRodada(c.r, total)}` };
+  }
+
+  // quem ganhou (só de torneio encerrado)
+  function vencedorTn(t) {
+    if (statusTn(t) !== 'fim') return null;
+    if (t.formato === 'mata') {
+      const c = campeaoMata(t);
+      return c && jogPorId.has(c) ? { chave: chave(nickId(c)), nome: nickId(c), txt: '' } : null;
+    }
+    const l = classificarTn(t)[0];
+    return l && l.qtd ? { chave: l.chave, nome: l.nome, txt: valorTn(t, l.total) } : null;
+  }
+  function vitoriasTorneio(k) {
+    if (!k) return 0;
+    return torneiosVisiveis().filter((t) => t.publicado && (vencedorTn(t) || {}).chave === k).length;
+  }
+
+  // ---------- textos ----------
+  function tempoAte(alvo) {
+    const min = Math.max(0, Math.round((alvo - Date.now()) / 60000));
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} h${min % 60 ? ` e ${min % 60} min` : ''}`;
+    const d = Math.floor(h / 24);
+    return `${d} ${d === 1 ? 'dia' : 'dias'}${h % 24 ? ` e ${h % 24} h` : ''}`;
+  }
+  const dataHora = (ms) => new Date(ms).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/\./g, '');
+  function periodoTn(t) {
+    const ini = Date.parse(t.inicio);
+    return t.fim ? `${dataHora(ini)} até ${dataHora(Date.parse(t.fim))}` : `começa ${dataHora(ini)} · sem data pra acabar`;
+  }
+  function statusTxt(t, st) {
+    if (st === 'breve') return `começa em ${tempoAte(Date.parse(t.inicio))}`;
+    if (st === 'fim') return 'encerrado';
+    return isFinite(fimTn(t)) ? `termina em ${tempoAte(fimTn(t))}` : 'rolando agora';
+  }
+  // as regras em frases curtas, montadas pela configuração do torneio
+  function resumoTn(t) {
+    const m = nomeMetrica(t);
+    const itens = [];
+    if (t.formato === 'soma') itens.push(`Vence quem somar mais ${m} durante o torneio.`);
+    if (t.formato === 'melhor') itens.push(t.metrica === 'massa' ? 'Vale só a maior massa de cada um. Vence quem fizer a maior partida.' : `Vale só a melhor partida de cada um. Vence quem fizer mais ${m} numa partida.`);
+    if (t.formato === 'melhores') itens.push(`Contam só as ${t.qtd || 3} melhores partidas de cada um, e vence quem somar mais ${m} nelas. Jogar mais não dá vantagem: jogar melhor sim.`);
+    if (t.formato === 'meta') itens.push(`Corrida: o primeiro a juntar ${t.meta ? valorTn(t, t.meta) : 'a meta'} vence. Quem chegar depois fica em 2º, 3º…`);
+    if (t.formato === 'mata') {
+      itens.push('Mata-mata 1 contra 1: quem vence o duelo avança, quem perde tá fora. Até sobrar o campeão.');
+      itens.push(`Cada duelo é decidido por ${m}. ${t.semente === 'sorteio' ? 'A chave é sorteada.' : 'A chave segue o ranking: os melhores só se cruzam no fim.'}`);
+    } else {
+      if (t.auto && t.metrica !== 'custom') itens.push(t.metrica === 'pontos' ? 'Toda partida registrada no ranking durante o torneio conta sozinha, com os mesmos pontos do ranking.' : 'Toda partida registrada no ranking durante o torneio conta sozinha.');
+      else itens.push('Os resultados são conferidos e lançados pelo dono do clã.');
+      itens.push(t.formato === 'meta' ? 'Se ninguém chegar na meta, ganha quem estiver mais perto no fim.' : 'Empate: ganha quem chegou naquele número primeiro.');
+    }
+    itens.push(t.todos ? 'O clã inteiro joga.' : `${idsInscritos(t).length} ${idsInscritos(t).length === 1 ? 'jogador inscrito' : 'jogadores inscritos'}.`);
+    return itens;
+  }
+  const linkTorneio = (t) => `${location.origin}${location.pathname}?torneio=${encodeURIComponent(t.id)}`;
+  // texto pronto pra colar no grupo do WhatsApp
+  function textoGrupo(t) {
+    const st = statusTn(t);
+    const linhas = [`🏆 *${t.nome.toUpperCase()}*`, `${formatoDe(t).nome} · ${statusTxt(t, st)}`, ''];
+    if (t.formato === 'mata') {
+      const rs = rodadasMata(t);
+      if (!rs) linhas.push('A chave ainda vai ser montada.');
+      else {
+        const camp = rs[rs.length - 1][0].v;
+        if (camp) linhas.push(`👑 Campeão: ${comTag(nickId(camp))}`);
+        const atual = rs.find((js) => js.some((j) => !j.v));
+        if (atual) {
+          linhas.push(`*${nomeRodada(atual[0].r, rs.length)}*`);
+          for (const j of atual) if (!j.bye) linhas.push(`${j.a ? nickId(j.a) : '?'} x ${j.b ? nickId(j.b) : '?'}${j.v ? `  ✅ ${nickId(j.v)}` : ''}`);
+        }
+      }
+    } else {
+      const cls = classificarTn(t).filter((l) => l.qtd);
+      if (!cls.length) linhas.push(st === 'breve' ? 'Prepara a cobra que já vai começar!' : 'Ninguém pontuou ainda. A liderança tá aberta!');
+      const med = ['🥇', '🥈', '🥉'];
+      cls.slice(0, 10).forEach((l, i) => linhas.push(`${med[i] || `${i + 1}º`} ${l.nome} — ${valorTn(t, l.total)}`));
+    }
+    if (t.premios && t.premios[0]) linhas.push('', `Prêmio: ${t.premios[0]}`);
+    linhas.push('', `Acompanhe ao vivo: ${linkTorneio(t)}`);
+    return linhas.join('\n');
+  }
+  const linkZap = (texto) => `https://wa.me/?text=${encodeURIComponent(texto)}`;
+
+  // ---------- contagem regressiva (atualiza a cada segundo) ----------
+  function contagem(alvo, rotulo) {
+    if (!isFinite(alvo) || alvo <= Date.now()) return null;
+    const un = [['d', 'DIAS'], ['h', 'HORAS'], ['m', 'MIN'], ['s', 'SEG']];
+    return el('div', { class: 'tn-conta', 'data-conta': String(alvo) },
+      el('span', { class: 'tn-conta-rot', text: rotulo }),
+      el('div', { class: 'tn-conta-num', role: 'timer', 'aria-label': `${rotulo.toLowerCase()} ${tempoAte(alvo)}` },
+        ...un.map(([u, r]) => el('span', { class: 'tn-cel' }, el('b', { 'data-u': u, text: '--' }), el('small', { text: r })))));
+  }
+  function contaCurta(alvo) {
+    if (!isFinite(alvo) || alvo <= Date.now()) return null;
+    return el('span', { class: 'tn-curta', 'data-conta': String(alvo) }, el('span', { 'data-curto': '' }));
+  }
+  function tickContagens() {
+    const agora = Date.now();
+    const dd = (x) => String(x).padStart(2, '0');
+    let virou = false;
+    for (const n of document.querySelectorAll('[data-conta]')) {
+      const s = Math.floor((Number(n.dataset.conta) - agora) / 1000);
+      if (s < 0) { virou = true; continue; }
+      const v = { d: Math.floor(s / 86400), h: Math.floor((s % 86400) / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
+      for (const b of n.querySelectorAll('[data-u]')) b.textContent = dd(v[b.dataset.u]);
+      const c = n.querySelector('[data-curto]');
+      if (c) c.textContent = v.d ? `${v.d}d ${dd(v.h)}h ${dd(v.m)}m` : `${dd(v.h)}:${dd(v.m)}:${dd(v.s)}`;
+    }
+    // começou ou acabou agora: redesenha pra trocar o status
+    if (virou) render();
+  }
+
+  // ---------- pedaços visuais ----------
+  function pilulaStatus(t, st) {
+    const txt = { vivo: 'AO VIVO', breve: 'EM BREVE', fim: 'ENCERRADO' }[st];
+    return el('span', { class: `tn-pill ${st}` }, st === 'vivo' ? el('span', { class: 'ponto', 'aria-hidden': 'true' }) : null, txt);
+  }
+  const chipFormato = (t) => el('span', { class: 'tn-fmt' }, svg(formatoDe(t).icone, 14), formatoDe(t).curto);
+  const chipRascunho = (t) => (t.publicado ? null : el('span', { class: 'tn-pill rascunho', text: 'RASCUNHO · SÓ ADMIN VÊ' }));
+  function linkTn(t, classe, ...filhos) {
+    return el('a', {
+      href: `?torneio=${encodeURIComponent(t.id)}`, class: classe,
+      onclick: (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); abrirTorneio(t.id); },
+    }, ...filhos);
+  }
+
+  // ---------- seção de torneios na página inicial ----------
+  function renderTorneios() {
+    const lista = torneiosVisiveis();
+    const sec = $('torneios');
+    const tem = lista.length > 0;
+    sec.hidden = !tem && !admin;
+    $('avisoTorneios').hidden = torneiosOk || !admin;
+    $('btnNovoTorneio').hidden = !admin || !torneiosOk;
+    $('menuTorneios').hidden = sec.hidden;
+    $('bbTorneios').hidden = !tem;
+    $('bbPatentes').hidden = tem;
+    if (sec.hidden) return;
+    const box = $('listaTorneios');
+    if (!torneiosOk) { trocar(box); return; }
+    if (!tem) {
+      trocar(box, el('p', { class: 'vazio', text: 'Nenhum torneio ainda. Toque em "Criar torneio": escolha o formato, as datas e os prêmios, e o clã acompanha o placar ao vivo aqui.' }));
+      return;
+    }
+    const comSt = lista.map((t) => ({ t, st: statusTn(t) }));
+    const ativos = comSt.filter((x) => x.st !== 'fim')
+      .sort((a, b) => (a.st === b.st ? 0 : a.st === 'vivo' ? -1 : 1) || Date.parse(a.t.inicio) - Date.parse(b.t.inicio));
+    const quandoAcabou = (t) => (isFinite(fimTn(t)) ? fimTn(t) : Date.parse((t.chave && t.chave.em) || t.inicio));
+    const fechados = comSt.filter((x) => x.st === 'fim').sort((a, b) => quandoAcabou(b.t) - quandoAcabou(a.t));
+    trocar(box,
+      ativos.length
+        ? el('div', { class: 'tn-grade' }, ...ativos.map(({ t, st }) => cardTorneio(t, st)))
+        : el('p', { class: 'vazio', text: 'Nenhum torneio rolando agora. O próximo aparece aqui.' }),
+      fechados.length ? el('div', { class: 'tn-fechados' },
+        el('h3', { class: 'perfil-h3', text: 'JÁ ACABARAM' }),
+        el('div', { class: 'tn-grade-p' }, ...fechados.slice(0, 6).map(({ t }) => cardFechado(t)))) : null);
+  }
+
+  function cardTorneio(t, st) {
+    const alvo = st === 'breve' ? Date.parse(t.inicio) : fimTn(t);
+    let corpo;
+    if (t.formato === 'mata') {
+      const rs = rodadasMata(t);
+      const atual = rs && rs.find((js) => js.some((j) => !j.v));
+      const nome = (id) => el('span', { class: 'tn-card-lado', text: id ? nickId(id) : 'a definir' });
+      corpo = !rs || !atual
+        ? el('p', { class: 'tn-card-info', text: `${idsInscritos(t).length} jogadores · ${rs ? 'chave pronta' : 'a chave sai antes de começar'}` })
+        : el('div', { class: 'tn-card-mata' },
+            el('span', { class: 'tn-card-rod', text: `${nomeRodada(atual[0].r, rs.length)} · ${atual.filter((j) => !j.v).length} ${atual.filter((j) => !j.v).length === 1 ? 'duelo' : 'duelos'} pra rolar` }),
+            ...atual.filter((j) => !j.bye && !j.v).slice(0, 3).map((j) => el('div', { class: 'tn-card-duelo' }, nome(j.a), el('span', { class: 'vs-x', text: '×' }), nome(j.b))));
+    } else {
+      const cls = classificarTn(t).filter((l) => l.qtd);
+      corpo = cls.length
+        ? el('ol', { class: 'tn-mini' }, ...cls.slice(0, 3).map((l, i) => el('li', { class: `tt tt${i + 1}` },
+            el('span', { class: 'tt-pos', text: `${i + 1}º` }),
+            el('span', { class: 'tt-nome' }, el('span', { class: 'tn-mini-nome', text: l.nome })),
+            el('span', { class: 'tt-pts', text: valorTn(t, l.total) }))))
+        : el('p', { class: 'tn-card-info', text: st === 'breve' ? `${t.todos ? 'O clã inteiro' : `${idsInscritos(t).length} jogadores`} na disputa.` : 'Ninguém pontuou ainda. A liderança tá aberta!' });
+    }
+    const conta = contaCurta(alvo);
+    return linkTn(t, `tn-card st-${st}`,
+      el('div', { class: 'tn-card-topo' }, pilulaStatus(t, st), chipFormato(t), chipRascunho(t)),
+      el('h3', { class: 'tn-card-nome', text: t.nome }),
+      conta ? el('div', { class: 'tn-card-conta' }, el('span', { text: st === 'breve' ? 'começa em' : 'termina em' }), conta) : null,
+      corpo,
+      t.premios && t.premios[0] ? el('div', { class: 'tn-card-premio' }, svg(ICONE_TROFEU, 16), el('span', { text: t.premios[0] })) : null,
+      el('span', { class: 'tn-card-ver', text: 'Ver torneio →' }));
+  }
+
+  function cardFechado(t) {
+    const v = vencedorTn(t);
+    return linkTn(t, 'tn-fechado',
+      el('span', { class: 'tn-fechado-ic', 'aria-hidden': 'true' }, svg(ICONE_TROFEU, 20)),
+      el('span', { class: 'tn-fechado-info' },
+        el('b', { text: t.nome }),
+        el('span', { text: v ? `${comTag(v.nome)} campeão${v.txt ? ` · ${v.txt}` : ''}` : 'encerrado sem campeão' })),
+      chipRascunho(t));
+  }
+
+  // ---------- página do torneio ----------
+  function abrirTorneio(id) {
+    document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+    if (!perfilAtual && !torneioAtual) rolagemAntes = scrollY;
+    history.pushState({ torneio: id, doSite: true }, '', `?torneio=${encodeURIComponent(id)}`);
+    mostrarRota(true);
+  }
+  function fecharTorneio() {
+    if (history.state && history.state.doSite) { history.back(); return; }
+    history.pushState({}, '', location.pathname + '#torneios');
+    mostrarRota();
+    if (!$('torneios').hidden) $('torneios').scrollIntoView();
+  }
+  function torneioDaUrl() { return new URLSearchParams(location.search).get('torneio'); }
+
+  async function copiarTexto(texto, ok) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast(ok);
+    } catch (e) {
+      prompt('Copie:', texto);
+    }
+  }
+
+  let formLanc = null;        // formulário de lançar resultado (fica no HTML; a página só muda ele de lugar)
+  const fl = (id) => formLanc.querySelector('#' + id);
+
+  function renderTorneioPagina() {
+    const box = $('torneioCorpo');
+    const t = torneios.find((x) => x.id === torneioAtual && (x.publicado || admin));
+    const voltar = el('button', { type: 'button', class: 'btn btn-sec pp-voltar', onclick: fecharTorneio }, svg(ICONE_VOLTAR, 18), 'Torneios');
+    if (!t) {
+      document.title = `Torneio não encontrado · Ranking Clã ${TAG}`;
+      formLanc.hidden = true;
+      trocar(box, el('div', { class: 'pp-barra' }, voltar), el('p', { class: 'vazio', text: 'Não achei esse torneio. Pode ter sido apagado ou ainda não foi publicado.' }));
+      return;
+    }
+    document.title = `${t.nome} · Torneio Clã ${TAG}`;
+    const st = statusTn(t);
+    const mata = t.formato === 'mata';
+    const rodadas = mata ? rodadasMata(t) : null;
+    const ents = mata ? [] : entradasTn(t);
+    const cls = mata ? null : classificarTn(t, ents);
+    const eu = lerEu();
+
+    const barra = el('div', { class: 'pp-barra' }, voltar,
+      el('div', { class: 'pp-acoes' },
+        el('a', { class: 'btn btn-sec', href: linkZap(textoGrupo(t)), target: '_blank', rel: 'noopener' }, svg(ICONE_CONVERSA, 18), el('span', { class: 'btn-txt', text: 'Mandar no grupo' })),
+        el('button', { type: 'button', class: 'btn btn-sec', 'aria-label': 'Copiar link do torneio', onclick: () => copiarTexto(linkTorneio(t), 'Link do torneio copiado.') }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Link' })),
+        admin ? el('button', { type: 'button', class: 'btn btn-pri', onclick: () => abrirBuilder(t) }, svg(ICONE_LAPIS, 18), el('span', { class: 'btn-txt', text: 'Editar' })) : null));
+
+    // topo: nome, status e contagem regressiva (ou o campeão)
+    const camp = st === 'fim' ? vencedorTn(t) : null;
+    let lado;
+    if (st === 'breve') lado = contagem(Date.parse(t.inicio), 'COMEÇA EM');
+    else if (st === 'vivo') {
+      lado = contagem(fimTn(t), 'TERMINA EM');
+      const atual = rodadas && rodadas.find((js) => js.some((j) => !j.v));
+      if (!lado && atual) lado = el('div', { class: 'tn-conta' }, el('span', { class: 'tn-conta-rot', text: 'RODADA ATUAL' }), el('b', { class: 'tn-rodada', text: nomeRodada(atual[0].r, rodadas.length) }));
+    } else {
+      lado = camp
+        ? el('div', { class: 'tn-campeao' },
+            svg(ICONE_COROA, 36, 'class="coroa"'),
+            avatarDe(camp.nome, ptsGeralDe(camp.chave), 'av-g'),
+            el('span', { class: 'tn-campeao-rot', text: 'CAMPEÃO' }),
+            el('button', { type: 'button', class: 'tn-campeao-nome', onclick: () => abrirPerfil(camp.chave), text: camp.nome }),
+            camp.txt ? el('span', { class: 'tn-campeao-val', text: camp.txt }) : null)
+        : el('div', { class: 'tn-campeao' }, el('span', { class: 'tn-campeao-rot', text: 'ENCERRADO SEM CAMPEÃO' }));
+    }
+    const hero = el('header', { class: `tn-hero st-${st}` },
+      el('div', { class: 'tn-hero-txt' },
+        el('div', { class: 'tn-chips' }, pilulaStatus(t, st), chipFormato(t), chipRascunho(t)),
+        el('h1', { class: 'tn-nome', text: t.nome }),
+        el('p', { class: 'tn-periodo' }, svg(ICONE_RELOGIO, 16), periodoTn(t))),
+      lado);
+
+    const conteudo = [barra, hero, cartaoEu(t, st, cls, rodadas, eu), admin ? barraAdminTn(t, st, rodadas) : null];
+
+    const regras = el('section', { class: 'pp-sec', 'aria-label': 'Regras' },
+      el('h2', { class: 'perfil-h3', text: 'REGRAS' }),
+      el('div', { class: 'tn-regras' },
+        el('ul', null, ...resumoTn(t).map((x) => el('li', { text: x }))),
+        t.regras ? el('p', { class: 'tn-regras-txt', text: t.regras }) : null));
+    const lateral = [regras, blocoPremios(t, st, cls, rodadas), blocoInscritos(t)];
+
+    if (mata) {
+      formLanc.hidden = true;
+      conteudo.push(blocoChave(t, st, rodadas, eu), el('div', { class: 'tn-info-grade' }, ...lateral));
+      trocar(box, conteudo);
+      return;
+    }
+    const esq = el('div', { class: 'pp-col' }, blocoClassificacao(t, st, cls, eu));
+    if (admin) { esq.append(formLanc); formLanc.hidden = false; prepararLanc(t); } else formLanc.hidden = true;
+    const res = blocoResultados(t, ents, cls);
+    if (res) esq.append(res);
+    conteudo.push(el('div', { class: 'pp-grade' }, esq, el('div', { class: 'pp-col' }, ...lateral.filter(Boolean))));
+    trocar(box, conteudo);
+  }
+
+  // "você": a posição de quem marcou "Sou eu" no perfil
+  function cartaoEu(t, st, cls, rodadas, eu) {
+    const r = eu ? elenco.get(eu) : null;
+    const inscrito = r && (t.todos ? r.ativo : (t.participantes || []).includes(r.id));
+    const card = (rot, forte, fraco, extra) => el('div', { class: 'tn-eu' },
+      r ? avatarDe(r.nick, ptsGeralDe(eu), 'av-m') : null,
+      el('div', { class: 'tn-eu-txt' }, el('span', { class: 'tn-eu-rot', text: rot }), el('b', { text: forte }), fraco ? el('span', { text: fraco }) : null),
+      extra || null);
+    const convite = () => {
+      if (st === 'fim' || t.todos || admin) return null;
+      const msg = `Quero entrar no torneio "${t.nome}"! Meu nick: ${r ? comTag(r.nick) : comTag('')}`;
+      return el('div', { class: 'tn-eu convite' },
+        el('div', { class: 'tn-eu-txt' }, el('span', { class: 'tn-eu-rot', text: 'QUER JOGAR?' }), el('b', { text: 'Pede pro dono do clã te colocar.' }), el('span', { text: 'A mensagem já vai pronta com o seu nick.' })),
+        el('a', { class: 'btn btn-pri', href: linkZap(msg), target: '_blank', rel: 'noopener' }, svg(ICONE_CONVERSA, 18), 'Pedir pra entrar'));
+    };
+    if (t.formato === 'mata') {
+      if (!r) return convite();
+      if (!rodadas) return inscrito ? card('VOCÊ', 'Você está inscrito.', 'A chave sai antes de começar. Fica de olho!') : convite();
+      const c = chegadaMata(rodadas).get(r.id);
+      if (!c) return inscrito ? card('VOCÊ', 'Você está inscrito, mas ficou fora da chave.', 'Fala com o dono do clã.') : convite();
+      const total = rodadas.length;
+      const outro = c.jogo.a === r.id ? c.jogo.b : c.jogo.a;
+      if (rodadas[total - 1][0].v === r.id) return card('VOCÊ', 'Você é o CAMPEÃO! 👑', 'Ninguém te parou.');
+      if (c.fora) return card('VOCÊ', c.r === total - 1 ? 'Vice-campeão. Bateu na trave!' : `Você caiu ${naRodada(c.r, total)}.`, outro ? `Quem te tirou: ${nickId(outro)}.` : null);
+      return card('VOCÊ', c.jogo.bye ? 'Você passou direto pra próxima rodada.' : outro ? `Seu duelo ${naRodada(c.r, total)}: contra ${nickId(outro)}.` : `Você está ${naRodada(c.r, total)}.`, outro ? 'Vence e avança. Perde e tá fora.' : 'Esperando o adversário.');
+    }
+    if (!r) return convite();
+    const i = cls.findIndex((l) => l.chave === eu);
+    if (i < 0) return inscrito ? null : convite();
+    const l = cls[i];
+    if (!l.qtd) return card('VOCÊ', st === 'breve' ? 'Você está no torneio.' : 'Você ainda não pontuou.', st === 'breve' ? 'Quando começar, cada partida conta. Prepara a cobra!' : 'Manda o print da sua partida pro dono do clã.');
+    const n = cls.filter((x) => x.qtd).length;
+    const acima = cls[i - 1];
+    let fraco;
+    if (i === 0) fraco = st === 'fim' ? 'Você ganhou o torneio! 👑' : 'Você lidera. Segura o trono!';
+    else if (t.formato === 'meta' && t.meta && !l.chegou) fraco = `Faltam ${valorTn(t, t.meta - l.total)} pra meta.`;
+    else if (acima.total > l.total) fraco = `Faltam ${valorTn(t, acima.total - l.total)} pra alcançar ${acima.nome} (${i}º).`;
+    else fraco = `Empatado com ${acima.nome}, que chegou primeiro.`;
+    return card('SUA POSIÇÃO', `#${i + 1} de ${n} · ${valorTn(t, l.total)}`, fraco);
+  }
+
+  function barraAdminTn(t, st, rodadas) {
+    const salvar = (mud, msg) => salvarTn(t, mud).then(() => toast(msg)).catch((e) => { if (!erroSessao(e)) toast('Não deu pra salvar agora. (' + (e.message || 'erro') + ')', true); });
+    const itens = [el('span', { class: 'admin-tag', text: 'ADMIN' })];
+    if (!t.publicado) itens.push(el('button', { type: 'button', class: 'btn btn-pri', onclick: () => salvar({ publicado: true }, 'Publicado! Agora o clã inteiro vê.') }, 'Publicar pro clã'));
+    if (st !== 'fim') itens.push(el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('ENCERRAR AGORA?', `"${t.nome}" acaba agora e o placar congela. Dá pra reabrir depois.`, 'Encerrar', () => salvar({ encerrado_em: new Date().toISOString() }, 'Torneio encerrado.')) }, 'Encerrar agora'));
+    else if (t.encerrado_em && !(t.fim && Date.parse(t.fim) <= Date.now()) && !(t.formato === 'mata' && campeaoMata(t))) {
+      itens.push(el('button', { type: 'button', class: 'btn btn-sec', onclick: () => salvar({ encerrado_em: null }, 'Torneio reaberto.') }, 'Reabrir'));
+    }
+    if (t.formato === 'mata' && rodadas) {
+      itens.push(el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('REFAZER A CHAVE?', `A chave de "${t.nome}" é montada de novo com os inscritos de agora (${t.semente === 'sorteio' ? 'novo sorteio' : 'pelo ranking'}). Os resultados já lançados somem.`, 'Refazer', () => montarChaveTn(t)) }, 'Refazer a chave'));
+    }
+    const fora = t.formato === 'mata' && rodadas ? idsInscritos(t).filter((id) => !t.chave.slots.includes(id)) : [];
+    return el('div', { class: 'tn-admin' }, ...itens,
+      fora.length ? el('p', { class: 'tn-admin-aviso', text: `${fora.map(nickId).join(', ')} ${fora.length === 1 ? 'está inscrito mas ficou' : 'estão inscritos mas ficaram'} fora da chave. Pra incluir, refaça a chave.` }) : null);
+  }
+
+  function blocoClassificacao(t, st, cls, eu) {
+    const com = cls.filter((l) => l.qtd);
+    const sem = cls.filter((l) => !l.qtd);
+    const meta = t.formato === 'meta' && t.meta;
+    const pctMeta = (l) => Math.min(100, Math.round((l.total / t.meta) * 100));
+    const podio = com.length
+      ? el('div', { class: 'podio tn-podio' }, ...[1, 0, 2].filter((i) => com[i]).map((i) => {
+          const l = com[i];
+          return el('article', { class: `lugar l${i + 1}` },
+            i === 0 ? svg(ICONE_COROA, 34, 'class="coroa"') : null,
+            el('div', { class: 'avatar', 'aria-hidden': 'true', text: l.nome.charAt(0).toUpperCase() }),
+            el('div', null,
+              el('div', { class: 'lugar-pos', text: i === 0 ? (st === 'fim' ? '1º · CAMPEÃO' : '1º · LIDERANDO') : `${i + 1}º LUGAR` }),
+              btnPerfil(l, 'lugar-nome', l.nome)),
+            el('div', { class: 'lugar-massa', text: fmt(l.total) }),
+            el('div', { class: 'lugar-data', text: `${unidadeTn(t, l.total)} · ${l.qtd} ${l.qtd === 1 ? 'partida' : 'partidas'}` }),
+            meta ? el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, pctMeta(l))}%` })) : null,
+            t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null);
+        }))
+      : el('p', { class: 'vazio', text: st === 'breve' ? 'O placar abre quando o torneio começar.' : 'Ninguém pontuou ainda. O primeiro resultado já assume a liderança!' });
+
+    const lider = com[0];
+    const linhas = com.map((l, i) => {
+      let sub = null;
+      if (meta) sub = l.chegou ? `chegou na meta ${dataHora(l.chegou)}` : `faltam ${valorTn(t, t.meta - l.total)} · ${pctMeta(l)}%`;
+      else if (i > 0) sub = lider.total > l.total ? `a ${valorTn(t, lider.total - l.total)} do 1º` : 'empatado com o 1º (vale quem chegou antes)';
+      return el('tr', { class: `${i === 0 ? 'topo1' : ''} ${l.chave === eu ? 'tn-eu-linha' : ''}` },
+        el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
+        el('td', { class: 'nome-cel' },
+          el('div', { class: 'nome-linha' },
+            avatarDe(l.nome, ptsGeralDe(l.chave), 'av-p'),
+            btnPerfil(l, 'link-nome forte', l.nome),
+            l.chave === eu ? el('span', { class: 'chip', text: 'VOCÊ' }) : null,
+            meta && l.chegou ? el('span', { class: 'cem-chip', text: '✓ META' }) : null),
+          meta ? el('div', { class: 'tn-prog', 'aria-hidden': 'true' }, el('span', { style: `width:${pctMeta(l)}%` })) : null,
+          sub ? el('div', { class: 'nome-melhor', text: sub }) : null),
+        el('td', { class: 'dir num', text: fmt(l.total) }),
+        el('td', { class: 'dir sec', text: t.formato === 'melhores' ? `${Math.min(l.qtd, t.qtd || 3)} de ${l.qtd}` : fmt(l.qtd) }));
+    });
+    const semTxt = sem.length ? el('p', { class: 'tn-sem', text: `${sem.length} ${sem.length === 1 ? 'ainda sem resultado' : 'ainda sem resultado'}: ${sem.slice(0, 15).map((l) => l.nome).join(', ')}${sem.length > 15 ? '…' : ''}` }) : null;
+    return el('section', { class: 'pp-sec', 'aria-label': 'Classificação' },
+      el('h2', { class: 'perfil-h3' }, 'CLASSIFICAÇÃO ', el('span', { class: 'sec', text: st === 'vivo' ? '· ao vivo' : '' })),
+      podio,
+      com.length || sem.length ? el('div', { class: 'painel tn-tabela' },
+        com.length ? el('div', { class: 'tabela-box' }, el('table', null,
+          el('thead', null, el('tr', null,
+            el('th', { text: 'POS' }), el('th', { text: 'JOGADOR' }),
+            el('th', { class: 'dir', text: rotMetrica(t) }),
+            el('th', { class: 'dir', text: t.formato === 'melhores' ? 'CONTAM' : 'PARTIDAS' }))),
+          el('tbody', null, ...linhas))) : null,
+        semTxt) : null);
+  }
+
+  let tnMaisRes = null;       // torneio com a lista completa de resultados aberta
+  function blocoResultados(t, ents, cls) {
+    if (!ents.length) return null;
+    const porJog = new Map(cls.map((l) => [l.chave, l]));
+    const soma = t.formato !== 'melhor' && t.metrica !== 'massa';
+    return el('section', { class: 'pp-sec', 'aria-label': 'Últimos resultados' },
+      el('h2', { class: 'perfil-h3' }, 'ÚLTIMOS RESULTADOS ', el('span', { class: 'sec', text: fmt(ents.length) })),
+      el('ul', { class: 'pp-hist' }, ...ents.slice(0, tnMaisRes === t.id ? 300 : 8).map((e) => {
+        const conta = (porJog.get(e.k) || { contadas: new Set() }).contadas.has(e.id);
+        const fonte = e.partida || e.lanc;
+        const url = urlPrint(fonte);
+        const detalhe = [haQuanto(e.quando), e.partida ? 'do ranking' : e.lanc.nota, t.metrica === 'pontos' ? `${fmt(e.bruto)} de massa` : null].filter(Boolean).join(' · ');
+        return el('li', { class: `pp-hist-item ${conta ? '' : 'nao-conta'}` },
+          url
+            ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${e.nome}`, onclick: () => abrirPrintLivre(url, `${comTag(e.nome)} · ${valorTn(t, e.valor)} · ${t.nome}`) }, el('img', { src: url, alt: '', loading: 'lazy' }))
+            : el('span', { class: 'mini' }, avatarDe(e.nome, ptsGeralDe(e.k), 'av-p')),
+          el('div', { class: 'pp-hist-info' },
+            el('span', { class: 'tn-res-nome' }, btnPerfil({ chave: e.k, nome: e.nome }, 'link-nome forte', e.nome), !conta ? el('span', { class: 'ex-chip', text: 'NÃO CONTA' }) : null),
+            el('span', { class: 'partida-data', text: detalhe })),
+          el('span', { class: 'pp-hist-pts', text: `${soma ? '+' : ''}${valorTn(t, e.valor)}` }),
+          admin && e.lanc ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar resultado de ${e.nome}`, onclick: () => pedirApagarLanc(t, e) }, svg(ICONE_LIXO)) : null);
+      })),
+      ents.length > 8 && tnMaisRes !== t.id ? el('button', { type: 'button', class: 'btn btn-sec pp-mais', onclick: () => { tnMaisRes = t.id; renderTorneioPagina(); } }, `Ver todos os ${fmt(ents.length)} resultados`) : null,
+      t.formato === 'melhor' || t.formato === 'melhores' ? el('p', { class: 'form-nota tn-nota', text: '"Não conta" = partida que ficou fora das que valem pro torneio.' }) : null);
+  }
+
+  function blocoPremios(t, st, cls, rodadas) {
+    if (!t.premios || !t.premios.some(Boolean)) return null;
+    let ganhou = [];
+    if (st === 'fim') {
+      if (rodadas) {
+        const fin = rodadas[rodadas.length - 1][0];
+        const semi = rodadas.length > 1 ? rodadas[rodadas.length - 2].map((j) => (j.v && j.v === j.a ? j.b : j.a)).filter(Boolean) : [];
+        ganhou = [fin.v ? nickId(fin.v) : null, fin.v ? nickId(fin.v === fin.a ? fin.b : fin.a) : null, semi.length ? semi.map(nickId).join(' e ') : null];
+      } else if (cls) ganhou = cls.filter((l) => l.qtd).slice(0, 3).map((l) => l.nome);
+    }
+    return el('section', { class: 'pp-sec', 'aria-label': 'Prêmios' },
+      el('h2', { class: 'perfil-h3', text: 'PRÊMIOS' }),
+      el('ol', { class: 'tn-premios-lista' }, ...t.premios.map((p, i) => (p ? el('li', { class: `tn-pr p${i + 1}` },
+        el('span', { class: 'tn-pr-pos', text: `${i + 1}º` }),
+        el('span', { class: 'tn-pr-txt' }, el('b', { text: p }), ganhou[i] ? el('span', { text: `ficou com ${ganhou[i]}` }) : null)) : null))));
+  }
+
+  function blocoInscritos(t) {
+    const ids = idsInscritos(t);
+    return el('section', { class: 'pp-sec', 'aria-label': 'Quem joga' },
+      el('h2', { class: 'perfil-h3' }, 'QUEM JOGA ', el('span', { class: 'sec', text: t.todos ? `o clã inteiro · ${ids.length}` : fmt(ids.length) })),
+      ids.length
+        ? el('div', { class: 'tn-inscritos' }, ...ids.slice(0, 64).map((id) => {
+            const r = jogPorId.get(id);
+            const k = chave(r.nick);
+            return btnPerfil({ chave: k, nome: r.nick }, 'tn-insc', [avatarDe(r.nick, ptsGeralDe(k), 'av-p'), el('span', { text: r.nick })]);
+          }), ids.length > 64 ? el('span', { class: 'mais', text: `+${ids.length - 64}` }) : null)
+        : el('p', { class: 'sec', text: 'Ninguém inscrito ainda.' }));
+  }
+
+  // ---------- chave do mata-mata ----------
+  function blocoChave(t, st, rodadas, eu) {
+    if (!rodadas) {
+      const n = idsInscritos(t).length;
+      return el('section', { class: 'pp-sec', 'aria-label': 'Chave' },
+        el('h2', { class: 'perfil-h3', text: 'CHAVE' }),
+        el('div', { class: 'painel tn-chave-vazia' },
+          el('p', { class: 'vazio', text: n < 2 ? 'O mata-mata precisa de pelo menos 2 jogadores inscritos.' : `${n} jogadores inscritos. A chave aparece aqui quando o dono montar.` }),
+          admin && n >= 2 ? el('button', { type: 'button', class: 'btn btn-pri btn-grande', onclick: () => montarChaveTn(t) }, svg(ICONE_ESPADAS, 20), t.semente === 'sorteio' ? 'SORTEAR A CHAVE' : 'MONTAR A CHAVE PELO RANKING') : null));
+    }
+    const total = rodadas.length;
+    const euR = eu ? elenco.get(eu) : null;
+    const euId = euR ? euR.id : null;
+    const cols = rodadas.map((jogos, r) => {
+      const ultima = r === total - 1;
+      const pares = [];
+      for (let i = 0; i < jogos.length; i += 2) pares.push(jogos.slice(i, i + 2));
+      return el('div', { class: `mm-rod ${ultima ? 'mm-final' : ''}` },
+        el('div', { class: 'mm-rod-tit', text: nomeRodada(r, total) }),
+        el('div', { class: 'mm-jogos' }, ...(ultima
+          ? [el('div', { class: 'mm-dupla mm-unica' }, cartaoJogo(t, jogos[0], euId, total))]
+          : pares.map((p) => el('div', { class: 'mm-dupla' }, ...p.map((j) => cartaoJogo(t, j, euId, total)))))));
+    });
+    const camp = rodadas[total - 1][0].v;
+    cols.push(el('div', { class: 'mm-rod mm-camp-col' },
+      el('div', { class: 'mm-rod-tit', text: 'CAMPEÃO' }),
+      el('div', { class: 'mm-jogos' }, el('div', { class: `mm-campeao ${camp ? 'ok' : ''}` },
+        svg(ICONE_COROA, 30),
+        camp ? el('b', { text: nickId(camp) }) : el('span', { text: 'quem vai ser?' })))));
+    const abertos = rodadas.flat().filter((j) => j.a && j.b && !j.v).length;
+    return el('section', { class: 'pp-sec', 'aria-label': 'Chave' },
+      el('h2', { class: 'perfil-h3' }, 'CHAVE ', el('span', { class: 'sec', text: camp ? '· encerrada' : `· ${abertos} ${abertos === 1 ? 'duelo' : 'duelos'} pra rolar` })),
+      el('div', { class: 'painel tn-chave' },
+        el('p', { class: 'dica-arrastar tn-dica', 'aria-hidden': 'true', text: 'Arraste pro lado pra ver a chave toda →' }),
+        el('div', { class: 'mm' }, ...cols),
+        el('p', { class: 'jog-nota', text: admin ? 'Toque num duelo pra lançar o resultado. Quem vence avança sozinho pra próxima rodada.' : 'Folga = passou direto pra próxima rodada.' })));
+  }
+
+  function cartaoJogo(t, j, euId, total) {
+    const lado = (id, v) => {
+      const ganhou = !!j.v && j.v === id;
+      return el('div', { class: `mm-lado ${ganhou ? 'ganhou' : j.v && id ? 'perdeu' : ''} ${id && id === euId ? 'eu' : ''}` },
+        id ? avatarDe(nickId(id), ptsGeralDe(chave(nickId(id))), 'av-p') : el('span', { class: 'av av-p mm-vazio', 'aria-hidden': 'true', text: '?' }),
+        el('span', { class: 'mm-nome', text: id ? nickId(id) : j.bye ? 'folga' : 'a definir' }),
+        el('span', { class: 'mm-val', text: v != null ? fmt(v) : ganhou && j.wo ? 'W.O.' : '' }));
+    };
+    const filhos = [lado(j.a, j.va), lado(j.b, j.vb)];
+    const cls = `mm-jogo ${j.bye ? 'bye' : ''} ${j.v ? 'feito' : j.a && j.b ? 'aberto' : ''}`;
+    if (admin && j.a && j.b && !j.bye) {
+      return el('button', { type: 'button', class: cls, onclick: () => abrirDuelo(t, j, total), 'aria-label': `${nomeRodada(j.r, total)}: ${nickId(j.a)} contra ${nickId(j.b)}. Lançar resultado` }, ...filhos);
+    }
+    return el('div', { class: cls }, ...filhos);
+  }
+
+  function embaralhar(lista) {
+    const a = [...lista];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  async function gravarChave(t, c) {
+    if (DEMO) { const alvo = torneios.find((x) => x.id === t.id); if (alvo) alvo.chave = c; }
+    else { await rpcAdmin('admin_salvar_chave', { p_id: t.id, p_chave: c }); await carregar(); }
+    render();
+  }
+  async function montarChaveTn(t) {
+    let ids = idsInscritos(t);
+    if (ids.length < 2) { toast('Precisa de pelo menos 2 jogadores inscritos.', true); return; }
+    if (ids.length > 64) { toast('O mata-mata aceita até 64 jogadores. Tira alguns da lista.', true); return; }
+    if (t.semente === 'sorteio') ids = embaralhar(ids);
+    else ids.sort((a, b) => ptsGeralDe(chave(nickId(b))) - ptsGeralDe(chave(nickId(a))) || nickId(a).localeCompare(nickId(b), 'pt-BR'));
+    try {
+      await gravarChave(t, { slots: montarSlots(ids), res: {}, em: new Date().toISOString() });
+      toast(t.semente === 'sorteio' ? 'Chave sorteada! Boa sorte pra todos.' : 'Chave montada pelo ranking. Que vença o melhor!');
+    } catch (e) {
+      console.error(e);
+      if (!erroSessao(e)) toast('Não deu pra salvar a chave. (' + (e.message || 'erro') + ')', true);
+    }
+  }
+
+  // ---------- resultado de duelo (só admin) ----------
+  let duelo = null;           // { t, j, total, v }
+  function lerInteiro(txt) {
+    const s = String(txt || '').replace(/[\s.]/g, '');
+    if (!s) return { vazio: true };
+    return /^\d{1,9}$/.test(s) ? { valor: parseInt(s, 10) } : { erro: true };
+  }
+  // massa aceita "52 mil"; o resto é número inteiro
+  function lerValorTn(t, txt) {
+    if (t.metrica !== 'massa') return lerInteiro(txt);
+    const r = lerMassa(txt);
+    if (r.vazio || r.erro) return r;
+    if (r.decimal) return { erro: true };
+    return { valor: r.valor };
+  }
+  function abrirDuelo(t, j, total) {
+    duelo = { t, j, total, v: j.v };
+    $('dueloRodada').textContent = `${t.nome} · ${nomeRodada(j.r, total)}`;
+    const lado = (id, val, campo) => el('div', { class: 'duelo-lado', 'data-id': id },
+      avatarDe(nickId(id), ptsGeralDe(chave(nickId(id))), 'av-m'),
+      el('b', { class: 'duelo-nome', text: nickId(id) }),
+      el('label', { class: 'duelo-rot', for: campo, text: rotMetrica(t) }),
+      el('input', { id: campo, type: 'text', inputmode: t.metrica === 'massa' ? 'decimal' : 'numeric', autocomplete: 'off', placeholder: '—', value: val != null ? fmt(val) : null, oninput: autoVencedor }),
+      el('button', { type: 'button', class: 'duelo-venceu', 'aria-pressed': 'false', onclick: () => { duelo.v = id; marcarVencedor(); } }, svg(ICONE_COROA, 16), 'Venceu'));
+    trocar($('dueloLados'), lado(j.a, j.va, 'dueloVa'), el('span', { class: 'vs-x', text: '×' }), lado(j.b, j.vb, 'dueloVb'));
+    $('dueloWo').checked = !!j.wo;
+    $('btnLimparDuelo').hidden = !j.v;
+    erroDuelo(null);
+    marcarVencedor();
+    $('dlgDuelo').showModal();
+  }
+  function autoVencedor() {
+    if (!duelo) return;
+    const a = lerValorTn(duelo.t, $('dueloVa').value), b = lerValorTn(duelo.t, $('dueloVb').value);
+    if (a.valor != null && b.valor != null && a.valor !== b.valor) duelo.v = a.valor > b.valor ? duelo.j.a : duelo.j.b;
+    marcarVencedor();
+  }
+  function marcarVencedor() {
+    for (const n of $('dueloLados').querySelectorAll('.duelo-lado')) {
+      const sim = n.dataset.id === duelo.v;
+      n.classList.toggle('venc', sim);
+      n.querySelector('.duelo-venceu').setAttribute('aria-pressed', String(sim));
+    }
+    const prox = duelo.j.r + 1 < duelo.total ? naRodada(duelo.j.r + 1, duelo.total).replace(/^na/, 'pra') : null;
+    $('dueloNota').textContent = duelo.v
+      ? (prox ? `${nickId(duelo.v)} vai ${prox}.` : `${nickId(duelo.v)} vira o CAMPEÃO.`)
+      : 'Escreve o resultado de cada um (quem fizer mais vence) ou toque em quem venceu.';
+  }
+  function erroDuelo(msg) { $('erroDuelo').textContent = msg || ''; $('erroDuelo').hidden = !msg; }
+  async function salvarDuelo(ev) {
+    ev.preventDefault();
+    if (!duelo) return;
+    const { t, j } = duelo;
+    const a = lerValorTn(t, $('dueloVa').value), b = lerValorTn(t, $('dueloVb').value);
+    if (a.erro || b.erro) return erroDuelo('Só número no resultado. Ex: 12' + (t.metrica === 'massa' ? ' ou 52 mil' : '') + '.');
+    if (!duelo.v) return erroDuelo('Toque em "Venceu" de quem ganhou o duelo.');
+    if (!admin) return erroDuelo('Entre na área do admin.');
+    const atual = torneios.find((x) => x.id === t.id);
+    if (!atual || !atual.chave) return erroDuelo('A chave mudou. Fecha e abre de novo.');
+    const c = { ...atual.chave, res: { ...(atual.chave.res || {}) } };
+    c.res[j.id] = { a: j.a, b: j.b, va: a.valor ?? null, vb: b.valor ?? null, v: duelo.v, wo: $('dueloWo').checked };
+    const btn = $('btnSalvarDuelo');
+    btn.disabled = true;
+    try {
+      const venc = duelo.v;
+      await gravarChave(atual, c);
+      $('dlgDuelo').close();
+      const camp = campeaoMata(torneios.find((x) => x.id === t.id) || atual);
+      toast(camp === venc ? `👑 ${comTag(nickId(venc))} é o CAMPEÃO de ${t.nome}!` : `${comTag(nickId(venc))} venceu e avançou!`);
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgDuelo').close(); return; }
+      erroDuelo('Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function limparDuelo() {
+    if (!duelo) return;
+    const atual = torneios.find((x) => x.id === duelo.t.id);
+    if (!atual || !atual.chave) return;
+    const c = { ...atual.chave, res: { ...(atual.chave.res || {}) } };
+    delete c.res[duelo.j.id];
+    try {
+      await gravarChave(atual, c);
+      $('dlgDuelo').close();
+      toast('Resultado apagado. O duelo voltou a ficar em aberto.');
+    } catch (e) {
+      if (erroSessao(e)) { $('dlgDuelo').close(); return; }
+      erroDuelo('Não deu pra limpar agora. (' + (e.message || 'erro') + ')');
+    }
+  }
+
+  // ---------- lançar resultado (kills, massa de partida especial...) ----------
+  let arquivoLanc = null;
+  function prepararLanc(t) {
+    const insc = idsInscritos(t).map((id) => jogPorId.get(id));
+    const porNome = (a, b) => a.nick.localeCompare(b.nick, 'pt-BR');
+    const resto = t.todos ? [] : jogadores.filter((r) => r.ativo && !insc.includes(r)).sort(porNome);
+    const sel = fl('lancJog');
+    const antes = formLanc.dataset.torneio === t.id ? sel.value : '';
+    trocar(sel,
+      el('option', { value: '', text: 'Escolhe o jogador' }),
+      el('optgroup', { label: t.todos ? 'Clã' : 'Inscritos' }, ...[...insc].sort(porNome).map((r) => el('option', { value: r.id, text: r.nick }))),
+      resto.length ? el('optgroup', { label: 'Outros (entram no torneio)' }, ...resto.map((r) => el('option', { value: r.id, text: r.nick }))) : null);
+    sel.value = [...sel.options].some((o) => o.value === antes) ? antes : '';
+    if (formLanc.dataset.torneio !== t.id) {
+      fl('lancValor').value = '';
+      fl('lancNota').value = '';
+      limparPrintLanc();
+      erroLanc(null);
+    }
+    formLanc.dataset.torneio = t.id;
+    const massa = t.metrica !== 'custom';
+    fl('lancValorRot').textContent = massa ? 'MASSA DA PARTIDA' : `QUANTOS ${rotMetrica(t)}`;
+    fl('lancValor').placeholder = massa ? 'ex: 52.430 ou 52 mil' : 'ex: 12';
+    fl('lancValor').inputMode = massa ? 'decimal' : 'numeric';
+    fl('lancSub').textContent = t.auto && massa
+      ? 'As partidas registradas no ranking já entram sozinhas. Use aqui só pra resultado extra, que vale só no torneio.'
+      : `Confere o print e escreve ${massa ? 'a massa' : `quantos ${nomeMetrica(t)}`} que o jogador fez. Vale só pro torneio, não mexe no ranking.`;
+    mostrarLanc();
+  }
+  function lerLanc(t) {
+    if (t.metrica === 'custom') return lerInteiro(fl('lancValor').value);
+    return lerMassa(fl('lancValor').value);
+  }
+  function mostrarLanc() {
+    const t = torneios.find((x) => x.id === formLanc.dataset.torneio);
+    if (!t) return;
+    const r = lerLanc(t);
+    const box = fl('lancLido');
+    if (r.vazio) { box.textContent = ''; return; }
+    if (r.erro) { box.textContent = 'Não entendi esse número.'; return; }
+    if (r.decimal) { box.textContent = `Massa não tem vírgula. Era ${fmt(r.sugestao)}? Escreve "${fl('lancValor').value.trim()} mil".`; return; }
+    const v = r.valor;
+    box.textContent = t.metrica === 'custom' ? `Vai entrar: ${valorTn(t, v)}`
+      : `Vai entrar: ${fmt(v)} de massa${t.metrica === 'pontos' ? ` = ${ptsTxt(pontosDe(v))} no torneio` : ''}${r.pequeno ? ` · só ${fmt(v)}? Se for ${fmt(r.sugestao)}, escreve "${fmt(v)} mil"` : ''}`;
+  }
+  function erroLanc(msg) { fl('erroLanc').textContent = msg || ''; fl('erroLanc').hidden = !msg; }
+  function limparPrintLanc() { arquivoLanc = null; fl('lancPrint').value = ''; fl('lancPrintNome').textContent = ''; }
+
+  // sobe a imagem no armazenamento (só admin logado consegue)
+  async function subirPrint(blob, pasta) {
+    const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+    const caminho = `${pasta}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const up = await sb.storage.from(BUCKET).upload(caminho, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+    if (up.error) {
+      if (/row-level security|unauthorized|jwt/i.test(up.error.message)) { await sairAdmin(true); throw Object.assign(new Error('sessão'), { sessao: true }); }
+      throw new Error('print: ' + up.error.message);
+    }
+    return caminho;
+  }
+
+  async function lancar(ev) {
+    ev.preventDefault();
+    const t = torneios.find((x) => x.id === formLanc.dataset.torneio);
+    if (!t) return;
+    const id = fl('lancJog').value;
+    const r = lerLanc(t);
+    const massa = t.metrica !== 'custom';
+    if (!id) return erroLanc('Escolhe o jogador.');
+    if (r.vazio) return erroLanc(massa ? 'Escreve a massa da partida. Ex: 52430 ou 52 mil.' : `Escreve quantos ${nomeMetrica(t)} ele fez.`);
+    if (r.erro || r.decimal || r.valor == null) return erroLanc('Não entendi o número.');
+    if (massa && (r.valor < MASSA_MIN || r.valor > MASSA_MAX)) return erroLanc(`A massa tem que ficar entre ${fmt(MASSA_MIN)} e ${fmt(MASSA_MAX)}.`);
+    if (!admin) return erroLanc('Entre na área do admin.');
+    erroLanc(null);
+    const btn = fl('btnLanc');
+    btn.disabled = true;
+    btn.textContent = 'LANÇANDO…';
+    try {
+      const nota = fl('lancNota').value.replace(/\s+/g, ' ').trim().slice(0, 80);
+      let print_path = null, print_url = null;
+      if (arquivoLanc) {
+        const blob = await comprimir(arquivoLanc);
+        if (DEMO) print_url = URL.createObjectURL(blob);
+        else print_path = await subirPrint(blob, `torneios/${t.id}`);
+      }
+      if (DEMO) {
+        lancamentos.unshift({ id: 'dl-' + Date.now(), torneio_id: t.id, player_id: id, valor: r.valor, nota, print_path: null, print_url, created_at: new Date().toISOString() });
+        if (!t.todos && !t.participantes.includes(id)) t.participantes.push(id);
+      } else {
+        await rpcAdmin('admin_add_lancamento', { p_torneio: t.id, p_player: id, p_valor: r.valor, p_nota: nota, p_print_path: print_path });
+        await carregar();
+      }
+      fl('lancValor').value = '';
+      fl('lancNota').value = '';
+      limparPrintLanc();
+      render();
+      const atual = torneios.find((x) => x.id === t.id) || t;
+      const nick = nickId(id);
+      const l = classificarTn(atual).find((x) => x.chave === chave(nick));
+      const vale = t.metrica === 'pontos' ? pontosDe(r.valor) : r.valor;
+      toast(`Lançado! ${comTag(nick)} ${valorTn(t, vale)}${l && l.qtd ? ` · agora em ${l.pos}º` : ''}.`);
+      fl('lancValor').focus();
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) return;
+      erroLanc('Não deu pra lançar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'LANÇAR';
+    }
+  }
+
+  function pedirApagarLanc(t, e) {
+    confirmar('APAGAR RESULTADO?', `${comTag(e.nome)} · ${valorTn(t, e.valor)} no torneio "${t.nome}" (${haQuanto(e.quando)}). Isso não pode ser desfeito.`, 'Apagar', async () => {
+      try {
+        if (DEMO) lancamentos = lancamentos.filter((l) => l.id !== e.lanc.id);
+        else {
+          const caminho = await rpcAdmin('admin_apagar_lancamento', { p_id: e.lanc.id });
+          if (caminho) await sb.storage.from(BUCKET).remove([caminho]);
+          await carregar();
+        }
+        render();
+        toast('Resultado apagado.');
+      } catch (err) {
+        if (!erroSessao(err)) toast('Não deu pra apagar agora. Tenta de novo.', true);
+      }
+    });
+  }
+
+  // ---------- criar / editar torneio (só admin) ----------
+  let editTn = null;          // torneio sendo editado (null = novo)
+  let confirmaApagarTn = false;
+  const tnEstado = { formato: 'soma', metrica: 'pontos', todos: true, sel: new Set() };
+  const paraInput = (ms) => { const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+  const doInput = (v) => (v ? new Date(v).getTime() : NaN); // "2026-10-20T20:00" = hora local
+  function fimDaSemana(base = Date.now()) { const d = new Date(base); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); d.setHours(23, 59, 0, 0); return d.getTime(); }
+  function dadosDe(t) {
+    const { nome, formato, metrica, unidade, auto, qtd, meta, semente, inicio, fim, encerrado_em, todos, participantes, premios, regras, publicado } = t;
+    return { nome, formato, metrica, unidade, auto, qtd, meta, semente, inicio, fim, encerrado_em, todos, participantes, premios, regras, publicado };
+  }
+  async function salvarTn(t, mudancas) {
+    const dados = { ...dadosDe(t), ...mudancas };
+    if (DEMO) { const alvo = torneios.find((x) => x.id === t.id); if (alvo) Object.assign(alvo, dados); }
+    else { await rpcAdmin('admin_salvar_torneio', { p_id: t.id, p_dados: dados }); await carregar(); }
+    render();
+  }
+
+  function montarFormatos() {
+    trocar($('tnFormatos'), Object.entries(FORMATOS).map(([id, f]) => el('button', {
+      type: 'button', class: 'tn-formato', role: 'radio', 'data-formato': id, 'aria-checked': 'false',
+      onclick: () => { tnEstado.formato = id; atualizarBuilder(); },
+    }, el('span', { class: 'tn-formato-ic', 'aria-hidden': 'true' }, svg(f.icone, 22)), el('b', { text: f.nome }), el('span', { text: f.desc }))));
+    trocar($('tnUnidadeSug'), ['kills', 'abates', 'vitórias', 'tops', 'mortes'].map((u) => el('button', {
+      type: 'button', class: 'sug', text: u, onclick: () => { $('tnUnidade').value = u; atualizarBuilder(); },
+    })));
+  }
+
+  function abrirBuilder(t = null) {
+    editTn = t;
+    confirmaApagarTn = false;
+    const agora = new Date();
+    agora.setSeconds(0, 0);
+    tnEstado.formato = t ? t.formato : 'soma';
+    tnEstado.metrica = t ? t.metrica : 'pontos';
+    tnEstado.todos = t ? t.todos : true;
+    tnEstado.sel = new Set(t ? (t.participantes || []).filter((id) => jogPorId.has(id)) : []);
+    $('tituloTn').textContent = t ? 'EDITAR TORNEIO' : 'NOVO TORNEIO';
+    $('btnSalvarTn').textContent = t ? 'Salvar' : 'Criar torneio';
+    $('btnApagarTn').hidden = !t;
+    $('btnApagarTn').textContent = 'Apagar';
+    $('tnNome').value = t ? t.nome : '';
+    $('tnUnidade').value = t ? t.unidade || '' : '';
+    $('tnAuto').checked = t ? t.auto : true;
+    $('tnQtd').value = t && t.qtd ? t.qtd : 3;
+    $('tnMeta').value = t && t.meta ? fmt(t.meta) : '';
+    $('tnSemente').value = t ? t.semente || 'ranking' : 'ranking';
+    $('tnInicio').value = paraInput(t ? Date.parse(t.inicio) : agora.getTime());
+    $('tnFim').value = t ? (t.fim ? paraInput(Date.parse(t.fim)) : '') : paraInput(fimDaSemana(agora.getTime() + 86400000));
+    [1, 2, 3].forEach((i) => { $('tnPremio' + i).value = (t && t.premios && t.premios[i - 1]) || ''; });
+    $('tnRegras').value = t ? t.regras || '' : '';
+    $('tnPublicado').checked = t ? t.publicado : true;
+    $('tnBuscaJog').value = '';
+    erroTn(null);
+    atualizarBuilder();
+    $('dlgTorneio').showModal();
+    $('dlgTorneio').querySelector('.tn-form-corpo').scrollTop = 0;
+    // no celular não abre o teclado sozinho (deixa ver os formatos primeiro)
+    if (!t && matchMedia('(pointer: fine)').matches) $('tnNome').focus({ preventScroll: true });
+  }
+
+  function atualizarBuilder() {
+    const { formato, metrica, todos } = tnEstado;
+    const mata = formato === 'mata';
+    document.querySelectorAll('.tn-formato').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.formato === formato)));
+    document.querySelectorAll('#tnMetricas [data-metrica]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.metrica === metrica)));
+    document.querySelectorAll('#tnQuem [data-todos]').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.todos === '1') === todos)));
+    $('tnMetricaRot').textContent = mata ? 'O QUE DECIDE O DUELO' : 'O QUE CONTA';
+    $('tnUnidadeBox').hidden = metrica !== 'custom';
+    $('tnAutoBox').hidden = mata || metrica === 'custom';
+    $('tnQtdBox').hidden = formato !== 'melhores';
+    $('tnMetaBox').hidden = formato !== 'meta';
+    $('tnSementeBox').hidden = !mata;
+    $('tnEscolherBox').hidden = todos;
+    $('tnMeta').placeholder = metrica === 'massa' ? 'ex: 500 mil' : metrica === 'pontos' ? 'ex: 1000' : 'ex: 50';
+    const meta = lerMetaBuilder();
+    $('tnMetaLida').textContent = formato === 'meta' && meta ? `Meta: ${valorTn({ metrica, unidade: $('tnUnidade').value }, meta)}` : '';
+    renderAtalhosData();
+    renderEscolher();
+    renderResumoBuilder();
+  }
+
+  function lerMetaBuilder() {
+    const txt = $('tnMeta').value;
+    if (tnEstado.metrica === 'massa') { const r = lerMassa(txt); return r.valor > 0 ? Math.min(r.valor, 100000000) : null; }
+    const r = lerInteiro(txt);
+    return r.valor > 0 ? Math.min(r.valor, 100000000) : null;
+  }
+
+  function renderAtalhosData() {
+    const ini = doInput($('tnInicio').value);
+    const base = isFinite(ini) ? ini : Date.now();
+    const fimEm = (ms) => { $('tnFim').value = paraInput(ms); };
+    const ops = [
+      ['Começa agora', () => { const d = new Date(); d.setSeconds(0, 0); $('tnInicio').value = paraInput(d.getTime()); }],
+      ['Até domingo', () => fimEm(fimDaSemana(base + 3600000))],
+      ['7 dias', () => fimEm(base + 7 * 86400000)],
+      ['15 dias', () => fimEm(base + 15 * 86400000)],
+      ['Até o fim do mês', () => { const d = new Date(base); fimEm(new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59).getTime()); }],
+      tnEstado.formato === 'mata' ? ['Sem data pra acabar', () => { $('tnFim').value = ''; }] : null,
+    ].filter(Boolean);
+    trocar($('tnAtalhosData'), ops.map(([rot, f]) => el('button', { type: 'button', class: 'sug', text: rot, onclick: () => { f(); atualizarBuilder(); } })));
+  }
+
+  function renderEscolher() {
+    if (tnEstado.todos) return;
+    const q = busca($('tnBuscaJog').value);
+    const lista = jogadores.filter((r) => r.ativo || tnEstado.sel.has(r.id))
+      .filter((r) => !q || busca(r.nick).includes(q))
+      .sort((a, b) => a.nick.localeCompare(b.nick, 'pt-BR'));
+    trocar($('tnListaJog'), lista.length
+      ? lista.map((r) => el('button', {
+          type: 'button', class: 'tn-jog', 'aria-pressed': String(tnEstado.sel.has(r.id)),
+          onclick: (e) => {
+            if (tnEstado.sel.has(r.id)) tnEstado.sel.delete(r.id); else tnEstado.sel.add(r.id);
+            e.currentTarget.setAttribute('aria-pressed', String(tnEstado.sel.has(r.id)));
+            contarSel();
+            renderResumoBuilder();
+          },
+        }, avatarDe(r.nick, ptsGeralDe(chave(r.nick)), 'av-p'), r.nick))
+      : el('span', { class: 'sec', text: jogadores.length ? 'Ninguém com esse nome.' : 'Cadastre o elenco em "Jogadores do clã" primeiro.' }));
+    contarSel();
+  }
+  function contarSel() {
+    const n = tnEstado.sel.size;
+    $('tnQtdSel').textContent = n ? `${n} ${n === 1 ? 'jogador escolhido' : 'jogadores escolhidos'}` : 'Toque nos jogadores que vão jogar.';
+  }
+
+  // o torneio do jeito que está no formulário (pra mostrar o resumo antes de salvar)
+  function tnDoForm() {
+    const ini = doInput($('tnInicio').value), fim = doInput($('tnFim').value);
+    return {
+      id: editTn ? editTn.id : '', formato: tnEstado.formato, metrica: tnEstado.metrica, unidade: $('tnUnidade').value.trim(),
+      auto: $('tnAuto').checked, qtd: parseInt($('tnQtd').value, 10) || 3, meta: lerMetaBuilder(), semente: $('tnSemente').value,
+      inicio: new Date(isFinite(ini) ? ini : Date.now()).toISOString(), fim: isFinite(fim) ? new Date(fim).toISOString() : null,
+      todos: tnEstado.todos, participantes: [...tnEstado.sel], premios: [], regras: '', publicado: true, chave: null,
+    };
+  }
+  function renderResumoBuilder() {
+    const t = tnDoForm();
+    const ini = Date.parse(t.inicio), fim = t.fim ? Date.parse(t.fim) : null;
+    const dur = fim && fim > ini ? Math.round((fim - ini) / 3600000) : 0;
+    const durTxt = !fim ? 'sem data pra acabar' : dur < 1 ? null : dur < 48 ? `dura ${dur} h` : `dura ${Math.round(dur / 24)} dias`;
+    trocar($('tnResumo'),
+      el('b', { text: 'COMO VAI FUNCIONAR' }),
+      el('ul', null, ...resumoTn(t).map((x) => el('li', { text: x })),
+        el('li', { text: `${fim && fim <= ini ? 'Atenção: o fim está antes do começo.' : `${periodoTn(t)}${durTxt ? ` (${durTxt})` : ''}.`}` })));
+  }
+
+  function erroTn(msg) { $('erroTn').textContent = msg || ''; $('erroTn').hidden = !msg; }
+  function lerBuilder() {
+    const { formato, metrica, todos, sel } = tnEstado;
+    const nome = $('tnNome').value.replace(/\s+/g, ' ').trim();
+    if (!nome) return { erro: 'Dá um nome pro torneio.', campo: 'tnNome' };
+    const unidade = $('tnUnidade').value.replace(/\s+/g, ' ').trim().slice(0, 20);
+    if (metrica === 'custom' && !unidade) return { erro: 'Escreve o que vai ser contado (ex: kills).', campo: 'tnUnidade' };
+    const qtd = parseInt($('tnQtd').value, 10);
+    if (formato === 'melhores' && !(qtd >= 1 && qtd <= 100)) return { erro: 'Quantas partidas contam? De 1 a 100.', campo: 'tnQtd' };
+    const meta = lerMetaBuilder();
+    if (formato === 'meta' && !meta) return { erro: 'Escreve a meta da corrida.', campo: 'tnMeta' };
+    const ini = doInput($('tnInicio').value);
+    if (!isFinite(ini)) return { erro: 'Escolhe quando o torneio começa.', campo: 'tnInicio' };
+    const fim = doInput($('tnFim').value);
+    if (!$('tnFim').value && formato !== 'mata') return { erro: 'Escolhe quando o torneio termina.', campo: 'tnFim' };
+    if ($('tnFim').value && !(fim > ini)) return { erro: 'O fim tem que ser depois do começo.', campo: 'tnFim' };
+    const ids = [...sel].filter((id) => jogPorId.has(id));
+    if (!todos && ids.length < (formato === 'mata' ? 2 : 1)) return { erro: formato === 'mata' ? 'Escolhe pelo menos 2 jogadores pro mata-mata.' : 'Escolhe quem vai jogar.', campo: 'tnBuscaJog' };
+    const qtdJog = todos ? jogadores.filter((r) => r.ativo).length : ids.length;
+    if (formato === 'mata' && qtdJog > 64) return { erro: `O mata-mata aceita até 64 jogadores (tem ${qtdJog}). Escolhe quem joga.` };
+    if (ids.length > 256) return { erro: 'No máximo 256 jogadores escolhidos.' };
+    const premios = [1, 2, 3].map((i) => $('tnPremio' + i).value.replace(/\s+/g, ' ').trim().slice(0, 60));
+    while (premios.length && !premios[premios.length - 1]) premios.pop();
+    return { dados: {
+      nome: nome.slice(0, 60), formato, metrica, unidade: metrica === 'custom' ? unidade : '',
+      auto: formato !== 'mata' && metrica !== 'custom' && $('tnAuto').checked,
+      qtd: formato === 'melhores' ? qtd : null, meta: formato === 'meta' ? meta : null,
+      semente: $('tnSemente').value === 'sorteio' ? 'sorteio' : 'ranking',
+      inicio: new Date(ini).toISOString(), fim: $('tnFim').value ? new Date(fim).toISOString() : null,
+      encerrado_em: editTn ? editTn.encerrado_em || null : null,
+      todos, participantes: ids, premios, regras: $('tnRegras').value.trim().slice(0, 2000), publicado: $('tnPublicado').checked,
+    } };
+  }
+
+  async function salvarBuilder(ev) {
+    ev.preventDefault();
+    const r = lerBuilder();
+    if (r.erro) { erroTn(r.erro); if (r.campo) $(r.campo).focus(); return; }
+    if (!admin) return erroTn('Entre na área do admin.');
+    erroTn(null);
+    const btn = $('btnSalvarTn');
+    btn.disabled = true;
+    try {
+      let id;
+      if (DEMO) {
+        if (editTn) { id = editTn.id; Object.assign(torneios.find((x) => x.id === id), r.dados); }
+        else { id = 'dt-' + Date.now(); torneios.unshift({ id, ...r.dados, chave: null, created_at: new Date().toISOString() }); }
+      } else {
+        id = await rpcAdmin('admin_salvar_torneio', { p_id: editTn ? editTn.id : null, p_dados: r.dados });
+        if (!id) throw new Error('torneio não encontrado');
+        await carregar();
+      }
+      const novo = !editTn;
+      $('dlgTorneio').close();
+      render();
+      if (novo) abrirTorneio(id);
+      toast(novo ? (r.dados.publicado ? 'Torneio criado! Manda no grupo pelo botão "Mandar no grupo".' : 'Rascunho salvo. Só admin vê até você publicar.') : 'Torneio atualizado.');
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgTorneio').close(); return; }
+      erroTn('Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function apagarTn() {
+    const t = editTn;
+    if (!t) return;
+    if (!confirmaApagarTn) { confirmaApagarTn = true; $('btnApagarTn').textContent = 'Toque de novo pra apagar'; return; }
+    try {
+      if (DEMO) {
+        torneios = torneios.filter((x) => x.id !== t.id);
+        lancamentos = lancamentos.filter((l) => l.torneio_id !== t.id);
+      } else {
+        const caminhos = await rpcAdmin('admin_apagar_torneio', { p_id: t.id });
+        if (caminhos && caminhos.length) await sb.storage.from(BUCKET).remove(caminhos);
+        await carregar();
+      }
+      $('dlgTorneio').close();
+      if (torneioAtual === t.id) { history.replaceState({}, '', location.pathname + '#torneios'); mostrarRota(); }
+      render();
+      toast(`Torneio "${t.nome}" apagado.`);
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgTorneio').close(); return; }
+      erroTn('Não deu pra apagar agora. (' + (e.message || 'erro') + ')');
+    }
+  }
+
+  // ---------- torneios no perfil do jogador ----------
+  function torneiosDoJogador(k) {
+    const r = elenco.get(k);
+    const out = [];
+    for (const t of torneiosVisiveis()) {
+      if (!t.publicado) continue;
+      const st = statusTn(t);
+      if (t.formato === 'mata') {
+        const rs = rodadasMata(t);
+        const lg = rs && r ? lugarMata(rs, r.id) : null;
+        if (!lg) continue;
+        out.push({ t, st, pos: lg.pos, txt: lg.txt });
+      } else {
+        const cls = classificarTn(t);
+        const l = cls.find((x) => x.chave === k);
+        if (!l || !l.qtd) continue;
+        out.push({ t, st, pos: l.pos, txt: `${l.pos}º de ${cls.filter((x) => x.qtd).length} · ${valorTn(t, l.total)}` });
+      }
+    }
+    const peso = { vivo: 0, breve: 1, fim: 2 };
+    return out.sort((a, b) => peso[a.st] - peso[b.st] || Date.parse(b.t.inicio) - Date.parse(a.t.inicio));
+  }
+  function secaoTorneiosPerfil(k) {
+    const lista = torneiosDoJogador(k);
+    if (!lista.length) return null;
+    return el('section', { class: 'pp-sec', 'aria-labelledby': 'ppTn' },
+      el('h2', { class: 'perfil-h3', id: 'ppTn' }, 'TORNEIOS ', el('span', { class: 'sec', text: fmt(lista.length) })),
+      el('ul', { class: 'pp-tns' }, ...lista.map(({ t, st, pos, txt }) => {
+        const ganhou = pos === 1 && st === 'fim';
+        return el('li', null, linkTn(t, `pp-tn ${ganhou ? 'campeao' : ''}`,
+          el('span', { class: `pp-tn-pos p${pos}` }, ganhou ? svg(ICONE_TROFEU, 20) : pos ? `${pos}º` : '–'),
+          el('span', { class: 'pp-tn-info' }, el('b', { text: t.nome }), el('span', { text: ganhou ? `Campeão · ${txt}` : txt })),
+          pilulaStatus(t, st)));
+      })));
+  }
+
   // ---------- print ----------
+  function abrirPrintLivre(url, legenda) {
+    $('imgPrint').src = url;
+    $('legendaPrint').textContent = legenda;
+    $('dlgPrint').showModal();
+  }
   function abrirPrint(p) {
     const url = urlPrint(p);
     if (!url) return;
@@ -1503,14 +2748,7 @@
         if (DEMO) {
           print_url = URL.createObjectURL(blob);
         } else {
-          const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
-          print_path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-          const up = await sb.storage.from(BUCKET).upload(print_path, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
-          if (up.error) {
-            // só admin logado envia print; se a sessão caiu, o armazenamento recusa
-            if (/row-level security|unauthorized|jwt/i.test(up.error.message)) { await sairAdmin(true); throw Object.assign(new Error('sessão'), { sessao: true }); }
-            throw new Error('print: ' + up.error.message);
-          }
+          print_path = await subirPrint(blob, new Date().toISOString().slice(0, 10));
         }
       }
       if (DEMO) {
@@ -1634,15 +2872,27 @@
     }
   }
 
-  function pedirApagar(p) {
-    apagarId = p.id;
-    $('txtConfirma').textContent = `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa (${haQuanto(p.created_at)}). Isso não pode ser desfeito.`;
+  // janela de "tem certeza?" (apagar partida, apagar resultado, encerrar torneio...)
+  let acaoConfirma = null;
+  function confirmar(titulo, texto, botao, acao) {
+    $('tituloConfirma').textContent = titulo;
+    $('txtConfirma').textContent = texto;
+    $('btnSimApagar').textContent = botao;
+    acaoConfirma = acao;
     $('dlgConfirma').showModal();
   }
-
-  async function confirmarApagar() {
-    const id = apagarId;
+  function confirmou() {
+    const acao = acaoConfirma;
+    acaoConfirma = null;
     $('dlgConfirma').close();
+    if (acao) acao();
+  }
+
+  function pedirApagar(p) {
+    confirmar('APAGAR PONTUAÇÃO?', `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa (${haQuanto(p.created_at)}). Isso não pode ser desfeito.`, 'Apagar', () => apagarPartida(p.id));
+  }
+
+  async function apagarPartida(id) {
     if (!id) return;
     try {
       if (DEMO) {
@@ -1683,9 +2933,11 @@
 
   async function carregar() {
     if (DEMO) return;
-    const [r, rj] = await Promise.all([
+    const [r, rj, rt, rl] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
+      lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
+      lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -1694,6 +2946,11 @@
     if (rj.error) console.warn('elenco:', rj.error.message);
     jogadores = rj.data || [];
     indexarElenco();
+    // mesma coisa com os torneios: sem as tabelas, a seção só some
+    torneiosOk = !rt.error && !rl.error;
+    if (!torneiosOk) console.warn('torneios:', (rt.error || rl.error).message);
+    torneios = (rt.data || []).map((t) => ({ ...t, participantes: t.participantes || [], premios: t.premios || [] }));
+    lancamentos = rl.data || [];
   }
 
   function dadosDemo() {
@@ -1716,6 +2973,30 @@
       ['Mamba', 'Membro', true, 30], ['Naja', 'Membro', true, 6], ['Cascavel', 'Membro', true, 2], ['Sucuri', 'Membro', false, 45],
     ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, created_at: d(dias) }));
   }
+  // dj0 VENO · dj1 Shawdow · dj2 VETERANO · dj3 Kaiser · dj4 Mamba · dj5 Naja · dj6 Cascavel
+  function torneiosDemo() {
+    const h = (horas) => new Date(Date.now() + horas * 3600 * 1000).toISOString();
+    const base = { unidade: '', auto: true, qtd: null, meta: null, semente: 'ranking', fim: null, encerrado_em: null, todos: true, participantes: [], premios: [], regras: '', chave: null, publicado: true };
+    const lista = [
+      { ...base, id: 'dt1', nome: 'Copa COBR de Outubro', formato: 'soma', metrica: 'pontos', inicio: h(-240), fim: h(53.2),
+        premios: ['Cargo Elite por 1 mês', 'Destaque no grupo', 'Respeito'], regras: 'Só vale partida com print mostrando o nick com a tag.\nQuem for pego com print editado é eliminado.' },
+      { ...base, id: 'dt2', nome: 'X1 dos Brabos', formato: 'mata', metrica: 'custom', unidade: 'kills', auto: false, inicio: h(-48), fim: h(120), todos: false,
+        participantes: ['dj0', 'dj1', 'dj2', 'dj3', 'dj4', 'dj5'], premios: ['Título de Brabo do Clã', 'Vice-Brabo'],
+        regras: 'Duelo na mesma sala, 10 minutos. Vence quem matar mais.',
+        chave: { slots: ['dj0', null, 'dj2', 'dj4', 'dj1', null, 'dj3', 'dj5'], em: h(-47), res: {
+          '0-1': { a: 'dj2', b: 'dj4', va: 14, vb: 9, v: 'dj2' },
+          '0-3': { a: 'dj3', b: 'dj5', va: 7, vb: 11, v: 'dj5' },
+          '1-0': { a: 'dj0', b: 'dj2', va: 18, vb: 12, v: 'dj0' },
+        } } },
+      { ...base, id: 'dt3', nome: 'Caça às Kills', formato: 'melhores', metrica: 'custom', unidade: 'kills', auto: false, qtd: 3, inicio: h(-30), fim: h(90), todos: false,
+        participantes: ['dj0', 'dj1', 'dj3', 'dj5', 'dj6'], premios: ['Skin escolhida pelo campeão'] },
+      { ...base, id: 'dt4', nome: 'Rei da Massa', formato: 'melhor', metrica: 'massa', inicio: h(74), fim: h(242), premios: ['Coroa no nick por 1 semana'] },
+      { ...base, id: 'dt5', nome: 'Corrida dos 250K', formato: 'meta', metrica: 'massa', meta: 250000, inicio: h(-1680), fim: h(-720), premios: ['Cargo Vice-líder honorário'] },
+    ];
+    const lanc = [['dt3', 'dj0', 12, -26], ['dt3', 'dj1', 15, -20], ['dt3', 'dj5', 9, -18], ['dt3', 'dj0', 8, -12], ['dt3', 'dj5', 11, -9], ['dt3', 'dj5', 4, -6], ['dt3', 'dj3', 6, -3], ['dt3', 'dj0', 13, -1]]
+      .map(([torneio_id, player_id, valor, horas], i) => ({ id: 'dl' + i, torneio_id, player_id, valor, nota: i % 3 === 0 ? 'sala lotada' : '', print_path: null, created_at: h(horas) }));
+    return { lista, lanc };
+  }
 
   let realtimeOk = false;
   function ligarTempoReal() {
@@ -1733,6 +3014,13 @@
         realtimeOk = status === 'SUBSCRIBED';
         aoVivo.classList.toggle('on', realtimeOk);
       });
+    // canal separado: se as tabelas de torneio ainda não existem, não derruba o do ranking
+    if (torneiosOk) {
+      sb.channel('torneios-ao-vivo')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'torneios' }, recarregar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'torneio_lancamentos' }, recarregar)
+        .subscribe();
+    }
     // reserva: atualiza a cada minuto mesmo sem tempo real
     setInterval(() => { if (!document.hidden) carregar().then(render).catch(() => {}); }, 60000);
   }
@@ -1788,6 +3076,48 @@
     $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
     $('btnApagarJog').addEventListener('click', apagarJogador);
 
+    // torneios
+    formLanc = $('formLanc');
+    montarFormatos();
+    $('btnNovoTorneio').addEventListener('click', () => abrirBuilder());
+    $('formTorneio').addEventListener('submit', salvarBuilder);
+    $('btnCancelarTn').addEventListener('click', () => $('dlgTorneio').close());
+    $('btnFecharTn').addEventListener('click', () => $('dlgTorneio').close());
+    $('btnApagarTn').addEventListener('click', apagarTn);
+    document.querySelectorAll('#tnMetricas [data-metrica]').forEach((b) => b.addEventListener('click', () => { tnEstado.metrica = b.dataset.metrica; atualizarBuilder(); }));
+    document.querySelectorAll('#tnQuem [data-todos]').forEach((b) => b.addEventListener('click', () => { tnEstado.todos = b.dataset.todos === '1'; atualizarBuilder(); }));
+    ['tnUnidade', 'tnQtd', 'tnMeta', 'tnInicio', 'tnFim', 'tnAuto', 'tnSemente'].forEach((id) => $(id).addEventListener(id === 'tnAuto' || id === 'tnSemente' ? 'change' : 'input', atualizarBuilder));
+    $('tnMeta').addEventListener('blur', () => { const v = lerMetaBuilder(); if (v) $('tnMeta').value = fmt(v); });
+    $('tnBuscaJog').addEventListener('input', renderEscolher);
+    $('tnBuscaJog').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+    $('tnMarcarTodos').addEventListener('click', () => {
+      const q = busca($('tnBuscaJog').value);
+      jogadores.filter((r) => r.ativo && (!q || busca(r.nick).includes(q))).forEach((r) => tnEstado.sel.add(r.id));
+      renderEscolher();
+      renderResumoBuilder();
+    });
+    $('tnLimpar').addEventListener('click', () => { tnEstado.sel.clear(); renderEscolher(); renderResumoBuilder(); });
+    formLanc.addEventListener('submit', lancar);
+    fl('lancValor').addEventListener('input', mostrarLanc);
+    fl('lancValor').addEventListener('blur', () => {
+      const t = torneios.find((x) => x.id === formLanc.dataset.torneio);
+      const r = t ? lerLanc(t) : {};
+      if (r.valor != null && !r.erro) fl('lancValor').value = fmt(r.valor);
+    });
+    fl('lancPrint').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { limparPrintLanc(); erroLanc('O print precisa ser PNG, JPG ou WEBP.'); return; }
+      if (f.size > 15 * 1024 * 1024) { limparPrintLanc(); erroLanc('Imagem grande demais (máximo 15 MB).'); return; }
+      arquivoLanc = f;
+      fl('lancPrintNome').textContent = f.name;
+      erroLanc(null);
+    });
+    $('formDuelo').addEventListener('submit', salvarDuelo);
+    $('btnCancelarDuelo').addEventListener('click', () => $('dlgDuelo').close());
+    $('btnLimparDuelo').addEventListener('click', limparDuelo);
+    setInterval(tickContagens, 1000);
+
     $('fMassa').addEventListener('input', () => { confirmarPequena = null; mostrarMassa(); });
     // ao sair do campo, deixa o número no formato certo (52 mil -> 52.000)
     $('fMassa').addEventListener('blur', () => {
@@ -1836,7 +3166,7 @@
     $('btnCancelarAdmin').addEventListener('click', () => $('dlgAdmin').close());
     $('formAdmin').addEventListener('submit', entrarAdmin);
     $('btnNaoApagar').addEventListener('click', () => $('dlgConfirma').close());
-    $('btnSimApagar').addEventListener('click', confirmarApagar);
+    $('btnSimApagar').addEventListener('click', confirmou);
     // o PIN antigo ficava salvo no aparelho; não serve mais pra nada
     try { localStorage.removeItem('ranking_pin'); sessionStorage.removeItem('ranking_pin'); } catch (e) {}
 
@@ -1846,7 +3176,7 @@
     // atalhos (#ranking, #jogadores...) com o perfil aberto: volta pro ranking e rola até lá
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[href^="#"]');
-      if (!a || !perfilAtual) return;
+      if (!a || (!perfilAtual && !torneioAtual)) return;
       e.preventDefault();
       history.pushState({}, '', location.pathname + a.getAttribute('href'));
       mostrarRota();
@@ -1865,6 +3195,9 @@
       partidas = dadosDemo();
       jogadores = elencoDemo();
       indexarElenco();
+      const tn = torneiosDemo();
+      torneios = tn.lista;
+      lancamentos = tn.lanc;
       render();
       mostrarRota();
       ligarTempoReal();

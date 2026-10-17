@@ -182,6 +182,13 @@ Errou? Em "Partidas recentes" cada partida tem uma lixeira.
 Elenco: em "Jogadores do clã" aparece o quadro "Cadastrar jogadores". Cola os nicks de todo mundo do clã (um por linha) e toca em Cadastrar. No lápis de cada jogador dá pra trocar nick, cargo ou marcar que saiu do clã. O botão "Baixar tabela" baixa a planilha com a pontuação de todos.
 Não passa a senha pra ninguém. Se outra pessoa precisar ajudar, eu crio uma conta só pra ela.
 
+Torneios 🏆: na Área do admin aparece "Criar torneio" (seção Torneios do clã). Você escolhe:
+- o formato: quem soma mais, maior partida, melhores partidas, corrida até uma meta ou mata-mata 1x1;
+- o que conta: pontos, massa ou outra coisa (kills, abates...);
+- quando começa e termina, quem joga (o clã inteiro ou só quem você marcar) e os prêmios.
+Com pontos ou massa, as partidas que você registra no ranking já entram sozinhas. Com kills, você lança o resultado dentro do torneio. No mata-mata, toca em "Montar a chave", depois toca em cada duelo pra lançar quem venceu: o vencedor avança sozinho.
+O botão "Mandar no grupo" manda a classificação pronta pro WhatsApp. Todo mundo acompanha ao vivo, com contagem regressiva.
+
 Perfil: cada membro toca no próprio nome, vê posições, medalhas e partidas, e toca em "Sou eu" pra ter o atalho "Meu perfil" no topo. O botão "Compartilhar" copia o link do perfil.
 
 Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira um app no celular.</pre></div>
@@ -198,6 +205,7 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
       <li><b>Tirar o acesso de um admin:</b> em <b>Authentication → Users</b>, apague o usuário. Ele perde o acesso na hora.</li>
       <li><b>Ver quem fez o quê:</b> em <b>Table Editor → admin_log</b> fica registrado cada registro, edição e exclusão, com o e-mail de quem fez.</li>
       <li><b>Corrigir um nick escrito errado:</b> na Área do admin, em <b>Jogadores do clã</b>, toque no <b>lápis</b> do jogador e troque o nick. As partidas dele mudam junto.</li>
+      <li><b>Torneios:</b> tudo pelo site, na Área do admin: <b>Criar torneio</b>, <b>Editar</b>, <b>Encerrar agora</b>, <b>Publicar</b> (rascunho só admin vê) e <b>Apagar</b> (dentro de Editar). Não precisa mexer em código.</li>
       <li><b>Nomes dos cargos:</b> por padrão são Líder, Vice-líder e Membro. Pra mudar, adicione no <code>config.js</code> uma linha como <code>CARGOS: ["Líder", "Vice-líder", "Elite", "Membro"],</code> (o primeiro é o mais alto).</li>
     </ul>
 
@@ -216,6 +224,7 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
       <li><b>"E-mail ou senha errados":</b> confira o e-mail em <b>Authentication → Users</b>. Se esqueceu a senha, veja “Trocar a senha de um admin” acima.</li>
       <li><b>"Essa conta não tem acesso de admin":</b> a conta existe, mas falta a linha do <code>insert into public.admins</code> do passo 3.</li>
       <li><b>"Muitas tentativas":</b> o Supabase bloqueia por alguns minutos quem erra a senha muitas vezes. É proteção, espere e tente de novo.</li>
+      <li><b>A seção de torneios não aparece, ou o admin vê "Os torneios ainda não foram ligados no banco":</b> rode o <code>supabase-setup.sql</code> inteiro de novo no SQL Editor. Ele cria as tabelas dos torneios sem apagar nada.</li>
       <li><b>Erro ao enviar com print:</b> rode de novo o <code>supabase-setup.sql</code> inteiro. Pode rodar quantas vezes quiser, ele não apaga nada.</li>
       <li><b>O site parou depois de muitos dias sem uso:</b> no plano grátis, o Supabase pausa o banco depois de uma semana sem nenhum acesso. Entre no Supabase e clique em <span class="btn-nome">Restore project</span>. Com o clã usando, isso não acontece.</li>
     </ul>
