@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publicar Ranking COBR</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fundo:#0B0806; --painel:#140E0A; --linha:#2A1D14; --linha-forte:#5A3418;
+  --texto:#F4EDE6; --texto-2:#C9BBAE; --texto-3:#A8998B;
+  --laranja:#FF7A1A; --laranja-claro:#FFB347; --laranja-escuro:#3A2312; --perigo:#FF8A80;
+  --f-titulo:'Teko','Arial Narrow',Impact,sans-serif; --f-texto:'Chakra Petch','Segoe UI',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font-family:var(--f-texto);font-size:17px;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding:40px max(16px,env(safe-area-inset-left,0px)) 80px max(16px,env(safe-area-inset-right,0px))}
+a{color:var(--laranja-claro)}
+h1{font-family:var(--f-titulo);font-size:clamp(48px,9vw,72px);line-height:.9;margin:0 0 12px;letter-spacing:1px}
+h1 span{color:var(--laranja)}
+.intro{color:var(--texto-2);margin:0 0 28px;max-width:36em}
+.precisa{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 40px;padding:0;list-style:none}
+.precisa li{padding:8px 14px;border:1px solid var(--linha-forte);border-radius:999px;font-size:14px;color:var(--laranja-claro)}
+.passo{display:grid;grid-template-columns:52px minmax(0,1fr);gap:18px;padding:28px 0;border-top:1px solid var(--linha)}
+.num{width:52px;height:52px;border-radius:50%;border:2px solid var(--laranja);color:var(--laranja);display:flex;align-items:center;justify-content:center;font-family:var(--f-titulo);font-size:32px;font-weight:700;padding-top:4px}
+.passo h2{font-family:var(--f-titulo);font-size:34px;line-height:1;margin:8px 0 12px;letter-spacing:.5px}
+.passo ol,.passo ul{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.passo p{margin:0 0 10px}
+b,strong{color:var(--texto)}
+.tempo{font-size:13px;color:var(--texto-3);letter-spacing:1px;margin-top:-6px;margin-bottom:10px}
+code{background:var(--painel);border:1px solid var(--linha);padding:1px 6px;border-radius:5px;font-size:.92em;overflow-wrap:anywhere}
+.btn-nome{display:inline-block;padding:0 7px;border-radius:5px;background:var(--laranja-escuro);color:var(--laranja-claro);font-weight:700;font-size:.92em}
+.codigo{position:relative;margin:10px 0;background:var(--painel);border:1px solid var(--linha-forte);border-radius:10px}
+.codigo pre.msg{white-space:pre-wrap;font-family:var(--f-texto);font-size:15px;padding-top:52px;padding-right:16px}
+.codigo pre{margin:0;padding:14px 96px 14px 16px;overflow-x:auto;font-size:14px;line-height:1.5}
+.copiar{position:absolute;top:8px;right:8px;min-height:36px;padding:0 12px;border:0;border-radius:8px;background:var(--laranja);color:#1A0F06;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.alerta{margin:12px 0;padding:12px 14px;border-radius:10px;background:rgba(255,90,78,.1);border:1px solid rgba(255,90,78,.35);color:#FFD2CD;font-size:15px}
+.dica{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--laranja-escuro);color:var(--laranja-claro);font-size:15px}
+.secao{margin-top:48px;padding-top:28px;border-top:2px solid var(--linha-forte)}
+.secao h2{font-family:var(--f-titulo);font-size:40px;line-height:1;margin:0 0 14px;color:var(--laranja)}
+.secao h3{font-size:17px;margin:22px 0 6px}
+.secao p,.secao ul{margin:0 0 10px;color:var(--texto-2)}
+.secao ul{padding-left:22px}
+.pronto{margin-top:20px;padding:20px;border-radius:14px;background:var(--painel);border:1px solid var(--laranja);text-align:center;font-family:var(--f-titulo);font-size:30px;line-height:1.1}
+:focus-visible{outline:2px solid var(--laranja-claro);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>COLOCAR O RANKING <span>NO AR</span></h1>
+  <p class="intro">Este guia é pra quem vai publicar o site. Isso precisa de um computador <b>uma vez só</b>. Depois de publicado, o dono do clã faz tudo pelo celular: registra as massas, anexa os prints e apaga erros. No fim do guia tem uma mensagem pronta pra mandar pra ele.</p>
+  <ul class="precisa">
+    <li>Computador (só pra publicar)</li>
+    <li>Conta no GitHub</li>
+    <li>Uns 20 minutos</li>
+    <li>Custo: R$ 0</li>
+  </ul>
+
+  <section class="passo">
+    <div class="num">1</div>
+    <div>
+      <h2>Abra a pasta e veja o site</h2>
+      <p class="tempo">2 MINUTOS</p>
+      <ol>
+        <li>Se recebeu um arquivo <code>.zip</code>, clique nele com o botão direito e escolha <b>Extrair tudo</b>.</li>
+        <li>Dentro da pasta, dê dois cliques no <code>index.html</code>. O site abre no navegador em <b>modo demonstração</b>, com dados de exemplo.</li>
+        <li>Lá embaixo, em <span class="btn-nome">Área do dono</span>, use o PIN <code>1234</code> pra ver como registrar. Nesse modo nada é salvo, é só pra testar.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="passo">
+    <div class="num">2</div>
+    <div>
+      <h2>Conta no GitHub</h2>
+      <p class="tempo">PULE SE JÁ TIVER</p>
+      <p>O GitHub guarda os arquivos do site. Com essa conta você também entra no Supabase e na Vercel, sem criar outra senha.</p>
+      <ol>
+        <li>Entre em <a href="https://github.com/signup">github.com/signup</a> e crie a conta (e-mail, senha e um nome de usuário).</li>
+        <li>Confirme o código que chega no seu e-mail.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="passo">
+    <div class="num">3</div>
+    <div>
+      <h2>Crie o banco de dados no Supabase</h2>
+      <p class="tempo">8 MINUTOS</p>
+      <ol>
+        <li>Entre em <a href="https://supabase.com/dashboard">supabase.com/dashboard</a> e clique em <span class="btn-nome">Continue with GitHub</span>.</li>
+        <li>Clique em <span class="btn-nome">New project</span>. Nome: <code>ranking-cobr</code>. Region: <b>South America (São Paulo)</b>. Crie uma senha do banco (anote em algum lugar, mas o site não usa). Clique em <span class="btn-nome">Create new project</span> e espere uns 2 minutos.</li>
+        <li>No menu da esquerda, clique em <b>SQL Editor</b>.</li>
+        <li>Na pasta do site, abra o arquivo <code>supabase-setup.sql</code> com o <b>Bloco de Notas</b> (botão direito → Abrir com). Aperte <b>Ctrl+A</b>, depois <b>Ctrl+C</b>.</li>
+        <li>Volte no Supabase, clique na área de texto, aperte <b>Ctrl+V</b> e clique em <span class="btn-nome">Run</span>. Tem que aparecer <b>Success. No rows returned</b>.</li>
+      </ol>
+      <p style="margin-top:14px"><b>Agora crie o seu PIN de dono.</b> Apague tudo do SQL Editor, cole a linha abaixo, troque o texto entre aspas pelo seu PIN e clique em <span class="btn-nome">Run</span>:</p>
+      <div class="codigo"><button class="copiar" type="button" data-copiar="pin">Copiar</button><pre id="pin">update public.admin_config set pin = 'escreva-seu-pin-aqui' where id = 1;</pre></div>
+      <div class="alerta">Use um PIN difícil, tipo uma frase: <code>cobr-reino-das-cobras-2026</code>. Passe só pro dono do clã: quem tem o PIN consegue registrar e apagar massas.</div>
+      <p style="margin-top:14px"><b>Por último, pegue os dois códigos do seu banco.</b> Clique em <span class="btn-nome">Connect</span> no topo da página (ou vá em <b>Project Settings → API Keys</b>) e deixe aberto. Você vai precisar de:</p>
+      <ul>
+        <li><b>Project URL</b>: algo como <code>https://abcdxyz.supabase.co</code></li>
+        <li>A chave <b>anon public</b> ou <b>publishable</b>: um código comprido</li>
+      </ul>
+      <div class="alerta">Nunca use a chave <b>service_role</b> nem a <b>secret</b>. Essas abrem o banco inteiro.</div>
+    </div>
+  </section>
+
+  <section class="passo">
+    <div class="num">4</div>
+    <div>
+      <h2>Suba os arquivos no GitHub</h2>
+      <p class="tempo">5 MINUTOS</p>
+      <ol>
+        <li>Em <a href="https://github.com/new">github.com/new</a>, em <b>Repository name</b> escreva <code>ranking-cobr</code>. Deixe <b>Public</b> e clique em <span class="btn-nome">Create repository</span>.</li>
+        <li>Na página que abrir, clique no link <b>uploading an existing file</b>.</li>
+        <li>Abra a pasta do site, selecione <b>todos os arquivos</b> (Ctrl+A) e arraste pra página do GitHub.</li>
+        <li>Espere carregar e clique em <span class="btn-nome">Commit changes</span>.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="passo">
+    <div class="num">5</div>
+    <div>
+      <h2>Ligue o site no banco</h2>
+      <p class="tempo">3 MINUTOS</p>
+      <ol>
+        <li>No GitHub, dentro do <code>ranking-cobr</code>, clique no arquivo <code>config.js</code>.</li>
+        <li>Clique no <b>lápis</b> (Edit this file), no canto direito.</li>
+        <li>Troque <code>COLE_AQUI_A_PROJECT_URL</code> pela <b>Project URL</b> do Supabase. Troque <code>COLE_AQUI_A_CHAVE_ANON_OU_PUBLISHABLE</code> pela chave <b>anon/publishable</b>. Deixe as aspas. Fica assim:</li>
+      </ol>
+      <div class="codigo"><pre>SUPABASE_URL: "https://abcdxyz.supabase.co",
+SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIs...",</pre></div>
+      <ol start="4">
+        <li>Clique em <span class="btn-nome">Commit changes…</span> e depois em <span class="btn-nome">Commit changes</span> de novo.</li>
+      </ol>
+      <div class="dica">Essa chave pode ficar visível no GitHub, ela foi feita pra isso. O banco só deixa visitante <b>ver</b> o ranking. Registrar e apagar só funciona com o seu PIN.</div>
+    </div>
+  </section>
+
+  <section class="passo">
+    <div class="num">6</div>
+    <div>
+      <h2>Publique na Vercel</h2>
+      <p class="tempo">3 MINUTOS</p>
+      <ol>
+        <li>Entre em <a href="https://vercel.com/signup">vercel.com/signup</a>, escolha <b>Hobby</b> e clique em <span class="btn-nome">Continue with GitHub</span>.</li>
+        <li>Clique em <span class="btn-nome">Add New…</span> → <b>Project</b>.</li>
+        <li>Ache o <code>ranking-cobr</code> na lista e clique em <span class="btn-nome">Import</span>. Se ele não aparecer, clique em <b>Adjust GitHub App Permissions</b> e libere o repositório.</li>
+        <li>Não mude nada e clique em <span class="btn-nome">Deploy</span>.</li>
+        <li>Em menos de um minuto aparece a tela de parabéns. Clique em <span class="btn-nome">Continue to Dashboard</span>. O link do site fica em <b>Domains</b>, algo como <code>ranking-cobr.vercel.app</code>.</li>
+      </ol>
+      <div class="pronto">PRONTO! AGORA É SÓ AVISAR O DONO 👇</div>
+    </div>
+  </section>
+
+  <section class="secao">
+    <h2>MANDE ISTO PRO DONO DO CLÃ</h2>
+    <p>Copie, troque o <b>[LINK]</b> e o <b>[PIN]</b> e mande no WhatsApp. Com isso ele já sabe usar tudo pelo celular.</p>
+    <div class="codigo"><button class="copiar" type="button" data-copiar="msgDono">Copiar</button><pre id="msgDono" class="msg">Fala! O site do ranking do clã tá no ar 🐍
+[LINK]
+
+Manda esse link no grupo. Todo mundo vê o ranking, mas só você registra as massas. Pelo celular:
+
+1. Abre o link, desce até o fim e toca em "Área do dono".
+2. Digita o PIN: [PIN]
+   Deixa marcado "Lembrar neste aparelho" que não precisa digitar de novo.
+3. Vai aparecer "Registrar massa". Escreve o nick do jogador, a massa e anexa o print da galeria.
+4. Toca em "Colocar no ranking". Os pontos, patentes e medalhas atualizam sozinhos.
+
+Errou? Em "Partidas recentes" cada partida tem uma lixeira.
+Não passa o PIN pra ninguém.
+
+Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira um app no celular.</pre></div>
+
+    <h2 style="margin-top:36px">MUDAR ALGUMA COISA</h2>
+    <p>Tudo que dá pra mudar fica no <code>config.js</code>. No GitHub: clique no arquivo, depois no <b>lápis</b>, mude e clique em <span class="btn-nome">Commit changes</span>. Em 1 minuto o site atualiza sozinho.</p>
+    <ul>
+      <li><b>Quanto vale cada partida:</b> mude os números em <code>PONTOS</code>.</li>
+      <li><b>Abrir o ranking por maior massa em vez de pontos:</b> troque <code>RANKING_POR: "pontos"</code> por <code>"massa"</code>.</li>
+      <li><b>Exigir print pra registrar:</b> troque <code>PRINT_OBRIGATORIO: false</code> por <code>true</code>.</li>
+      <li><b>Trocar a logo:</b> suba outra imagem com o nome <code>logo-cobr.webp</code> (<b>Add file → Upload files</b>).</li>
+      <li><b>Nomes e pontos das patentes:</b> mude em <code>PATENTES</code>.</li>
+      <li><b>Trocar o PIN:</b> rode de novo, no SQL Editor do Supabase, a linha do PIN do passo 3, com o PIN novo, e avise o dono.</li>
+      <li><b>Corrigir um nick escrito errado:</b> no Supabase, <b>Table Editor → scores</b>, clique na célula do nome e corrija.</li>
+    </ul>
+    <h2 style="margin-top:36px">SE DER PROBLEMA</h2>
+    <ul>
+      <li><b>Aparece "Modo demonstração" no site publicado:</b> o <code>config.js</code> não foi salvo com os códigos. Refaça o passo 5.</li>
+      <li><b>"Não consegui ler o ranking":</b> um dos códigos do <code>config.js</code> está errado (confira se não sobrou espaço ou faltou aspas), ou o script do passo 3 não rodou.</li>
+      <li><b>PIN não entra:</b> rode de novo a linha do PIN do passo 3.</li>
+      <li><b>Erro ao enviar com print:</b> rode de novo o <code>supabase-setup.sql</code> inteiro. Pode rodar quantas vezes quiser, ele não apaga nada nem muda o PIN.</li>
+      <li><b>O site parou depois de muitos dias sem uso:</b> no plano grátis, o Supabase pausa o banco depois de uma semana sem nenhum acesso. Entre no Supabase e clique em <span class="btn-nome">Restore project</span>. Com o clã usando, isso não acontece.</li>
+    </ul>
+  </section>
+</div>
+<script>
+document.querySelectorAll('[data-copiar]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var alvo = document.getElementById(b.dataset.copiar);
+    var ok = function () { b.textContent = 'Copiado!'; setTimeout(function () { b.textContent = 'Copiar'; }, 1800); };
+    var manual = function () { var r = document.createRange(); r.selectNodeContents(alvo); var s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Aperte Ctrl+C'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(alvo.textContent).then(ok, manual); else manual();
+  });
+});
+</script>
+</body>
+</html>

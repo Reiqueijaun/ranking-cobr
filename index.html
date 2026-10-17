@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ranking Clã COBR</title>
+<meta name="description" content="Ranking oficial de massa do clã COBR no slither.io">
+<meta name="theme-color" content="#0B0806">
+<meta property="og:title" content="Ranking Clã COBR">
+<meta property="og:description" content="Quem é a maior cobra do clã? Registre sua massa e suba no ranking.">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Teko:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="wrap topo-in">
+    <a class="marca" href="#" aria-label="Início">
+      <img src="logo-cobr.webp" alt="" width="48" height="48">
+      <span class="marca-txt">
+        <span class="marca-nome">CLÃ <span data-tag>COBR</span></span>
+        <span class="marca-sub">RANKING · SLITHER.IO</span>
+      </span>
+    </a>
+    <nav class="menu" aria-label="Seções">
+      <a href="#ranking">Ranking</a>
+      <a href="#tabela">Tabela</a>
+      <a href="#patentes">Patentes</a>
+      <a href="#hall">Hall da fama</a>
+      <a href="#partidas">Partidas</a>
+    </nav>
+    <a class="btn btn-pri" href="#registrar" aria-label="Registrar massa" id="btnTopoRegistrar" hidden>
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span class="btn-txt">Registrar massa</span>
+    </a>
+  </div>
+</header>
+
+<div class="aviso-demo" id="avisoDemo" hidden>
+  <div class="wrap">
+    <strong>Modo demonstração.</strong> Os dados abaixo são de exemplo e nada é salvo. Para ligar o ranking de verdade, preencha o arquivo <code>config.js</code> (veja o guia COMO-COLOCAR-NO-AR.html).
+  </div>
+</div>
+
+<main>
+  <section class="hero wrap">
+    <div class="hero-logo"><img src="logo-cobr.webp" alt="Escudo do clã COBR" width="220" height="220"></div>
+    <div class="hero-txt">
+      <span class="selo" id="seloPeriodo">TEMPORADA</span>
+      <h1>QUEM É A MAIOR<br><span class="laranja">COBRA DO CLÃ?</span></h1>
+      <p>Fez uma partida monstra? Manda o print pro dono do clã e veja seu nome subir no ranking. Bateu o recorde de alguém? O topo é seu.</p>
+      <div class="stats">
+        <div class="stat"><span class="stat-rot">RECORDE DO CLÃ</span><span class="stat-num laranja" id="stRecorde">—</span><span class="stat-sub" id="stRecordeDono">ninguém ainda</span></div>
+        <div class="stat"><span class="stat-rot">LÍDER EM PONTOS</span><span class="stat-num" id="stLider">—</span><span class="stat-sub" id="stLiderDono">ninguém ainda</span></div>
+        <div class="stat"><span class="stat-rot" id="stCemRot">PARTIDAS 100K+</span><span class="stat-num laranja" id="stCem">0</span><span class="stat-sub" id="stCemSub">no clã</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap destaques" aria-label="Destaques do clã">
+    <article class="dq dq-semana" id="dqSemana"></article>
+    <article class="dq dq-recorde" id="dqRecorde"></article>
+    <article class="dq dq-disputa" id="dqDisputa"></article>
+  </section>
+
+  <section class="wrap bloco" id="ranking">
+    <div class="bloco-topo">
+      <h2>PÓDIO</h2>
+      <div class="controles">
+      <div class="abas" role="tablist" aria-label="Ordenar ranking por">
+        <button type="button" role="tab" class="aba" data-modo="pontos" aria-selected="true">Pontos</button>
+        <button type="button" role="tab" class="aba" data-modo="massa" aria-selected="false">Maior massa</button>
+      </div>
+      <div class="abas" role="tablist" aria-label="Período do ranking">
+        <button type="button" role="tab" class="aba" data-periodo="geral" aria-selected="true">Geral</button>
+        <button type="button" role="tab" class="aba" data-periodo="semana" aria-selected="false">Esta semana</button>
+        <button type="button" role="tab" class="aba" data-periodo="mes" aria-selected="false">Este mês</button>
+      </div>
+      </div>
+    </div>
+    <div class="podio" id="podio">
+      <p class="vazio">Carregando ranking…</p>
+    </div>
+  </section>
+
+  <section class="wrap duas-col">
+    <div class="painel col-larga" id="tabela">
+      <div class="painel-topo">
+        <h2>TABELA COMPLETA</h2>
+        <span class="ao-vivo" id="aoVivo"><span class="ponto"></span>ao vivo</span>
+      </div>
+      <div class="tabela-box">
+        <table>
+          <thead>
+            <tr><th>POS</th><th>JOGADOR</th><th class="dir" id="thPontos">PONTOS</th><th class="dir" id="thCem">100K+</th><th class="dir" id="thRecorde">RECORDE</th><th class="dir">PARTIDAS</th></tr>
+          </thead>
+          <tbody id="corpoTabela"></tbody>
+        </table>
+      </div>
+      <div class="conquistas">
+        <h3>ÚLTIMAS CONQUISTAS</h3>
+        <ul id="listaConquistas"></ul>
+      </div>
+    </div>
+
+    <div class="col-lateral">
+    <form class="painel form" id="registrar" novalidate hidden>
+      <div>
+        <h2 class="laranja">REGISTRAR MASSA</h2>
+        <p class="form-sub">Confira o print que o jogador mandou e registre aqui.</p>
+      </div>
+      <div class="campo">
+        <label for="fNome">NICK DO JOGADOR</label>
+        <div class="nick">
+          <span class="nick-tag">[<span data-tag>COBR</span>]</span>
+          <input id="fNome" name="nome" type="text" maxlength="24" autocomplete="nickname" list="listaNomes" placeholder="ex: VENO" required>
+        </div>
+        <datalist id="listaNomes"></datalist>
+      </div>
+      <div class="campo">
+        <label for="fMassa">MASSA FINAL</label>
+        <input id="fMassa" name="massa" type="text" inputmode="numeric" placeholder="ex: 52.000" required aria-describedby="valePontos">
+        <span class="vale" id="valePontos" aria-live="polite"></span>
+      </div>
+      <div class="campo">
+        <label for="fPrint">PRINT DA PARTIDA <span id="printOpc"></span></label>
+        <label class="soltar" for="fPrint" id="zonaPrint">
+          <img id="previaPrint" alt="Prévia do print" hidden>
+          <span id="txtPrint" class="soltar-txt">
+            <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <b>Toque para escolher o print</b>
+            <span>a tela de fim de jogo com a massa</span>
+          </span>
+        </label>
+        <input id="fPrint" name="print" type="file" accept="image/png,image/jpeg,image/webp" class="escondido">
+      </div>
+      <p class="erro" id="erroForm" role="alert" hidden></p>
+      <button type="submit" class="btn btn-pri btn-grande" id="btnEnviar">COLOCAR NO RANKING</button>
+      <p class="form-nota">Errou? Apague na lixeira em Partidas recentes e registre de novo.</p>
+    </form>
+
+      <aside class="painel lateral" id="patentes">
+        <div>
+          <h2>PATENTES</h2>
+          <p class="form-sub">Cada partida dá pontos e os pontos sobem sua patente. Até onde você chega?</p>
+        </div>
+        <ol class="escada" id="escadaPatentes"></ol>
+      </aside>
+
+      <aside class="painel lateral" id="comoEntrar">
+        <h2>COMO ENTRAR NO RANKING</h2>
+        <ol class="passos">
+          <li><span><b>Jogue</b> com a tag <b>[<span data-tag>COBR</span>]</b> no nick.</span></li>
+          <li><span><b>Tire print</b> da tela de fim de jogo, com a massa aparecendo.</span></li>
+          <li><span><b>Mande o print</b> no grupo do clã. O dono confere e coloca no ranking.</span></li>
+        </ol>
+        <details class="regras">
+          <summary>Quanto vale cada partida</summary>
+          <ul class="tabela-pontos" id="tabelaPontos"></ul>
+          <p class="form-nota">Os pontos de todas as partidas somam. Só vale massa com print.</p>
+        </details>
+      </aside>
+    </div>
+
+
+  </section>
+
+  <section class="wrap bloco" id="hall" hidden>
+    <div class="bloco-topo">
+      <h2>HALL DA FAMA <span class="laranja" id="hallMarco">100K+</span></h2>
+      <span class="hall-qtd" id="hallQtd"></span>
+    </div>
+    <ol class="hall" id="listaHall"></ol>
+  </section>
+
+  <section class="wrap bloco" id="partidas">
+    <div class="bloco-topo">
+      <h2>PARTIDAS RECENTES</h2>
+      <span class="admin-tag" id="adminTag" hidden>MODO DONO</span>
+    </div>
+    <ul class="partidas" id="listaPartidas"></ul>
+  </section>
+</main>
+
+<footer class="rodape">
+  <div class="wrap rodape-in">
+    <span>Clã <span data-tag>COBR</span> · Ranking de massa do slither.io</span>
+    <button type="button" class="link-btn" id="btnAdmin">Área do dono</button>
+  </div>
+</footer>
+
+<dialog id="dlgPrint" class="dlg dlg-print">
+  <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+  <img id="imgPrint" alt="Print da partida">
+  <p id="legendaPrint"></p>
+</dialog>
+
+<dialog id="dlgPerfil" class="dlg dlg-perfil" aria-labelledby="perfilNome">
+  <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+  <div id="perfilCorpo"></div>
+</dialog>
+
+<dialog id="dlgAdmin" class="dlg">
+  <form id="formAdmin" class="form-admin">
+    <h2 class="laranja">ÁREA DO DONO</h2>
+    <p>Digite o PIN para registrar e apagar massas.</p>
+    <label for="fPin">PIN</label>
+    <input id="fPin" type="password" autocomplete="current-password" required>
+    <label class="check" for="fLembrar"><input id="fLembrar" type="checkbox" checked> Lembrar neste aparelho</label>
+    <p class="erro" id="erroAdmin" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="button" class="btn btn-sec" id="btnCancelarAdmin">Cancelar</button>
+      <button type="submit" class="btn btn-pri">Entrar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgConfirma" class="dlg">
+  <div class="form-admin">
+    <h2>APAGAR PONTUAÇÃO?</h2>
+    <p id="txtConfirma"></p>
+    <div class="linha-btns">
+      <button type="button" class="btn btn-sec" id="btnNaoApagar">Cancelar</button>
+      <button type="button" class="btn btn-perigo" id="btnSimApagar">Apagar</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
