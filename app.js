@@ -48,6 +48,8 @@
   function indexarElenco() { elenco = new Map(jogadores.map((r) => [chave(r.nick), r])); }
   const exMembro = (k) => { const r = elenco.get(k); return !!r && !r.ativo; };
   const nomeDe = (k, bruto) => (elenco.get(k) ? elenco.get(k).nick : limparNick(bruto));
+  // pra busca: sem acento e sem maiúscula ("Grão" acha com "grao")
+  const busca = (v) => chave(v).normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   function el(tag, props, ...filhos) {
     const n = document.createElement(tag);
@@ -120,6 +122,43 @@
   const marcoTxt = fmtK(MARCO) + '+';
   function fmtK(n) { return n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : fmt(n); }
   const ptsTxt = (n) => `${fmt(n)} ${n === 1 ? 'pt' : 'pts'}`;
+
+  // ---------- leitura da massa ----------
+  // Aceita do jeito que o pessoal escreve: 52430, 52.430, 52 430, 52 mil, 52k, 52,4k, 1 milhão.
+  // Devolve { valor } ou { vazio | erro | decimal } e, se o número parecer curto demais, { pequeno, sugestao }.
+  const SUFIXOS = [
+    [/(milhoes|milhões|milhao|milhão|mi|kk)$/, 1e6],
+    [/(mil|k)$/, 1e3],
+    [/m$/, 0], // "m" sozinho: mil ou milhão, decide pelo tamanho
+  ];
+  function lerMassa(txt) {
+    let s = String(txt || '').toLowerCase().replace(/\s+/g, '').replace(/(de)?massa$/, '');
+    if (!s) return { vazio: true };
+    let mult = 1;
+    for (const [re, m] of SUFIXOS) if (re.test(s)) { s = s.replace(re, ''); mult = m; break; }
+    if (!/^\d[\d.,]*$/.test(s) || /[.,]$/.test(s)) return { erro: true };
+    let valor;
+    if (mult !== 1) {
+      // com "mil"/"k": vírgula ou ponto é casa decimal (52,4k = 52.400)
+      if ((s.match(/[.,]/g) || []).length > 1) return { erro: true };
+      const n = parseFloat(s.replace(',', '.'));
+      if (!isFinite(n)) return { erro: true };
+      if (mult === 0) mult = n * 1e6 > MASSA_MAX ? 1e3 : 1e6;
+      valor = Math.round(n * mult);
+    } else if (/^\d+$/.test(s)) {
+      valor = parseInt(s, 10);
+    } else if (/^\d{1,3}([.,]\d{3})+$/.test(s)) {
+      valor = parseInt(s.replace(/[.,]/g, ''), 10); // 52.430 ou 52,430
+    } else if (/^\d+[.,]\d{1,2}$/.test(s)) {
+      // 52,4 sem "mil": massa não tem casa decimal, provavelmente faltou o "mil"
+      return { decimal: true, sugestao: Math.round(parseFloat(s.replace(',', '.')) * 1000) };
+    } else {
+      return { erro: true };
+    }
+    const r = { valor };
+    if (mult === 1 && valor > 0 && valor < 1000) { r.pequeno = true; r.sugestao = valor * 1000; }
+    return r;
+  }
 
   // todos = true inclui quem saiu do clã (ex-membros ficam fora do ranking)
   function montarRanking(per, ordem = modo, todos = false) {
@@ -208,14 +247,136 @@
     $('registrar').hidden = !pinAdmin;
     $('comoEntrar').hidden = !!pinAdmin;
     $('btnTopoRegistrar').hidden = !pinAdmin;
+    $('bbRegistrar').hidden = !pinAdmin;
+    $('bbBusca').hidden = !!pinAdmin;
     $('formCadastro').hidden = !pinAdmin || !elencoOk;
     $('avisoElenco').hidden = !pinAdmin || elencoOk;
     document.body.classList.toggle('modo-dono', !!pinAdmin);
 
-    // sugestões de nick: elenco do clã + quem já pontuou
-    const nomes = new Map(jogadores.filter((r) => r.ativo).map((r) => [chave(r.nick), r.nick]));
-    for (const j of geralMassa) if (!nomes.has(j.chave)) nomes.set(j.chave, j.nome);
-    $('listaNomes').replaceChildren(...[...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((n) => el('option', { value: n })));
+    if (pinAdmin) renderSugNick();
+    if ($('dlgBusca').open) renderBusca();
+  }
+
+  // ---------- nicks pra tocar e preencher no registro ----------
+  // quem jogou por último aparece primeiro; depois o resto do elenco
+  function nicksConhecidos() {
+    const mapa = new Map();
+    for (const p of partidas) { const k = chave(p.player); if (!mapa.has(k) && !exMembro(k)) mapa.set(k, nomeDe(k, p.player)); }
+    for (const r of jogadores) if (r.ativo && !mapa.has(chave(r.nick))) mapa.set(chave(r.nick), r.nick);
+    return [...mapa.values()];
+  }
+  function renderSugNick() {
+    const q = busca($('fNome').value);
+    let lista = nicksConhecidos();
+    if (q) {
+      lista = lista.filter((n) => busca(n).includes(q) && busca(n) !== q)
+        .sort((a, b) => busca(b).startsWith(q) - busca(a).startsWith(q));
+    }
+    $('sugNick').replaceChildren(...lista.slice(0, q ? 6 : 8).map((n) => el('button', {
+      type: 'button', class: 'sug', text: n,
+      onclick: () => { $('fNome').value = n; $('fNome').dispatchEvent(new Event('input')); $('fMassa').focus(); },
+    })));
+  }
+
+  // ---------- campo de massa: mostra como vai entrar antes de enviar ----------
+  let confirmarPequena = null;
+  function mostrarMassa() {
+    const r = lerMassa($('fMassa').value);
+    const box = $('valePontos');
+    box.className = 'massa-lida';
+    $('btnMil').classList.toggle('chama', !!r.sugestao);
+    const usar = (v) => el('button', { type: 'button', class: 'usar', text: `Usar ${fmt(v)}`, onclick: () => aplicarMassa(v) });
+    if (r.vazio) { box.replaceChildren(); return; }
+    if (r.erro) { box.classList.add('ruim'); box.replaceChildren('Não entendi esse número. Escreve tipo 52430 ou 52 mil.'); return; }
+    if (r.decimal) { box.classList.add('alerta'); box.replaceChildren(el('span', { class: 'ml-aviso', text: `Massa não tem vírgula. Era ${fmt(r.sugestao)}?` }), usar(r.sugestao)); return; }
+    if (r.valor > MASSA_MAX) { box.classList.add('ruim'); box.replaceChildren(`${fmt(r.valor)} passa de ${fmt(MASSA_MAX)}. Confere o número.`); return; }
+    const pts = pontosDe(r.valor);
+    box.replaceChildren(...[
+      el('span', { class: 'ml-rot', text: 'VAI ENTRAR COMO' }),
+      el('b', { text: fmt(r.valor) }),
+      el('span', { class: 'ml-pts', text: `${pts ? '+' + ptsTxt(pts) : 'sem pontos'}${r.valor >= MARCO ? ' · ' + marcoTxt : ''}` }),
+      r.pequeno ? el('span', { class: 'ml-aviso' }, `Só ${fmt(r.valor)} de massa? Se for ${fmt(r.sugestao)}: `, usar(r.sugestao)) : null,
+    ].filter(Boolean));
+    if (r.pequeno) box.classList.add('alerta');
+  }
+  function aplicarMassa(v) {
+    $('fMassa').value = fmt(v);
+    confirmarPequena = null;
+    mostrarErro(null);
+    mostrarMassa();
+  }
+  function multiplicarMil() {
+    const r = lerMassa($('fMassa').value);
+    if (r.sugestao) { aplicarMassa(r.sugestao); return; }
+    if (r.vazio) { $('fMassa').focus(); toast('Digita o número primeiro, tipo 52, e depois toca em × MIL.'); return; }
+    if (r.valor) toast(`${fmt(r.valor)} já está completo, não precisa do × MIL.`);
+  }
+
+  // ---------- busca rápida de jogador ----------
+  let achados = [];
+  function abrirBusca() {
+    const dlg = $('dlgBusca');
+    $('fBuscaGlobal').value = '';
+    renderBusca();
+    if (!dlg.open) dlg.showModal();
+    $('listaBusca').scrollTop = 0;
+    $('fBuscaGlobal').focus();
+  }
+  function renderBusca() {
+    const bruto = $('fBuscaGlobal').value.trim();
+    const q = busca(bruto);
+    const stats = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j]));
+    const pos = new Map(montarRanking('geral', 'pontos').map((j, i) => [j.chave, i + 1]));
+    achados = listaElenco()
+      .filter((r) => !q || busca(r.nick).includes(q))
+      .map((r) => ({ r, s: stats.get(r.chave), pos: pos.get(r.chave) || 0, comeca: !!q && busca(r.nick).startsWith(q) }))
+      .sort((a, b) => (b.comeca - a.comeca) || (b.r.ativo - a.r.ativo) || ((a.pos || 1e9) - (b.pos || 1e9)) || a.r.nick.localeCompare(b.r.nick, 'pt-BR'));
+    $('buscaAtalhos').hidden = !!q;
+    $('buscaAtalhos').querySelector('[href="#hall"]').hidden = $('hall').hidden;
+    const ul = $('listaBusca');
+    if (!achados.length) {
+      ul.replaceChildren(el('li', { class: 'busca-vazio', text: q ? `Ninguém com "${bruto}" no nick.` : 'Nenhum jogador ainda.' }));
+      return;
+    }
+    ul.replaceChildren(...achados.slice(0, 80).map(({ r, s, pos: p }) => el('li', null,
+      el('button', { type: 'button', class: 'busca-item', onclick: () => irPerfil(r.chave) },
+        el('span', { class: `busca-pos pos p${p}`, text: p ? `#${p}` : '–' }),
+        avatarDe(r.nick, s ? s.pontos : 0),
+        el('span', { class: 'busca-info' },
+          el('span', { class: 'busca-nome' }, el('span', { class: 'busca-nick', text: r.nick }), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX' }) : null),
+          el('span', { class: 'busca-sub', text: s ? `${ptsTxt(s.pontos)} · recorde ${fmt(s.melhor.mass)} · ${s.qtd} ${s.qtd === 1 ? 'partida' : 'partidas'}` : 'ainda sem partida' })),
+        chipPatente(s ? s.pontos : 0, 'busca-pat')))));
+  }
+  function irPerfil(k) {
+    $('dlgBusca').close();
+    abrirPerfil(k);
+  }
+
+  // ---------- barra de baixo (celular) ----------
+  function irRegistrar() {
+    $('registrar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('fNome').focus({ preventScroll: true });
+  }
+  function ligarBarraBaixo() {
+    const links = [...document.querySelectorAll('#barraBaixo a[data-sec]')];
+    // qual seção da página conta como qual botão
+    const alvos = [['ranking', 'ranking'], ['tabela', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
+    let pedido = false;
+    const marcar = () => {
+      pedido = false;
+      const linha = innerHeight * 0.4;
+      let atual = null, maior = -Infinity;
+      for (const [id, sec] of alvos) {
+        const n = $(id);
+        if (!n || n.hidden) continue;
+        const t = n.getBoundingClientRect().top;
+        if (t <= linha && t > maior) { maior = t; atual = sec; }
+      }
+      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) atual = 'partidas';
+      links.forEach((a) => a.classList.toggle('ativo', a.dataset.sec === atual));
+    };
+    addEventListener('scroll', () => { if (!pedido) { pedido = true; requestAnimationFrame(marcar); } }, { passive: true });
+    marcar();
   }
 
   // ---------- jogadores do clã (elenco + tabelas) ----------
@@ -1061,10 +1222,18 @@
   async function enviar(ev) {
     ev.preventDefault();
     const nome = limparNick($('fNome').value);
-    const massa = parseInt(String($('fMassa').value).replace(/\D/g, ''), 10);
+    const lida = lerMassa($('fMassa').value);
+    const massa = lida.valor;
     if (!nome) return mostrarErro('Escreve o nick do jogador.');
-    if (!massa || massa < MASSA_MIN) return mostrarErro('Escreve a massa final da partida (só números, ex: 52000).');
+    if (lida.vazio) return mostrarErro('Escreve a massa final da partida. Ex: 52430 ou 52 mil.');
+    if (lida.erro) return mostrarErro('Não entendi a massa. Escreve só o número (52430) ou com "mil" (52 mil).');
+    if (lida.decimal) return mostrarErro(`Massa não tem vírgula. Se for ${fmt(lida.sugestao)}, toque em × MIL.`);
+    if (massa < MASSA_MIN) return mostrarErro(lida.sugestao ? `Massa baixa demais. Se for ${fmt(lida.sugestao)}, toque em × MIL.` : 'Escreve a massa final da partida. Ex: 52430 ou 52 mil.');
     if (massa > MASSA_MAX) return mostrarErro(`Massa acima de ${fmt(MASSA_MAX)}? Confere o número.`);
+    if (lida.pequeno && confirmarPequena !== massa) {
+      confirmarPequena = massa;
+      return mostrarErro(`Só ${fmt(massa)} de massa? Se for ${fmt(lida.sugestao)}, toque em × MIL. Se for ${fmt(massa)} mesmo, toque em COLOCAR NO RANKING de novo.`);
+    }
     if (PRINT_OBRIGATORIO && !arquivoPrint) return mostrarErro('Escolhe o print da partida. Ele é a prova da massa.');
     if (!pinAdmin) return mostrarErro('Entre na área do dono para registrar.');
     mostrarErro(null);
@@ -1123,8 +1292,10 @@
         const pos = montarRanking(periodo).findIndex((j) => j.chave === chave(nome)) + 1;
         toast(`Registrado!${ganhou} ${comTag(nome)} está em ${pos}º lugar.`);
       }
-      $('valePontos').textContent = '';
+      confirmarPequena = null;
+      mostrarMassa();
       $('avisoNick').textContent = '';
+      renderSugNick();
       $('fNome').focus();
     } catch (e) {
       console.error(e);
@@ -1297,7 +1468,9 @@
       const k = chave($('fNome').value);
       const r = elenco.get(k);
       $('avisoNick').textContent = !k || !elencoOk ? '' : !r ? 'Jogador novo: entra no elenco do clã ao registrar.' : !r.ativo ? 'Era ex-membro: volta pro clã ao registrar.' : '';
+      renderSugNick();
     });
+    $('fNome').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('fMassa').focus(); } });
 
     // jogadores do clã
     opcoesCargo($('fCargo'), CARGO_PADRAO);
@@ -1316,10 +1489,30 @@
     $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
     $('btnApagarJog').addEventListener('click', apagarJogador);
 
-    $('fMassa').addEventListener('input', () => {
-      const m = parseInt(String($('fMassa').value).replace(/\D/g, ''), 10);
-      $('valePontos').textContent = m ? `Vale ${ptsTxt(pontosDe(m))}${m >= MARCO ? ' · conta como ' + marcoTxt : ''}` : '';
+    $('fMassa').addEventListener('input', () => { confirmarPequena = null; mostrarMassa(); });
+    // ao sair do campo, deixa o número no formato certo (52 mil -> 52.000)
+    $('fMassa').addEventListener('blur', () => {
+      const r = lerMassa($('fMassa').value);
+      if (r.valor && r.valor <= MASSA_MAX) $('fMassa').value = fmt(r.valor);
     });
+    $('btnMil').addEventListener('mousedown', (e) => e.preventDefault()); // não fecha o teclado do celular
+    $('btnMil').addEventListener('click', multiplicarMil);
+
+    // busca rápida e barra de baixo
+    $('btnBusca').addEventListener('click', abrirBusca);
+    $('bbBusca').addEventListener('click', abrirBusca);
+    $('bbRegistrar').addEventListener('click', irRegistrar);
+    $('btnFecharBusca').addEventListener('click', () => $('dlgBusca').close());
+    $('fBuscaGlobal').addEventListener('input', renderBusca);
+    $('fBuscaGlobal').addEventListener('keydown', (e) => { if (e.key === 'Enter' && achados[0]) { e.preventDefault(); irPerfil(achados[0].r.chave); } });
+    $('buscaAtalhos').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgBusca').close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+      if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      abrirBusca();
+    });
+    ligarBarraBaixo();
 
     // formulário
     $('registrar').addEventListener('submit', enviar);
@@ -1345,7 +1538,7 @@
     $('btnNaoApagar').addEventListener('click', () => $('dlgConfirma').close());
     $('btnSimApagar').addEventListener('click', confirmarApagar);
     // fechar janelas tocando fora delas
-    ['dlgPrint', 'dlgPerfil'].forEach((id) => $(id).addEventListener('click', (e) => {
+    ['dlgPrint', 'dlgPerfil', 'dlgBusca'].forEach((id) => $(id).addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       if (e.target === e.currentTarget && fora) e.currentTarget.close();
