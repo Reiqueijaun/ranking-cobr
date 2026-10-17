@@ -80,9 +80,9 @@
         <button type="button" role="tab" class="aba" data-modo="massa" aria-selected="false">Maior massa</button>
       </div>
       <div class="abas" role="tablist" aria-label="Período do ranking">
-        <button type="button" role="tab" class="aba" data-periodo="geral" aria-selected="true">Geral</button>
+        <button type="button" role="tab" class="aba" data-periodo="mes" aria-selected="true">Temporada</button>
         <button type="button" role="tab" class="aba" data-periodo="semana" aria-selected="false">Esta semana</button>
-        <button type="button" role="tab" class="aba" data-periodo="mes" aria-selected="false">Este mês</button>
+        <button type="button" role="tab" class="aba" data-periodo="geral" aria-selected="false">Geral</button>
       </div>
       </div>
     </div>
@@ -176,6 +176,17 @@
     </div>
 
 
+  </section>
+
+  <section class="wrap bloco" id="temporadas" hidden>
+    <div class="bloco-topo">
+      <div>
+        <h2>CAMPEÕES DAS <span class="laranja">TEMPORADAS</span></h2>
+        <p class="bloco-sub">Todo mês é uma temporada nova: os pontos do mês zeram e quem fizer mais leva o título. Os pontos gerais e a patente continuam.</p>
+      </div>
+      <span class="hall-qtd" id="tempQtd"></span>
+    </div>
+    <ol class="temps" id="listaTemporadas"></ol>
   </section>
 
   <section class="wrap bloco" id="jogadores">
@@ -333,7 +344,7 @@
     <button type="button" class="link-btn" id="btnFecharBusca">Fechar</button>
   </div>
   <div class="busca-atalhos" id="buscaAtalhos">
-    <a href="#ranking">Pódio</a><a href="#tabela">Tabela</a><a href="#jogadores">Jogadores</a><a href="#patentes">Patentes</a><a href="#hall">Hall da fama</a><a href="#partidas">Partidas</a>
+    <a href="#ranking">Pódio</a><a href="#tabela">Tabela</a><a href="#temporadas">Temporadas</a><a href="#jogadores">Jogadores</a><a href="#patentes">Patentes</a><a href="#hall">Hall da fama</a><a href="#partidas">Partidas</a>
   </div>
   <ul class="busca-lista" id="listaBusca"></ul>
 </dialog>

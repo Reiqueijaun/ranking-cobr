@@ -16,7 +16,7 @@
   const $ = (id) => document.getElementById(id);
   let sb = null;
   let partidas = [];          // todas as pontuações, mais novas primeiro
-  let periodo = 'geral';
+  let periodo = 'mes';        // abre na temporada (mês atual)
   let modo = CFG.RANKING_POR === 'massa' ? 'massa' : 'pontos';
   let pinAdmin = null;
   let arquivoPrint = null;
@@ -70,6 +70,7 @@
     return w.firstChild;
   }
   const ICONE_COROA = '<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/>';
+  const ICONE_TROFEU = '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>';
   const ICONE_LIXO = '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>';
 
   let toastTimer;
@@ -107,20 +108,28 @@
   }
 
   // ---------- pontos ----------
-  // 1 ponto a cada 1.000 de massa + bônus a cada meta batida (100K, 200K ... 1M)
+  // 1 ponto a cada 1.000 de massa + bônus a cada meta batida (100K, 200K ... 1M).
+  // O bônus cresce: 1ª meta +30, 2ª +40, 3ª +50...
   const MARCO = Number(CFG.MARCO) || 100000;
   const REGRA = CFG.PONTOS && !Array.isArray(CFG.PONTOS) ? CFG.PONTOS : {};
-  const POR_MIL = REGRA.POR_MIL != null ? Number(REGRA.POR_MIL) || 0 : 1;
+  const num = (v, padrao) => (v != null && isFinite(v) ? Number(v) : padrao);
+  const POR_MIL = num(REGRA.POR_MIL, 1);
   const META = Number(REGRA.META) || 100000;
-  const BONUS_META = REGRA.BONUS_META != null ? Number(REGRA.BONUS_META) || 0 : 30;
+  const BONUS_META = num(REGRA.BONUS_META, 30);
+  const BONUS_SOBE = num(REGRA.BONUS_SOBE, 10);
+  const bonusDaMeta = (n) => BONUS_META + (n - 1) * BONUS_SOBE; // bônus da n-ésima meta
   function detalhePontos(massa) {
     const base = Math.floor(massa / 1000) * POR_MIL;
     const metas = Math.floor(massa / META);
-    return { base, metas, bonus: metas * BONUS_META, total: base + metas * BONUS_META };
+    const bonus = metas * BONUS_META + BONUS_SOBE * metas * (metas - 1) / 2;
+    return { base, metas, bonus, total: base + bonus };
   }
   const pontosDe = (massa) => detalhePontos(massa).total;
   const marcoTxt = fmtK(MARCO) + '+';
-  function fmtK(n) { return n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : fmt(n); }
+  function fmtK(n) {
+    if (n >= 1e6 && n % 1e6 === 0) return `${n / 1e6}M`;
+    return n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : fmt(n);
+  }
   const ptsTxt = (n) => `${fmt(n)} ${n === 1 ? 'pt' : 'pts'}`;
 
   // ---------- leitura da massa ----------
@@ -161,13 +170,15 @@
   }
 
   // todos = true inclui quem saiu do clã (ex-membros ficam fora do ranking)
-  function montarRanking(per, ordem = modo, todos = false) {
-    const desde = inicioPeriodo(per);
+  // per pode ser 'geral' | 'semana' | 'mes' ou um instante de início; ate = fim (exclusivo)
+  function montarRanking(per, ordem = modo, todos = false, ate = Infinity) {
+    const desde = typeof per === 'number' ? per : inicioPeriodo(per);
     const mapa = new Map();
     // percorre do mais antigo pro mais novo para o nome mais recente prevalecer
     for (let i = partidas.length - 1; i >= 0; i--) {
       const p = partidas[i];
-      if (new Date(p.created_at).getTime() < desde) continue;
+      const t = new Date(p.created_at).getTime();
+      if (t < desde || t >= ate) continue;
       const k = chave(p.player);
       if (!todos && exMembro(k)) continue;
       let j = mapa.get(k);
@@ -184,6 +195,29 @@
     const porPontos = (a, b) => b.pontos - a.pontos || b.cem - a.cem || porMassa(a, b);
     return [...mapa.values()].sort(ordem === 'massa' ? porMassa : porPontos);
   }
+
+  // ---------- temporadas (uma por mês) ----------
+  // Da mais nova pra mais velha; a do mês atual vem marcada como em andamento.
+  function montarTemporadas() {
+    if (!partidas.length) return [];
+    const velha = new Date(partidas[partidas.length - 1].created_at);
+    const limite = new Date(velha.getFullYear(), velha.getMonth(), 1).getTime();
+    const hoje = new Date();
+    const lista = [];
+    for (let d = new Date(hoje.getFullYear(), hoje.getMonth(), 1); d.getTime() >= limite; d = new Date(d.getFullYear(), d.getMonth() - 1, 1)) {
+      const fim = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+      const top = montarRanking(d.getTime(), 'pontos', true, fim).filter((j) => j.pontos > 0);
+      if (top.length) lista.push({ inicio: d.getTime(), fim, atual: fim > Date.now(), top });
+    }
+    return lista;
+  }
+  // quantas temporadas (já fechadas) cada jogador ganhou
+  function contarTitulos(temps) {
+    const n = new Map();
+    for (const t of temps) if (!t.atual) n.set(t.top[0].chave, (n.get(t.top[0].chave) || 0) + 1);
+    return n;
+  }
+  const nomeMes = (t) => new Date(t).toLocaleDateString('pt-BR', { month: 'long' });
 
   function montarConquistas() {
     const eventos = [];
@@ -233,12 +267,14 @@
     $('stCem').textContent = fmt(partidas.filter((p) => p.mass >= MARCO).length);
     $('stCemSub').textContent = 'somando o clã todo';
 
-    const ctx = { pontos: geralPontos, massa: geralMassa, semana: montarRanking('semana', 'pontos') };
+    const temps = montarTemporadas();
+    const ctx = { pontos: geralPontos, massa: geralMassa, semana: montarRanking('semana', 'pontos'), temps, titulos: contarTitulos(temps) };
     renderDestaques(ctx);
-    renderPodio(rank);
-    renderTabela(rank);
+    renderPodio(rank, ctx);
+    renderTabela(rank, ctx);
     renderConquistas();
     renderPatentes(ctx);
+    renderTemporadas(ctx);
     renderHall();
     renderPartidas();
     renderJogadores();
@@ -333,6 +369,7 @@
       .sort((a, b) => (b.comeca - a.comeca) || (b.r.ativo - a.r.ativo) || ((a.pos || 1e9) - (b.pos || 1e9)) || a.r.nick.localeCompare(b.r.nick, 'pt-BR'));
     $('buscaAtalhos').hidden = !!q;
     $('buscaAtalhos').querySelector('[href="#hall"]').hidden = $('hall').hidden;
+    $('buscaAtalhos').querySelector('[href="#temporadas"]').hidden = $('temporadas').hidden;
     const ul = $('listaBusca');
     if (!achados.length) {
       ul.replaceChildren(el('li', { class: 'busca-vazio', text: q ? `Ninguém com "${bruto}" no nick.` : 'Nenhum jogador ainda.' }));
@@ -360,7 +397,7 @@
   function ligarBarraBaixo() {
     const links = [...document.querySelectorAll('#barraBaixo a[data-sec]')];
     // qual seção da página conta como qual botão
-    const alvos = [['ranking', 'ranking'], ['tabela', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
+    const alvos = [['ranking', 'ranking'], ['tabela', 'ranking'], ['temporadas', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
     let pedido = false;
     const marcar = () => {
       pedido = false;
@@ -825,12 +862,15 @@
     return g ? g.pontos : 0;
   }
 
-  function renderPodio(rank) {
+  function renderPodio(rank, ctx) {
     const box = $('podio');
     if (!rank.length) {
+      const ultima = ctx.temps.find((t) => !t.atual);
       const msg = periodo === 'geral'
         ? 'Ninguém entrou no ranking ainda. Manda o print da sua melhor partida pro dono do clã!'
-        : `Ninguém registrou massa ${periodo === 'semana' ? 'nesta semana' : 'neste mês'} ainda.`;
+        : periodo === 'mes'
+          ? `A temporada de ${nomeMes(Date.now())} começou e ninguém pontuou ainda. O pódio está livre!${ultima ? ` Campeão de ${nomeMes(ultima.inicio)}: ${comTag(ultima.top[0].nome)}.` : ''}`
+          : 'Ninguém registrou massa nesta semana ainda.';
       box.replaceChildren(el('p', { class: 'vazio', text: msg }));
       return;
     }
@@ -859,7 +899,12 @@
     }));
   }
 
-  function renderTabela(rank) {
+  function chipTitulos(n) {
+    if (!n) return null;
+    return el('span', { class: 'titulo-chip', title: `${n}× campeão de temporada` }, svg(ICONE_TROFEU, 12), n > 1 ? `${n}×` : null);
+  }
+
+  function renderTabela(rank, ctx) {
     const corpo = $('corpoTabela');
     $('thPontos').classList.toggle('ativo', modo === 'pontos');
     $('thRecorde').classList.toggle('ativo', modo === 'massa');
@@ -872,7 +917,7 @@
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       return el('tr', { class: i === 0 ? 'topo1' : null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
@@ -921,10 +966,12 @@
       const d = detalhePontos(m);
       return linha(`${fmt(m)} de massa`, d.bonus ? `${fmt(d.base)} + ${fmt(d.bonus)} = ${ptsTxt(d.total)}` : ptsTxt(d.total), d.bonus ? 'topo' : null);
     };
-    const exemplos = [50000, META - 1000, META, Math.round(META * 2.5), MASSA_MAX].filter((m, i, a) => m > 0 && m <= MASSA_MAX && a.indexOf(m) === i);
+    const exemplos = [50000, META - 1000, META, META * 2, META * 5, MASSA_MAX].filter((m, i, a) => m > 0 && m <= MASSA_MAX && a.indexOf(m) === i);
+    const metas = [1, 2, 3].filter((n) => bonusDaMeta(n) > 0);
     $('tabelaPontos').replaceChildren(...[
       linha('a cada 1.000 de massa', ptsTxt(POR_MIL)),
-      BONUS_META ? linha(`bônus a cada ${fmtK(META)} (${fmtK(META)}, ${fmtK(META * 2)}, ${fmtK(META * 3)}…)`, `+${ptsTxt(BONUS_META)}`, 'topo') : null,
+      ...metas.map((n) => linha(`bônus ao passar de ${fmtK(META * n)}`, `+${ptsTxt(bonusDaMeta(n))}`, 'topo')),
+      BONUS_SOBE && metas.length ? el('li', { class: 'tp-nota', text: `…e cada meta seguinte vale +${fmt(BONUS_SOBE)} a mais, até ${fmtK(MASSA_MAX)}.` }) : null,
       el('li', { class: 'tp-sep', text: 'EXEMPLOS' }),
       ...exemplos.map(exemplo),
     ].filter(Boolean));
@@ -967,18 +1014,26 @@
   // ---------- medalhas ----------
   function medalhasDe(j, ctx) {
     const sem = ctx.semana.find((x) => x.chave === j.chave);
+    const recorde = j.melhor ? j.melhor.mass : 0;
+    const titulos = (ctx.titulos && ctx.titulos.get(j.chave)) || 0;
+    const clube = (vezes, id, icone) => ({ id, nome: `Clube ${fmtK(MARCO * vezes)}`, como: `1 partida de ${fmtK(MARCO * vezes)}+`, ok: recorde >= MARCO * vezes, icone });
     return [
       { id: 'rei', nome: 'Rei do clã', como: '1º lugar em pontos', ok: ctx.pontos[0] && ctx.pontos[0].chave === j.chave, icone: ICONE_COROA },
       { id: 'recorde', nome: 'Recordista', como: 'maior massa do clã', ok: ctx.massa[0] && ctx.massa[0].chave === j.chave, icone: '<path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/>' },
       { id: 'semana', nome: 'Cobra da semana', como: 'mais pontos na semana', ok: ctx.semana[0] && ctx.semana[0].chave === j.chave && ctx.semana[0].pontos > 0, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>' },
       { id: 'clube', nome: `Clube ${marcoTxt}`, como: `1 partida de ${marcoTxt}`, ok: j.cem >= 1, icone: '<circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/>' },
       { id: 'maquina', nome: `Máquina de ${fmtK(MARCO)}`, como: `5 partidas de ${marcoTxt}`, ok: j.cem >= 5, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
+      clube(2, 'clube2', '<path d="M7 17l5-5 5 5M7 11l5-5 5 5"/>'),
+      clube(5, 'clube5', '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/>'),
+      clube(10, 'clube10', '<path d="M3 20l6-10 4 6 3-4 5 8z"/><path d="M9 10V4l4 2-4 2"/>'),
+      { id: 'campeao', nome: titulos > 1 ? `Campeão ${titulos}×` : 'Campeão de temporada', como: 'ganhar uma temporada (1º do mês)', ok: titulos > 0, icone: ICONE_TROFEU },
       { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>' },
       { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>' },
     ];
   }
   function contexto() {
-    return { pontos: montarRanking('geral', 'pontos'), massa: montarRanking('geral', 'massa'), semana: montarRanking('semana', 'pontos') };
+    const temps = montarTemporadas();
+    return { pontos: montarRanking('geral', 'pontos'), massa: montarRanking('geral', 'massa'), semana: montarRanking('semana', 'pontos'), temps, titulos: contarTitulos(temps) };
   }
 
   // ---------- destaques ----------
@@ -1061,6 +1116,33 @@
           gente.length
             ? [...gente.slice(0, 4).map((j) => btnPerfil(j, 'av-btn', avatarDe(j.nome, j.pontos))), gente.length > 4 ? el('span', { class: 'mais', text: `+${gente.length - 4}` }) : null]
             : el('span', { class: 'ninguem', text: 'ninguém ainda' }))
+      );
+    }));
+  }
+
+  // ---------- campeões das temporadas ----------
+  function fechaTemporadaTxt(fim) {
+    const h = Math.max(0, Math.round((fim - Date.now()) / 3600000));
+    if (h < 24) return h < 1 ? 'fecha em instantes' : `fecha em ${h} h`;
+    const d = Math.round(h / 24);
+    return `fecha em ${d} ${d === 1 ? 'dia' : 'dias'}`;
+  }
+  function renderTemporadas(ctx) {
+    const temps = ctx.temps.slice(0, 12);
+    $('temporadas').hidden = !temps.length;
+    const fechadas = ctx.temps.filter((t) => !t.atual).length;
+    $('tempQtd').textContent = fechadas ? `${fechadas} ${fechadas === 1 ? 'temporada fechada' : 'temporadas fechadas'}` : 'a primeira temporada está rolando';
+    $('listaTemporadas').replaceChildren(...temps.map((t) => {
+      const ano = new Date(t.inicio).getFullYear();
+      return el('li', { class: `temp ${t.atual ? 'temp-atual' : ''}` },
+        el('div', { class: 'temp-topo' },
+          el('span', { class: 'temp-mes', text: `${nomeMes(t.inicio).toUpperCase()}${ano !== new Date().getFullYear() ? ' ' + ano : ''}` }),
+          el('span', { class: `temp-status ${t.atual ? 'ao' : ''}`, text: t.atual ? `em andamento · ${fechaTemporadaTxt(t.fim)}` : 'encerrada' })),
+        el('ol', { class: 'temp-top' }, ...t.top.slice(0, 3).map((j, i) => el('li', { class: `tt tt${i + 1}` },
+          el('span', { class: 'tt-pos' }, i === 0 && !t.atual ? svg(ICONE_TROFEU, 16) : `${i + 1}º`),
+          el('span', { class: 'tt-nome' }, btnPerfil(j, 'link-nome', j.nome), i === 0 ? el('small', { text: t.atual ? 'liderando' : 'campeão' }) : null),
+          el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
+        t.top.length > 3 ? el('div', { class: 'temp-pe', text: `${t.top.length} jogadores pontuaram` }) : null
       );
     }));
   }
@@ -1414,6 +1496,8 @@
       ['Shawdow', 54105, 150], ['Mamba', 25300, 170], ['VENO', 101990, 200], ['Kaiser', 12900, 230], ['Shawdow', 22310, 260],
       ['VETERANO', 33700, 300], ['VENO', 104500, 320], ['Shawdow', 66780, 350], ['VENO', 58200, 400], ['Shawdow', 51200, 450],
       ['VENO', 73400, 500], ['Shawdow', 30100, 560], ['VETERANO', 26700, 600], ['VENO', 120880, 640],
+      ['Shawdow', 215000, 1000], ['Kaiser', 88000, 1100], ['Shawdow', 78000, 1200], ['VENO', 64000, 1300],
+      ['Mamba', 47000, 1500], ['Kaiser', 39000, 1600], ['VETERANO', 31000, 1700],
     ];
     return lista.map(([player, mass, horas], i) => ({ id: 'd' + i, player, mass, created_at: h(horas) }));
   }

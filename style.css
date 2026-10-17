@@ -298,6 +298,7 @@ td .cem-chip { margin-left: 0; }
 .tabela-pontos li b { color: var(--texto); }
 .tabela-pontos li.topo { background: var(--laranja-escuro); color: var(--laranja-claro); }
 .tabela-pontos li.topo b { color: var(--laranja-claro); }
+.tabela-pontos li.tp-nota { background: none; padding: 0 2px; font-size: 13px; color: var(--texto-3); }
 .tabela-pontos li.tp-sep { background: none; padding: 6px 2px 0; font-size: 11px; letter-spacing: 1.5px; color: var(--texto-3); }
 .vale { min-height: 20px; font-size: 13px; color: var(--laranja-claro); font-weight: 600; }
 
@@ -397,6 +398,29 @@ td .cem-chip { margin-left: 0; }
 
 /* hall da fama */
 .hall-qtd { font-size: 14px; color: var(--texto-3); }
+
+/* campeões das temporadas */
+.temps { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.temp { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 16px; background: var(--painel-2); border: 1px solid var(--linha); min-width: 0; }
+.temp-atual { border-color: var(--laranja); background: var(--laranja-fundo); box-shadow: 0 0 40px rgba(255, 122, 26, .14); }
+.temp-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.temp-mes { font-family: var(--f-titulo); font-size: 26px; font-weight: 700; letter-spacing: 1px; line-height: 1; }
+.temp-status { font-size: 12px; color: var(--texto-3); }
+.temp-status.ao { color: var(--laranja-claro); }
+.temp-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tt { display: flex; align-items: center; gap: 10px; min-width: 0; font-variant-numeric: tabular-nums; }
+.tt-pos { width: 28px; flex: 0 0 auto; display: flex; justify-content: center; font-family: var(--f-titulo); font-size: 20px; font-weight: 700; color: var(--texto-3); }
+.tt1 .tt-pos { color: var(--laranja-claro); }
+.tt2 .tt-pos { color: var(--azul); }
+.tt3 .tt-pos { color: var(--roxo); }
+.tt-nome { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
+.tt-nome .link-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt1 .tt-nome .link-nome { font-weight: 700; }
+.tt-nome small { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--laranja-claro); white-space: nowrap; }
+.tt-pts { flex: 0 0 auto; font-size: 14px; color: var(--texto-2); }
+.tt1 .tt-pts { color: var(--laranja); font-weight: 700; }
+.temp-pe { font-size: 12px; color: var(--texto-3); border-top: 1px solid var(--linha); padding-top: 10px; }
+.titulo-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 6px; background: var(--laranja-escuro); color: #FFD84D; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .hall { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; }
 .fama {
   display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; min-width: 0;

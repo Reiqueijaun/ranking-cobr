@@ -22,11 +22,12 @@ window.RANKING_CONFIG = {
 
   // ---------------- SISTEMA DE PONTOS ----------------
   // Cada partida registrada vale pontos pela massa. Os pontos somam.
-  // Ex.: 99.000 = 99 pts · 100.000 = 100 + 30 = 130 pts · 250.000 = 250 + 60 = 310 pts
+  // Ex.: 99.000 = 99 pts · 100.000 = 100 + 30 = 130 pts · 200.000 = 200 + 30 + 40 = 270 pts
   PONTOS: {
     POR_MIL: 1,        // pontos a cada 1.000 de massa
     META: 100000,      // a cada meta batida (100K, 200K, 300K ... 1M)
-    BONUS_META: 30,    // ganha esse bônus por meta
+    BONUS_META: 30,    // bônus da 1ª meta
+    BONUS_SOBE: 10,    // cada meta seguinte vale isso a mais (2ª +40, 3ª +50...)
   },
 
   // Patentes: o jogador sobe conforme junta pontos (pode mudar nomes e números)
