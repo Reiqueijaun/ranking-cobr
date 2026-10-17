@@ -21,6 +21,12 @@
   let pinAdmin = null;
   let arquivoPrint = null;
   let apagarId = null;
+  let jogadores = [];         // elenco do clã (tabela players)
+  let elenco = new Map();     // chave do nick -> jogador do elenco
+  let elencoOk = true;        // false se a tabela players ainda não existe no banco
+  const CARGOS = (Array.isArray(CFG.CARGOS) && CFG.CARGOS.length ? CFG.CARGOS : ['Líder', 'Vice-líder', 'Membro'])
+    .map((c) => String(c).trim().slice(0, 24)).filter(Boolean);
+  const CARGO_PADRAO = CARGOS.includes('Membro') ? 'Membro' : CARGOS[CARGOS.length - 1];
 
   // ---------- utilidades ----------
   const fmt = (n) => Number(n).toLocaleString('pt-BR');
@@ -39,6 +45,9 @@
   const limparNick = (v) => String(v || '').replace(reTag, '').replace(/\s+/g, ' ').trim().slice(0, 24);
   const chave = (nome) => limparNick(nome).toLocaleLowerCase('pt-BR');
   const comTag = (nome) => `[${TAG}] ${nome}`;
+  function indexarElenco() { elenco = new Map(jogadores.map((r) => [chave(r.nick), r])); }
+  const exMembro = (k) => { const r = elenco.get(k); return !!r && !r.ativo; };
+  const nomeDe = (k, bruto) => (elenco.get(k) ? elenco.get(k).nick : limparNick(bruto));
 
   function el(tag, props, ...filhos) {
     const n = document.createElement(tag);
@@ -112,7 +121,8 @@
   function fmtK(n) { return n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : fmt(n); }
   const ptsTxt = (n) => `${fmt(n)} ${n === 1 ? 'pt' : 'pts'}`;
 
-  function montarRanking(per, ordem = modo) {
+  // todos = true inclui quem saiu do clã (ex-membros ficam fora do ranking)
+  function montarRanking(per, ordem = modo, todos = false) {
     const desde = inicioPeriodo(per);
     const mapa = new Map();
     // percorre do mais antigo pro mais novo para o nome mais recente prevalecer
@@ -120,11 +130,14 @@
       const p = partidas[i];
       if (new Date(p.created_at).getTime() < desde) continue;
       const k = chave(p.player);
+      if (!todos && exMembro(k)) continue;
       let j = mapa.get(k);
-      if (!j) { j = { chave: k, nome: limparNick(p.player), melhor: p, qtd: 0, pontos: 0, cem: 0 }; mapa.set(k, j); }
-      j.nome = limparNick(p.player);
+      if (!j) { j = { chave: k, nome: '', melhor: p, qtd: 0, pontos: 0, cem: 0, soma: 0, ultima: p.created_at }; mapa.set(k, j); }
+      j.nome = nomeDe(k, p.player);
       j.qtd += 1;
       j.pontos += pontosDe(p.mass);
+      j.soma += p.mass;
+      j.ultima = p.created_at;
       if (p.mass >= MARCO) j.cem += 1;
       if (p.mass > j.melhor.mass) j.melhor = p;
     }
@@ -189,15 +202,460 @@
     renderPatentes(ctx);
     renderHall();
     renderPartidas();
+    renderJogadores();
 
-    // só o dono vê o formulário
+    // só o dono vê os formulários
     $('registrar').hidden = !pinAdmin;
     $('comoEntrar').hidden = !!pinAdmin;
     $('btnTopoRegistrar').hidden = !pinAdmin;
+    $('formCadastro').hidden = !pinAdmin || !elencoOk;
+    $('avisoElenco').hidden = !pinAdmin || elencoOk;
     document.body.classList.toggle('modo-dono', !!pinAdmin);
 
-    const dl = $('listaNomes');
-    dl.replaceChildren(...geralMassa.map((j) => el('option', { value: j.nome })));
+    // sugestões de nick: elenco do clã + quem já pontuou
+    const nomes = new Map(jogadores.filter((r) => r.ativo).map((r) => [chave(r.nick), r.nick]));
+    for (const j of geralMassa) if (!nomes.has(j.chave)) nomes.set(j.chave, j.nome);
+    $('listaNomes').replaceChildren(...[...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((n) => el('option', { value: n })));
+  }
+
+  // ---------- jogadores do clã (elenco + tabelas) ----------
+  let perJog = 'geral';
+  let vistaJog = 'resumo';
+  let filtroJog = 'ativos';
+  let buscaJog = '';
+  let ordJog = { campo: 'pontos', desc: true };
+  let planilha = null;        // o que está na tabela agora, pronto para baixar
+  const ICONE_LAPIS = '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>';
+  const textoPer = { geral: 'desde o início', semana: 'nesta semana', mes: 'neste mês' };
+
+  // elenco + quem tem partida mas não está cadastrado (não deveria acontecer, mas não some ninguém)
+  function listaElenco() {
+    const lista = jogadores.map((r) => ({ ...r, chave: chave(r.nick) }));
+    const vistos = new Set(lista.map((r) => r.chave));
+    for (const p of partidas) {
+      const k = chave(p.player);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      lista.push({ id: null, nick: limparNick(p.player), cargo: '', ativo: true, created_at: null, chave: k, semCadastro: true });
+    }
+    return lista;
+  }
+
+  function filtrarElenco(lista, temPartida) {
+    const q = chave(buscaJog);
+    return lista.filter((r) => {
+      if (q && !r.chave.includes(q)) return false;
+      if (filtroJog === 'ativos') return r.ativo;
+      if (filtroJog === 'ex') return !r.ativo;
+      if (filtroJog === 'parados') return r.ativo && !temPartida(r.chave);
+      return true;
+    });
+  }
+
+  // Líder primeiro, depois a ordem do CARGOS; cargo desconhecido vai pro fim
+  function ordemCargo(c) { const i = CARGOS.indexOf(c); return i < 0 ? CARGOS.length + (c ? 0 : 1) : i; }
+  function chipCargo(r) {
+    if (!r.cargo) return null;
+    const lider = CARGOS.indexOf(r.cargo);
+    return el('span', { class: `cargo ${lider === 0 ? 'cargo-1' : lider === 1 && CARGOS.length > 2 ? 'cargo-2' : ''}`, text: r.cargo });
+  }
+
+  function cabecalho(colunas) {
+    $('cabJog').replaceChildren(el('tr', null, ...colunas.map((c) => {
+      if (!c.ord) return el('th', { class: c.dir ? 'dir' : null, text: c.rot });
+      const ativo = ordJog.campo === c.id;
+      return el('th', { class: `${c.dir ? 'dir' : ''} ${ativo ? 'ativo' : ''}`, 'aria-sort': ativo ? (ordJog.desc ? 'descending' : 'ascending') : 'none' },
+        el('button', { type: 'button', class: 'ord', title: c.titulo || null, onclick: () => {
+          ordJog = ativo ? { campo: c.id, desc: !ordJog.desc } : { campo: c.id, desc: !c.texto };
+          renderJogadores();
+        } }, c.rot, el('span', { class: 'seta', 'aria-hidden': 'true', text: ativo ? (ordJog.desc ? '▼' : '▲') : '' })));
+    })));
+  }
+
+  function ordenar(linhas) {
+    const { campo, desc } = ordJog;
+    const nome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
+    return linhas.sort((a, b) => {
+      const va = a[campo], vb = b[campo];
+      const c = typeof va === 'string' ? va.localeCompare(vb, 'pt-BR') : va - vb;
+      return (desc ? -c : c) || b.pontos - a.pontos || nome(a, b);
+    });
+  }
+
+  function celNome(r, ptsGeral) {
+    return el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' },
+      avatarDe(r.nick, ptsGeral, 'av-p'),
+      el('button', { type: 'button', class: 'link-nome forte', onclick: () => abrirPerfil(r.chave), 'aria-label': `Ver perfil de ${comTag(r.nick)}` }, r.nick),
+      !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null,
+      r.semCadastro && pinAdmin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null));
+  }
+  function celEditar(r) {
+    if (!pinAdmin) return null;
+    return el('td', { class: 'dir' }, r.id
+      ? el('button', { type: 'button', class: 'editar', 'aria-label': `Editar ${r.nick}`, onclick: () => abrirEditar(r) }, svg(ICONE_LAPIS, 18))
+      : null);
+  }
+
+  function renderJogadores() {
+    const lista = listaElenco();
+    const geral = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j]));
+    const ptsGeral = (k) => (geral.get(k) || { pontos: 0 }).pontos;
+    document.querySelectorAll('.aba[data-vista]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.vista === vistaJog)));
+    document.querySelectorAll('.aba[data-perjog]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.perjog === perJog)));
+    $('abasPerJog').hidden = vistaJog !== 'resumo';
+
+    // números do período
+    const doPer = new Map(montarRanking(perJog, 'pontos', true).map((j) => [j.chave, j]));
+    const ativos = lista.filter((r) => r.ativo);
+    const pontuaram = ativos.filter((r) => (doPer.get(r.chave) || {}).pontos > 0).length;
+    const parados = ativos.filter((r) => !doPer.has(r.chave)).length;
+    const somaPts = ativos.reduce((s, r) => s + ((doPer.get(r.chave) || {}).pontos || 0), 0);
+    const ex = lista.length - ativos.length;
+    $('jogResumo').textContent = `${fmt(ativos.length)} ${ativos.length === 1 ? 'jogador' : 'jogadores'} no clã${ex ? ` · ${fmt(ex)} ${ex === 1 ? 'ex-membro' : 'ex-membros'}` : ''}. Toque no nome pra ver o perfil.`;
+    const quando = vistaJog === 'resumo' ? textoPer[perJog] : textoPer.geral;
+    $('jogNumeros').replaceChildren(...[
+      ['MEMBROS', fmt(ativos.length), 'no elenco do clã', ''],
+      ['PONTUARAM', fmt(pontuaram), quando, 'laranja'],
+      ['SEM PARTIDA', fmt(parados), quando, ''],
+      ['PONTOS DO CLÃ', fmt(somaPts), `somados ${quando}`, 'laranja'],
+    ].map(([r, v, s, c]) => el('div', { class: 'stat' }, el('span', { class: 'stat-rot', text: r }), el('span', { class: `stat-num ${c}`, text: v }), el('span', { class: 'stat-sub', text: s }))));
+
+    if (vistaJog === 'resumo') renderResumo(lista, doPer, ptsGeral);
+    else renderPorPeriodo(lista, vistaJog, ptsGeral);
+  }
+
+  function renderResumo(lista, doPer, ptsGeral) {
+    const colunas = [
+      { rot: 'POS' },
+      { id: 'nome', rot: 'JOGADOR', ord: true, texto: true },
+      { id: 'cargo', rot: 'CARGO', ord: true, texto: true },
+      { id: 'ptsGeral', rot: 'PATENTE', ord: true, titulo: 'Patente pelos pontos de todas as partidas' },
+      { id: 'pontos', rot: 'PONTOS', ord: true, dir: true },
+      { id: 'qtd', rot: 'PARTIDAS', ord: true, dir: true },
+      { id: 'recorde', rot: 'RECORDE', ord: true, dir: true },
+      { id: 'media', rot: 'MÉDIA', ord: true, dir: true },
+      { id: 'cem', rot: marcoTxt, ord: true, dir: true },
+      { id: 'ultima', rot: 'ÚLTIMA', ord: true, dir: true },
+    ];
+    if (pinAdmin) colunas.push({ rot: '' });
+    if (!colunas.some((c) => c.id === ordJog.campo)) ordJog = { campo: 'pontos', desc: true };
+    cabecalho(colunas);
+
+    const linhas = ordenar(filtrarElenco(lista, (k) => doPer.has(k)).map((r) => {
+      const s = doPer.get(r.chave);
+      return {
+        r, nome: r.nick, cargo: ordemCargo(r.cargo), ptsGeral: ptsGeral(r.chave),
+        pontos: s ? s.pontos : 0, qtd: s ? s.qtd : 0, recorde: s ? s.melhor.mass : 0,
+        media: s ? Math.round(s.soma / s.qtd) : 0, cem: s ? s.cem : 0, ultima: s ? Date.parse(s.ultima) : 0,
+      };
+    }));
+
+    const corpo = $('corpoJog');
+    if (!linhas.length) {
+      corpo.replaceChildren(el('tr', null, el('td', { colspan: String(colunas.length), class: 'vazio-cel', text: msgVazio() })));
+    } else {
+      corpo.replaceChildren(...linhas.map((l, i) => el('tr', { class: l.r.ativo ? null : 'ex' },
+        el('td', { class: `pos p${l.qtd ? i + 1 : 0}`, text: `#${i + 1}` }),
+        celNome(l.r, l.ptsGeral),
+        el('td', null, chipCargo(l.r) || el('span', { class: 'sec', text: '—' })),
+        el('td', null, chipPatente(l.ptsGeral)),
+        el('td', { class: 'dir num', text: fmt(l.pontos) }),
+        el('td', { class: 'dir', text: l.qtd ? fmt(l.qtd) : '—' }),
+        el('td', { class: 'dir', text: l.qtd ? fmt(l.recorde) : '—' }),
+        el('td', { class: 'dir sec', text: l.qtd ? fmt(l.media) : '—' }),
+        el('td', { class: 'dir' }, l.cem ? el('span', { class: 'cem-chip', text: `${l.cem}×` }) : el('span', { class: 'sec', text: '—' })),
+        el('td', { class: 'dir sec nowrap', text: l.ultima ? haQuanto(l.ultima) : 'nunca' }),
+        celEditar(l.r)
+      )));
+    }
+    $('notaJog').textContent = perJog === 'geral'
+      ? `Pontos, partidas e recorde de todas as partidas. A patente sempre conta tudo.`
+      : `Pontos, partidas e recorde só ${textoPer[perJog]}. A patente sempre conta tudo.`;
+
+    const dia = (ms) => (ms ? new Date(ms).toLocaleDateString('pt-BR') : '');
+    planilha = {
+      nome: `jogadores-${perJog}`,
+      linhas: [
+        ['Posição', 'Jogador', 'Cargo', 'No clã', 'Patente', 'Pontos', 'Partidas', 'Recorde', 'Média', `Partidas ${marcoTxt}`, 'Última partida', 'Cadastrado em'],
+        ...linhas.map((l, i) => [i + 1, comTag(l.nome), l.r.cargo || '', l.r.ativo ? 'sim' : 'não', patenteDe(l.ptsGeral).atual.nome,
+          l.pontos, l.qtd, l.recorde || '', l.media || '', l.cem, dia(l.ultima), l.r.created_at ? dia(Date.parse(l.r.created_at)) : '']),
+      ],
+    };
+  }
+
+  // colunas de semanas (segunda a domingo) ou meses, da mais nova pra mais antiga
+  function colunasPeriodo(tipo) {
+    const cols = [];
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    if (tipo === 'semanas') {
+      hoje.setDate(hoje.getDate() - (hoje.getDay() + 6) % 7);
+      for (let i = 0; i < 8; i++) {
+        const ini = new Date(hoje); ini.setDate(hoje.getDate() - 7 * i);
+        const fim = new Date(ini); fim.setDate(ini.getDate() + 7);
+        const ult = new Date(fim); ult.setDate(fim.getDate() - 1);
+        const dm = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        cols.push({ ini: ini.getTime(), fim: fim.getTime(), rot: i === 0 ? 'ESTA' : dm(ini), titulo: `${dm(ini)} a ${dm(ult)}`, csv: `Semana ${dm(ini)} a ${dm(ult)}` });
+      }
+    } else {
+      for (let i = 0; i < 6; i++) {
+        const ini = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        const fim = new Date(hoje.getFullYear(), hoje.getMonth() - i + 1, 1);
+        const mes = ini.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+        const longo = ini.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        cols.push({ ini: ini.getTime(), fim: fim.getTime(), rot: i === 0 ? 'ESTE MÊS' : mes.toUpperCase(), titulo: longo, csv: longo });
+      }
+    }
+    return cols;
+  }
+
+  function renderPorPeriodo(lista, tipo, ptsGeral) {
+    const cols = colunasPeriodo(tipo);
+    const desde = cols[cols.length - 1].ini;
+    // pontos de cada jogador em cada coluna
+    const grade = new Map();
+    for (const p of partidas) {
+      const t = new Date(p.created_at).getTime();
+      if (t < desde) continue;
+      const c = cols.findIndex((x) => t >= x.ini && t < x.fim);
+      if (c < 0) continue;
+      const k = chave(p.player);
+      if (!grade.has(k)) grade.set(k, cols.map(() => ({ pontos: 0, qtd: 0, melhor: 0 })));
+      const g = grade.get(k)[c];
+      g.pontos += pontosDe(p.mass);
+      g.qtd += 1;
+      g.melhor = Math.max(g.melhor, p.mass);
+    }
+
+    const colunas = [
+      { rot: 'POS' },
+      { id: 'nome', rot: 'JOGADOR', ord: true, texto: true },
+      { id: 'total', rot: 'TOTAL', ord: true, dir: true, titulo: tipo === 'semanas' ? 'Pontos das últimas 8 semanas' : 'Pontos dos últimos 6 meses' },
+      ...cols.map((c, i) => ({ id: `c${i}`, rot: c.rot, ord: true, dir: true, titulo: c.titulo })),
+    ];
+    if (pinAdmin) colunas.push({ rot: '' });
+    if (!colunas.some((c) => c.id === ordJog.campo)) ordJog = { campo: 'total', desc: true };
+    cabecalho(colunas);
+
+    const vazio = cols.map(() => ({ pontos: 0, qtd: 0, melhor: 0 }));
+    const linhas = ordenar(filtrarElenco(lista, (k) => grade.has(k)).map((r) => {
+      const g = grade.get(r.chave) || vazio;
+      const l = { r, nome: r.nick, g, total: g.reduce((s, x) => s + x.pontos, 0), ptsGeral: ptsGeral(r.chave) };
+      l.pontos = l.total;
+      g.forEach((x, i) => { l[`c${i}`] = x.pontos; });
+      return l;
+    }));
+    // quem fez mais pontos em cada coluna ganha destaque
+    const maior = cols.map((_, i) => Math.max(0, ...linhas.map((l) => l.g[i].pontos)));
+
+    const corpo = $('corpoJog');
+    if (!linhas.length) {
+      corpo.replaceChildren(el('tr', null, el('td', { colspan: String(colunas.length), class: 'vazio-cel', text: msgVazio() })));
+    } else {
+      corpo.replaceChildren(...linhas.map((l, i) => el('tr', { class: l.r.ativo ? null : 'ex' },
+        el('td', { class: `pos p${l.total ? i + 1 : 0}`, text: `#${i + 1}` }),
+        celNome(l.r, l.ptsGeral),
+        el('td', { class: 'dir num', text: fmt(l.total) }),
+        ...l.g.map((x, c) => el('td', {
+          class: `dir cel-per ${x.qtd ? '' : 'sem'} ${maior[c] && x.pontos === maior[c] ? 'melhor-col' : ''}`,
+          title: x.qtd ? `${cols[c].titulo}: ${ptsTxt(x.pontos)} em ${x.qtd} ${x.qtd === 1 ? 'partida' : 'partidas'} · maior massa ${fmt(x.melhor)}` : `${cols[c].titulo}: sem partida`,
+        }, x.qtd ? [el('b', { text: fmt(x.pontos) }), el('small', { text: `${x.qtd}p` })] : '·')),
+        celEditar(l.r)
+      )));
+    }
+    $('notaJog').textContent = `Pontos por ${tipo === 'semanas' ? 'semana (segunda a domingo)' : 'mês'}. O número pequeno é quantas partidas. Destaque laranja = quem mais pontuou naquela ${tipo === 'semanas' ? 'semana' : 'mês'}.`;
+
+    planilha = {
+      nome: `jogadores-por-${tipo === 'semanas' ? 'semana' : 'mes'}`,
+      linhas: [
+        ['Posição', 'Jogador', 'Cargo', 'No clã', 'Total', ...cols.map((c) => `${c.csv} (pontos)`), ...cols.map((c) => `${c.csv} (partidas)`)],
+        ...linhas.map((l, i) => [i + 1, comTag(l.nome), l.r.cargo || '', l.r.ativo ? 'sim' : 'não', l.total, ...l.g.map((x) => x.pontos), ...l.g.map((x) => x.qtd)]),
+      ],
+    };
+  }
+
+  function msgVazio() {
+    if (buscaJog) return `Ninguém com "${buscaJog}" no nome.`;
+    if (filtroJog === 'ex') return 'Nenhum ex-membro.';
+    if (filtroJog === 'parados') return 'Todo mundo jogou nesse período. Clã ativo!';
+    return pinAdmin ? 'Nenhum jogador cadastrado ainda. Cadastre o elenco no quadro acima.' : 'Nenhum jogador cadastrado ainda.';
+  }
+
+  // ---------- baixar planilha (CSV que abre no Excel e no Google Planilhas) ----------
+  function baixarCsv(nome, linhas) {
+    const cel = (v) => { const s = String(v ?? ''); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const txt = '﻿' + linhas.map((l) => l.map(cel).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' }));
+    const hoje = new Date().toLocaleDateString('pt-BR').split('/').reverse().join('-');
+    const a = el('a', { href: url, download: `${TAG.toLowerCase()}-${nome}-${hoje}.csv` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function baixarPartidas() {
+    if (!partidas.length) { toast('Ainda não tem partida pra baixar.', true); return; }
+    baixarCsv('partidas', [
+      ['Data', 'Hora', 'Jogador', 'Massa', 'Pontos', `${marcoTxt}`],
+      ...partidas.map((p) => {
+        const d = new Date(p.created_at);
+        const k = chave(p.player);
+        return [d.toLocaleDateString('pt-BR'), d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), comTag(nomeDe(k, p.player)), p.mass, pontosDe(p.mass), p.mass >= MARCO ? 'sim' : ''];
+      }),
+    ]);
+  }
+
+  // ---------- cadastro e edição de jogadores (só o dono) ----------
+  function nicksDoTexto(txt) {
+    const mapa = new Map();
+    for (const n of String(txt).split(/[\n,;]+/).map(limparNick).filter(Boolean)) if (!mapa.has(chave(n))) mapa.set(chave(n), n);
+    return [...mapa.values()];
+  }
+  function previaCadastro() {
+    const nicks = nicksDoTexto($('fNicks').value);
+    if (!nicks.length) { $('previaCadastro').textContent = ''; return; }
+    let novos = 0, voltam = 0, ja = 0;
+    for (const n of nicks) { const r = elenco.get(chave(n)); if (!r) novos++; else if (!r.ativo) voltam++; else ja++; }
+    $('previaCadastro').textContent = [
+      novos ? `${novos} ${novos === 1 ? 'novo' : 'novos'}` : '',
+      voltam ? `${voltam} ${voltam === 1 ? 'volta' : 'voltam'} pro clã` : '',
+      ja ? `${ja} já ${ja === 1 ? 'cadastrado' : 'cadastrados'}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+  function erroCadastro(msg) { $('erroCadastro').textContent = msg || ''; $('erroCadastro').hidden = !msg; }
+
+  async function cadastrar(ev) {
+    ev.preventDefault();
+    const nicks = nicksDoTexto($('fNicks').value);
+    const cargo = $('fCargo').value || CARGO_PADRAO;
+    if (!nicks.length) return erroCadastro('Escreve pelo menos um nick.');
+    if (nicks.length > 200) return erroCadastro('No máximo 200 de uma vez.');
+    if (!pinAdmin) return erroCadastro('Entre na área do dono para cadastrar.');
+    erroCadastro(null);
+    const voltam = nicks.filter((n) => exMembro(chave(n))).length;
+    const btn = $('btnCadastrar');
+    btn.disabled = true;
+    btn.textContent = 'CADASTRANDO…';
+    try {
+      let n = 0;
+      if (DEMO) {
+        for (const nick of nicks) {
+          const r = elenco.get(chave(nick));
+          if (r) { r.ativo = true; continue; }
+          jogadores.push({ id: 'dj-' + Date.now() + '-' + n, nick, cargo, ativo: true, created_at: new Date().toISOString() });
+          n++;
+        }
+        indexarElenco();
+      } else {
+        const r = await sb.rpc('admin_add_players', { pin_try: pinAdmin, p_nicks: nicks, p_cargo: cargo });
+        if (r.error) throw new Error(r.error.message);
+        if (r.data === -1) { sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
+        n = r.data;
+        await carregar();
+      }
+      $('fNicks').value = '';
+      $('previaCadastro').textContent = '';
+      render();
+      const ja = nicks.length - n - voltam;
+      const partes = [
+        n ? `${n} ${n === 1 ? 'jogador cadastrado' : 'jogadores cadastrados'}` : '',
+        voltam ? `${voltam} ${voltam === 1 ? 'voltou' : 'voltaram'} pro clã` : '',
+        ja ? `${ja} já ${ja === 1 ? 'estava' : 'estavam'} no elenco` : '',
+      ].filter(Boolean);
+      toast(partes.join(' · ') + '.');
+    } catch (e) {
+      console.error(e);
+      erroCadastro('Não deu pra cadastrar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'CADASTRAR';
+    }
+  }
+
+  let editJog = null;
+  let confirmarApagarJog = false;
+  function opcoesCargo(select, atual) {
+    const lista = atual && !CARGOS.includes(atual) ? [...CARGOS, atual] : CARGOS;
+    select.replaceChildren(...lista.map((c) => el('option', { value: c, text: c })));
+    select.value = atual || CARGO_PADRAO;
+  }
+  function abrirEditar(r) {
+    editJog = r;
+    confirmarApagarJog = false;
+    const qtd = partidas.filter((p) => chave(p.player) === r.chave).length;
+    $('fJogNick').value = r.nick;
+    opcoesCargo($('fJogCargo'), r.cargo);
+    $('fJogAtivo').checked = r.ativo;
+    $('erroJogador').hidden = true;
+    $('btnApagarJog').hidden = qtd > 0;
+    $('btnApagarJog').textContent = 'Apagar';
+    $('notaJogador').textContent = qtd
+      ? `Tem ${qtd} ${qtd === 1 ? 'partida' : 'partidas'}. Se saiu do clã, desmarque "Ainda está no clã": ele some do ranking e o histórico fica guardado.`
+      : 'Ainda não tem partida. Se foi cadastro errado, pode apagar.';
+    $('dlgJogador').showModal();
+  }
+  function erroJogador(msg) { $('erroJogador').textContent = msg || ''; $('erroJogador').hidden = !msg; }
+
+  async function salvarJogador(ev) {
+    ev.preventDefault();
+    const r = editJog;
+    if (!r) return;
+    const nick = limparNick($('fJogNick').value);
+    const cargo = $('fJogCargo').value;
+    const ativo = $('fJogAtivo').checked;
+    if (!nick) return erroJogador('Escreve o nick.');
+    const outro = elenco.get(chave(nick));
+    if (outro && outro.id !== r.id) return erroJogador(`Já existe ${comTag(outro.nick)} no elenco.`);
+    const btn = $('btnSalvarJog');
+    btn.disabled = true;
+    try {
+      if (DEMO) {
+        const antigo = r.chave;
+        const alvo = jogadores.find((x) => x.id === r.id);
+        Object.assign(alvo, { nick, cargo, ativo });
+        partidas.forEach((p) => { if (chave(p.player) === antigo) p.player = nick; });
+        indexarElenco();
+      } else {
+        const res = await sb.rpc('admin_update_player', { pin_try: pinAdmin, p_id: r.id, p_nick: nick, p_cargo: cargo, p_ativo: ativo });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data === 'pin') { $('dlgJogador').close(); sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
+        if (res.data === 'nick_em_uso') return erroJogador('Esse nick já está no elenco.');
+        if (res.data !== 'ok') throw new Error(res.data);
+        await carregar();
+      }
+      $('dlgJogador').close();
+      render();
+      toast(ativo === r.ativo ? `${comTag(nick)} atualizado.` : ativo ? `${comTag(nick)} voltou pro clã.` : `${comTag(nick)} agora é ex-membro.`);
+    } catch (e) {
+      console.error(e);
+      erroJogador('Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function apagarJogador() {
+    const r = editJog;
+    if (!r) return;
+    if (!confirmarApagarJog) { confirmarApagarJog = true; $('btnApagarJog').textContent = 'Toque de novo pra apagar'; return; }
+    try {
+      if (DEMO) {
+        jogadores = jogadores.filter((x) => x.id !== r.id);
+        indexarElenco();
+      } else {
+        const res = await sb.rpc('admin_delete_player', { pin_try: pinAdmin, p_id: r.id });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data === 'pin') { $('dlgJogador').close(); sairAdmin(); toast('O PIN mudou. Entre de novo na área do dono.', true); return; }
+        if (res.data === 'tem_partidas') return erroJogador('Ele tem partidas. Desmarque "Ainda está no clã" em vez de apagar.');
+        await carregar();
+      }
+      $('dlgJogador').close();
+      render();
+      toast(`${comTag(r.nick)} saiu do elenco.`);
+    } catch (e) {
+      console.error(e);
+      erroJogador('Não deu pra apagar agora. (' + (e.message || 'erro') + ')');
+    }
   }
 
   function geralPts(j) {
@@ -485,10 +943,34 @@
     </svg>`;
   }
 
+  function mostrarPerfil() {
+    const dlg = $('dlgPerfil');
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+  }
+  function chipsCadastro(r) {
+    if (!r) return [];
+    const desde = r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '') : '';
+    return [chipCargo(r), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null, desde ? el('span', { class: 'sec', text: `no clã desde ${desde}` }) : null];
+  }
+
   function abrirPerfil(k) {
     const ctx = contexto();
-    const j = ctx.pontos.find((x) => x.chave === k);
-    if (!j) return;
+    const r = elenco.get(k);
+    const j = ctx.pontos.find((x) => x.chave === k) || montarRanking('geral', 'pontos', true).find((x) => x.chave === k);
+    if (!j) {
+      // cadastrado, mas ainda sem partida
+      if (!r) return;
+      $('perfilCorpo').replaceChildren(
+        el('div', { class: 'perfil-topo' },
+          avatarDe(r.nick, 0, 'av-g'),
+          el('div', { class: 'perfil-id' },
+            el('h2', { id: 'perfilNome', text: comTag(r.nick) }),
+            el('div', { class: 'perfil-chips' }, chipPatente(0, 'patente-g'), ...chipsCadastro(r)))),
+        el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Manda o print da primeira pro dono do clã!' }));
+      mostrarPerfil();
+      return;
+    }
     const posP = ctx.pontos.findIndex((x) => x.chave === k) + 1;
     const posM = ctx.massa.findIndex((x) => x.chave === k) + 1;
     const pat = patenteDe(j.pontos);
@@ -508,7 +990,8 @@
         el('div', { class: 'perfil-id' },
           el('h2', { id: 'perfilNome', text: comTag(j.nome) }),
           el('div', { class: 'perfil-chips' }, chipPatente(j.pontos, 'patente-g'),
-            el('span', { class: 'sec', text: `#${posP} em pontos · #${posM} em massa` })))),
+            posP ? el('span', { class: 'sec', text: `#${posP} em pontos · #${posM} em massa` }) : null,
+            ...chipsCadastro(r)))),
       el('div', { class: 'perfil-prog', style: `--pc:${pat.atual.cor}` },
         el('div', { class: 'prog-linha' },
           el('span', { text: pat.atual.nome }),
@@ -526,9 +1009,7 @@
         el('span', { class: 'med-ic', 'aria-hidden': 'true' }, svg(m.icone, 20)),
         el('span', { class: 'med-txt' }, el('b', { text: m.nome }), el('span', { text: m.ok ? 'conquistada' : m.como })))))
     );
-    const dlg = $('dlgPerfil');
-    if (!dlg.open) dlg.showModal();
-    dlg.scrollTop = 0;
+    mostrarPerfil();
   }
 
   // ---------- print ----------
@@ -595,6 +1076,7 @@
       // quem era o 1º antes deste envio
       const reiAntes = montarRanking('geral')[0];
       const ptsAntes = (montarRanking('geral', 'pontos').find((x) => x.chave === chave(nome)) || { pontos: 0 }).pontos;
+      const jogNovo = elencoOk && !elenco.has(chave(nome));
       let print_path = null;
       let print_url = null;
       if (arquivoPrint) {
@@ -610,6 +1092,10 @@
       }
       if (DEMO) {
         partidas.unshift({ id: 'demo-' + Date.now(), player: nome, mass: massa, print_path: null, print_url, created_at: new Date().toISOString() });
+        const r = elenco.get(chave(nome));
+        if (r) r.ativo = true;
+        else jogadores.push({ id: 'dj-' + Date.now(), nick: nome, cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
+        indexarElenco();
       } else {
         const ins = await sb.rpc('admin_add_score', { pin_try: pinAdmin, p_player: nome, p_mass: massa, p_print_path: print_path });
         if (ins.error) throw new Error(ins.error.message);
@@ -624,7 +1110,7 @@
       $('txtPrint').hidden = false;
       render();
       const reiAgora = montarRanking('geral')[0];
-      const ganhou = pontosDe(massa) ? ` +${ptsTxt(pontosDe(massa))}.` : '';
+      const ganhou = (pontosDe(massa) ? ` +${ptsTxt(pontosDe(massa))}.` : '') + (jogNovo ? ' Novo no elenco do clã!' : '');
       const ptsDepois = (montarRanking('geral', 'pontos').find((x) => x.chave === chave(nome)) || { pontos: 0 }).pontos;
       const patAntes = patenteDe(ptsAntes).atual, patDepois = patenteDe(ptsDepois).atual;
       if (patDepois.nivel > patAntes.nivel) {
@@ -638,6 +1124,7 @@
         toast(`Registrado!${ganhou} ${comTag(nome)} está em ${pos}º lugar.`);
       }
       $('valePontos').textContent = '';
+      $('avisoNick').textContent = '';
       $('fNome').focus();
     } catch (e) {
       console.error(e);
@@ -714,11 +1201,31 @@
   }
 
   // ---------- dados ----------
+  // o Supabase entrega no máximo 1000 linhas por vez; lê em páginas pra não cortar ninguém
+  async function lerTudo(consulta) {
+    const todos = [];
+    for (let de = 0; de < 50000; de += 1000) {
+      const r = await consulta().range(de, de + 999);
+      if (r.error) return r;
+      todos.push(...(r.data || []));
+      if (!r.data || r.data.length < 1000) break;
+    }
+    return { data: todos, error: null };
+  }
+
   async function carregar() {
     if (DEMO) return;
-    const r = await sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).limit(2000);
+    const [r, rj] = await Promise.all([
+      lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
+      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
+    ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
+    // sem a tabela players (script novo ainda não rodado) o site continua funcionando
+    elencoOk = !rj.error;
+    if (rj.error) console.warn('elenco:', rj.error.message);
+    jogadores = rj.data || [];
+    indexarElenco();
   }
 
   function dadosDemo() {
@@ -732,17 +1239,26 @@
     ];
     return lista.map(([player, mass, horas], i) => ({ id: 'd' + i, player, mass, created_at: h(horas) }));
   }
+  function elencoDemo() {
+    const d = (dias) => new Date(Date.now() - dias * 86400000).toISOString();
+    return [
+      ['VENO', 'Líder', true, 60], ['Shawdow', 'Vice-líder', true, 55], ['VETERANO', 'Membro', true, 50], ['Kaiser', 'Membro', true, 40],
+      ['Mamba', 'Membro', true, 30], ['Naja', 'Membro', true, 6], ['Cascavel', 'Membro', true, 2], ['Sucuri', 'Membro', false, 45],
+    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, created_at: d(dias) }));
+  }
 
   let realtimeOk = false;
   function ligarTempoReal() {
     const aoVivo = $('aoVivo');
     if (DEMO) { aoVivo.lastChild.textContent = 'demonstração'; return; }
     let espera;
+    const recarregar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => carregar().then(render).catch(() => {}), 400);
+    };
     sb.channel('scores-ao-vivo')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, () => {
-        clearTimeout(espera);
-        espera = setTimeout(() => carregar().then(render).catch(() => {}), 400);
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, recarregar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, recarregar)
       .subscribe((status) => {
         realtimeOk = status === 'SUBSCRIBED';
         aoVivo.classList.toggle('on', realtimeOk);
@@ -777,6 +1293,29 @@
         render();
       });
     });
+    $('fNome').addEventListener('input', () => {
+      const k = chave($('fNome').value);
+      const r = elenco.get(k);
+      $('avisoNick').textContent = !k || !elencoOk ? '' : !r ? 'Jogador novo: entra no elenco do clã ao registrar.' : !r.ativo ? 'Era ex-membro: volta pro clã ao registrar.' : '';
+    });
+
+    // jogadores do clã
+    opcoesCargo($('fCargo'), CARGO_PADRAO);
+    document.querySelectorAll('.aba[data-perjog]').forEach((a) => a.addEventListener('click', () => { perJog = a.dataset.perjog; renderJogadores(); }));
+    document.querySelectorAll('.aba[data-vista]').forEach((a) => a.addEventListener('click', () => { vistaJog = a.dataset.vista; renderJogadores(); }));
+    $('fBusca').addEventListener('input', () => { buscaJog = $('fBusca').value.trim(); renderJogadores(); });
+    $('fFiltro').addEventListener('change', () => { filtroJog = $('fFiltro').value; renderJogadores(); });
+    $('btnCsv').addEventListener('click', () => {
+      if (!planilha || planilha.linhas.length < 2) { toast('A tabela está vazia.', true); return; }
+      baixarCsv(planilha.nome, planilha.linhas);
+    });
+    $('btnCsvPartidas').addEventListener('click', baixarPartidas);
+    $('formCadastro').addEventListener('submit', cadastrar);
+    $('fNicks').addEventListener('input', previaCadastro);
+    $('formJogador').addEventListener('submit', salvarJogador);
+    $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
+    $('btnApagarJog').addEventListener('click', apagarJogador);
+
     $('fMassa').addEventListener('input', () => {
       const m = parseInt(String($('fMassa').value).replace(/\D/g, ''), 10);
       $('valePontos').textContent = m ? `Vale ${ptsTxt(pontosDe(m))}${m >= MARCO ? ' · conta como ' + marcoTxt : ''}` : '';
@@ -815,6 +1354,8 @@
     if (DEMO) {
       $('avisoDemo').hidden = false;
       partidas = dadosDemo();
+      jogadores = elencoDemo();
+      indexarElenco();
       render();
       ligarTempoReal();
       return;

@@ -29,6 +29,7 @@
     <nav class="menu" aria-label="Seções">
       <a href="#ranking">Ranking</a>
       <a href="#tabela">Tabela</a>
+      <a href="#jogadores">Jogadores</a>
       <a href="#patentes">Patentes</a>
       <a href="#hall">Hall da fama</a>
       <a href="#partidas">Partidas</a>
@@ -120,6 +121,7 @@
           <input id="fNome" name="nome" type="text" maxlength="24" autocomplete="nickname" list="listaNomes" placeholder="ex: VENO" required>
         </div>
         <datalist id="listaNomes"></datalist>
+        <span class="vale" id="avisoNick" aria-live="polite"></span>
       </div>
       <div class="campo">
         <label for="fMassa">MASSA FINAL</label>
@@ -167,6 +169,72 @@
     </div>
 
 
+  </section>
+
+  <section class="wrap bloco" id="jogadores">
+    <div class="bloco-topo">
+      <div>
+        <h2>JOGADORES DO CLÃ</h2>
+        <p class="bloco-sub" id="jogResumo">Todo mundo do elenco, com a pontuação de cada um.</p>
+      </div>
+      <div class="abas" role="tablist" aria-label="Período da tabela de jogadores" id="abasPerJog">
+        <button type="button" role="tab" class="aba" data-perjog="geral" aria-selected="true">Geral</button>
+        <button type="button" role="tab" class="aba" data-perjog="semana" aria-selected="false">Esta semana</button>
+        <button type="button" role="tab" class="aba" data-perjog="mes" aria-selected="false">Este mês</button>
+      </div>
+    </div>
+
+    <div class="jog-numeros" id="jogNumeros"></div>
+
+    <p class="aviso-elenco" id="avisoElenco" hidden>O cadastro de jogadores ainda não foi ligado no banco. Rode o <code>supabase-setup.sql</code> inteiro de novo no SQL Editor do Supabase (não apaga nada nem muda o PIN).</p>
+
+    <form class="painel cadastro" id="formCadastro" novalidate hidden>
+      <div class="cadastro-txt">
+        <h3 class="laranja">CADASTRAR JOGADORES</h3>
+        <p class="form-sub">Um nick por linha ou separados por vírgula. Dá pra colar a lista do clã inteiro de uma vez. A tag [<span data-tag>COBR</span>] sai sozinha.</p>
+      </div>
+      <div class="cadastro-campos">
+        <textarea id="fNicks" rows="4" maxlength="4000" aria-label="Nicks dos jogadores" placeholder="VENO&#10;Mamba&#10;Kaiser"></textarea>
+        <div class="cadastro-lado">
+          <label for="fCargo">CARGO</label>
+          <select id="fCargo"></select>
+          <span class="vale" id="previaCadastro" aria-live="polite"></span>
+          <button type="submit" class="btn btn-pri" id="btnCadastrar">CADASTRAR</button>
+        </div>
+      </div>
+      <p class="erro" id="erroCadastro" role="alert" hidden></p>
+    </form>
+
+    <div class="painel">
+      <div class="jog-barra">
+        <div class="abas" role="tablist" aria-label="Tipo de tabela">
+          <button type="button" role="tab" class="aba" data-vista="resumo" aria-selected="true">Resumo</button>
+          <button type="button" role="tab" class="aba" data-vista="semanas" aria-selected="false">Por semana</button>
+          <button type="button" role="tab" class="aba" data-vista="meses" aria-selected="false">Por mês</button>
+        </div>
+        <input type="search" id="fBusca" placeholder="Buscar jogador" aria-label="Buscar jogador" autocomplete="off">
+        <select id="fFiltro" aria-label="Quem mostrar">
+          <option value="ativos">No clã</option>
+          <option value="parados">Sem partida no período</option>
+          <option value="ex">Ex-membros</option>
+          <option value="todos">Todos</option>
+        </select>
+        <div class="jog-baixar">
+          <button type="button" class="btn btn-sec" id="btnCsv">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>
+            Baixar tabela
+          </button>
+          <button type="button" class="link-btn" id="btnCsvPartidas">todas as partidas</button>
+        </div>
+      </div>
+      <div class="tabela-box">
+        <table class="tab-jog">
+          <thead id="cabJog"></thead>
+          <tbody id="corpoJog"></tbody>
+        </table>
+      </div>
+      <p class="jog-nota" id="notaJog"></p>
+    </div>
   </section>
 
   <section class="wrap bloco" id="hall" hidden>
@@ -228,6 +296,26 @@
       <button type="button" class="btn btn-perigo" id="btnSimApagar">Apagar</button>
     </div>
   </div>
+</dialog>
+
+<dialog id="dlgJogador" class="dlg" aria-labelledby="tituloJogador">
+  <form id="formJogador" class="form-admin" novalidate>
+    <h2 class="laranja" id="tituloJogador">EDITAR JOGADOR</h2>
+    <label for="fJogNick">NICK</label>
+    <input id="fJogNick" type="text" maxlength="24" autocomplete="off" required>
+    <p class="form-nota">Trocar o nick também troca nas partidas que ele já tem.</p>
+    <label for="fJogCargo">CARGO</label>
+    <select id="fJogCargo"></select>
+    <label class="check" for="fJogAtivo"><input id="fJogAtivo" type="checkbox"> Ainda está no clã</label>
+    <p class="form-nota" id="notaJogador"></p>
+    <p class="erro" id="erroJogador" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="button" class="btn btn-perigo-sec" id="btnApagarJog">Apagar</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-sec" id="btnCancelarJog">Cancelar</button>
+      <button type="submit" class="btn btn-pri" id="btnSalvarJog">Salvar</button>
+    </div>
+  </form>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

@@ -171,6 +171,8 @@ Manda esse link no grupo. Todo mundo vê o ranking, mas só você registra as ma
 4. Toca em "Colocar no ranking". Os pontos, patentes e medalhas atualizam sozinhos.
 
 Errou? Em "Partidas recentes" cada partida tem uma lixeira.
+
+Elenco: em "Jogadores do clã" aparece o quadro "Cadastrar jogadores". Cola os nicks de todo mundo do clã (um por linha) e toca em Cadastrar. No lápis de cada jogador dá pra trocar nick, cargo ou marcar que saiu do clã. O botão "Baixar tabela" baixa a planilha com a pontuação de todos.
 Não passa o PIN pra ninguém.
 
 Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira um app no celular.</pre></div>
@@ -184,8 +186,17 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
       <li><b>Trocar a logo:</b> suba outra imagem com o nome <code>logo-cobr.webp</code> (<b>Add file → Upload files</b>).</li>
       <li><b>Nomes e pontos das patentes:</b> mude em <code>PATENTES</code>.</li>
       <li><b>Trocar o PIN:</b> rode de novo, no SQL Editor do Supabase, a linha do PIN do passo 3, com o PIN novo, e avise o dono.</li>
-      <li><b>Corrigir um nick escrito errado:</b> no Supabase, <b>Table Editor → scores</b>, clique na célula do nome e corrija.</li>
+      <li><b>Corrigir um nick escrito errado:</b> na Área do dono, em <b>Jogadores do clã</b>, toque no <b>lápis</b> do jogador e troque o nick. As partidas dele mudam junto.</li>
+      <li><b>Nomes dos cargos:</b> por padrão são Líder, Vice-líder e Membro. Pra mudar, adicione no <code>config.js</code> uma linha como <code>CARGOS: ["Líder", "Vice-líder", "Elite", "Membro"],</code> (o primeiro é o mais alto).</li>
     </ul>
+
+    <h2 style="margin-top:36px">ATUALIZAR PRA VERSÃO COM CADASTRO DE JOGADORES</h2>
+    <p>Pra quem já tinha o site no ar antes do cadastro de jogadores:</p>
+    <ol>
+      <li>No Supabase, abra o <b>SQL Editor</b>, cole o <code>supabase-setup.sql</code> novo inteiro e clique em <b>Run</b>. Não apaga nada nem muda o PIN. Quem já tem partida entra no elenco sozinho.</li>
+      <li>No GitHub, clique em <b>Add file → Upload files</b> e suba só <code>index.html</code>, <code>app.js</code> e <code>style.css</code>. Clique em <span class="btn-nome">Commit changes</span>.</li>
+    </ol>
+    <div class="alerta"><b>Não suba o <code>config.js</code> desta pasta.</b> O do GitHub já tem os seus códigos do Supabase; o desta pasta está em branco e deixaria o site em modo demonstração.</div>
     <h2 style="margin-top:36px">SE DER PROBLEMA</h2>
     <ul>
       <li><b>Aparece "Modo demonstração" no site publicado:</b> o <code>config.js</code> não foi salvo com os códigos. Refaça o passo 5.</li>

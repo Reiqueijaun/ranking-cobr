@@ -452,3 +452,82 @@ td .cem-chip { margin-left: 0; }
 
 /* no celular, o dono vê o formulário logo depois do pódio */
 @media (max-width: 760px) { body.modo-dono .col-lateral { order: -1; } }
+
+/* ============ jogadores do clã ============ */
+#jogadores { scroll-margin-top: 90px; }
+#jogadores > .painel { overflow: hidden; margin-bottom: 16px; }
+.bloco-sub { margin: 6px 0 0; font-size: 14px; color: var(--texto-2); }
+.jog-numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.aviso-elenco { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: var(--laranja-escuro); color: var(--laranja-claro); font-size: 14px; }
+
+select, textarea, input[type="search"] {
+  width: 100%; border-radius: 10px; border: 1px solid #3A2A1E; background: var(--fundo-2); color: var(--texto);
+  font-family: inherit; font-size: 16px;
+}
+select, input[type="search"] { min-height: 44px; padding: 0 12px; }
+select { cursor: pointer; }
+textarea { padding: 10px 14px; resize: vertical; line-height: 1.5; min-height: 112px; }
+select:focus, textarea:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px rgba(255, 122, 26, .2); }
+textarea::placeholder { color: #7D6F63; }
+
+/* cadastro */
+.cadastro { padding: 20px 22px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 14px; background: var(--painel); border-color: var(--linha-forte); }
+.cadastro h3 { margin: 0; font-family: var(--f-titulo); font-size: 30px; font-weight: 600; line-height: 1; letter-spacing: 1px; }
+.cadastro-campos { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
+.cadastro-campos textarea { flex: 999 1 320px; min-width: 0; }
+.cadastro-lado { flex: 1 1 200px; display: flex; flex-direction: column; gap: 8px; }
+.cadastro-lado label { font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--texto-2); }
+.cadastro-lado .btn { margin-top: auto; }
+
+/* barra da tabela */
+.jog-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--linha); }
+.jog-barra input[type="search"] { flex: 1 1 180px; width: auto; }
+.jog-barra select { flex: 0 1 220px; width: auto; }
+.jog-baixar { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.jog-baixar .link-btn { font-size: 13px; white-space: nowrap; }
+.jog-nota { margin: 0; padding: 12px 22px 16px; font-size: 12px; color: var(--texto-3); border-top: 1px solid var(--linha); }
+
+/* tabela */
+.tab-jog { min-width: 760px; }
+.tab-jog th { white-space: nowrap; }
+.tab-jog th .ord {
+  display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; min-height: 32px;
+  background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; cursor: pointer;
+}
+.tab-jog th .ord:hover { color: var(--texto); }
+.tab-jog th.dir .ord { flex-direction: row-reverse; }
+.tab-jog th .seta { font-size: 9px; min-width: 9px; }
+.tab-jog td { padding-block: 10px; }
+.tab-jog .pos { font-size: 22px; }
+.tab-jog .num { font-size: 24px; }
+.tab-jog tr.ex td { opacity: .6; }
+.tab-jog tbody tr:hover { background: var(--painel); }
+.nowrap { white-space: nowrap; }
+.cargo { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--fundo-2); border: 1px solid var(--linha-forte); color: var(--texto-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cargo-1 { background: var(--laranja-escuro); border-color: var(--laranja); color: var(--laranja-claro); }
+.cargo-2 { background: var(--azul-fundo); border-color: var(--azul-linha); color: var(--azul-claro); }
+.ex-chip { padding: 2px 7px; border-radius: 6px; border: 1px dashed #6E6157; color: var(--texto-3); font-size: 10px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
+.editar { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--linha-forte); background: transparent; color: var(--texto-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.editar:hover { color: var(--laranja-claro); border-color: var(--laranja); }
+
+/* por semana / por mês */
+.cel-per b { font-family: var(--f-titulo); font-size: 22px; font-weight: 600; line-height: 1; }
+.cel-per small { margin-left: 4px; font-size: 11px; color: var(--texto-3); }
+.cel-per.sem { color: #5E5047; }
+.cel-per.melhor-col b { color: var(--laranja); }
+.cel-per.melhor-col { background: var(--laranja-fundo); }
+.tab-jog .nome-linha { flex-wrap: nowrap; }
+.tab-jog .nome-linha .link-nome { white-space: nowrap; }
+
+/* diálogo de jogador e perfil sem partidas */
+.form-admin select { min-height: 48px; }
+.linha-btns .espaco { flex-grow: 1; }
+.btn-perigo-sec { background: transparent; color: var(--perigo); border: 1px solid rgba(255, 90, 78, .5); }
+.btn-perigo-sec:hover { background: rgba(255, 90, 78, .12); }
+.perfil-vazio { margin-top: 20px; }
+
+@media (max-width: 760px) {
+  .jog-baixar { margin-left: 0; width: 100%; justify-content: space-between; }
+  .jog-barra select { flex: 1 1 160px; }
+  .cadastro h3 { font-size: 26px; }
+}
