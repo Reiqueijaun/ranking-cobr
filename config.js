@@ -14,8 +14,8 @@
 // =============================================================
 
 window.RANKING_CONFIG = {
-  SUPABASE_URL: "COLE_AQUI_A_PROJECT_URL",
-  SUPABASE_KEY: "COLE_AQUI_A_CHAVE_ANON_OU_PUBLISHABLE",
+  SUPABASE_URL: "https://gntibfbrdplmbdgdreeq.supabase.co",
+  SUPABASE_KEY: "sb_publishable_AsSQLui_xg_NZT_6bx16Mg_Atv4IEGt",
 
   // Tag do clã que aparece antes do nome de cada jogador
   CLAN_TAG: "COBR",
