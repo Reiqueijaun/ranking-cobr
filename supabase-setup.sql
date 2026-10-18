@@ -271,7 +271,8 @@ create table if not exists public.torneios (
   nome          text not null check (char_length(btrim(nome)) between 1 and 60),
   -- soma = quem soma mais · melhor = maior partida · melhores = soma das N melhores
   -- meta = corrida até um número · mata = mata-mata (chaveamento 1 contra 1)
-  formato       text not null default 'soma' check (formato in ('soma', 'melhor', 'melhores', 'meta', 'mata')),
+  -- hora = quem está em 1º no ranking na hora marcada · livre = regras próprias (o dono escolhe o pódio)
+  formato       text not null default 'soma' check (formato in ('soma', 'melhor', 'melhores', 'meta', 'mata', 'hora', 'livre')),
   -- pontos e massa saem das partidas; custom = outra coisa (kills, abates...), com o nome em "unidade"
   metrica       text not null default 'pontos' check (metrica in ('pontos', 'massa', 'custom')),
   unidade       text not null default '' check (char_length(unidade) <= 20),
@@ -292,6 +293,18 @@ create table if not exists public.torneios (
   check (fim is null or fim > inicio)
 );
 create index if not exists torneios_inicio_idx on public.torneios (inicio desc);
+-- formatos "hora" e "livre" (pra quem criou a tabela antes deles existirem)
+alter table public.torneios drop constraint if exists torneios_formato_check;
+alter table public.torneios add constraint torneios_formato_check
+  check (formato in ('soma', 'melhor', 'melhores', 'meta', 'mata', 'hora', 'livre'));
+-- "hora": qual ranking vale (geral, temporada do mês ou semana)
+alter table public.torneios add column if not exists base text not null default 'geral';
+alter table public.torneios drop constraint if exists torneios_base_check;
+alter table public.torneios add constraint torneios_base_check check (base in ('geral', 'mes', 'semana'));
+-- "livre": campeão, vice e 3º escolhidos pelo dono (ids dos jogadores, nessa ordem)
+alter table public.torneios add column if not exists podio uuid[] not null default '{}';
+alter table public.torneios drop constraint if exists torneios_podio_check;
+alter table public.torneios add constraint torneios_podio_check check (cardinality(podio) <= 3);
 
 -- Resultados lançados pelo dono (kills, massa de partida especial...)
 create table if not exists public.torneio_lancamentos (
@@ -354,7 +367,12 @@ begin
     participantes = coalesce(array(select distinct x::uuid from jsonb_array_elements_text(coalesce(p_dados -> 'participantes', '[]')) x), '{}'),
     premios       = coalesce(array(select left(btrim(x), 60) from jsonb_array_elements_text(coalesce(p_dados -> 'premios', '[]')) with ordinality as e(x, n) order by n), '{}'),
     regras        = left(coalesce(p_dados ->> 'regras', ''), 2000),
-    publicado     = coalesce((p_dados ->> 'publicado')::boolean, true)
+    publicado     = coalesce((p_dados ->> 'publicado')::boolean, true),
+    -- só muda quando vem no pedido (assim a versão antiga do site não apaga o pódio)
+    base          = case when p_dados ? 'base' then coalesce(p_dados ->> 'base', 'geral') else base end,
+    podio         = case when p_dados ? 'podio'
+                      then coalesce(array(select x::uuid from jsonb_array_elements_text(coalesce(p_dados -> 'podio', '[]')) with ordinality as e(x, n) order by n), '{}')
+                      else podio end
   where id = novo;
   return novo;
 end;
