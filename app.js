@@ -358,7 +358,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   // ---------- desenho da página ----------
   function render() {
-    cachePts = null;
+    cachePat = null;
     cacheTrofeus = null;
     const geralMassa = montarRanking('geral', 'massa');
     const geralPontos = montarRanking('geral', 'pontos');
@@ -381,7 +381,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     renderPodio(rank, ctx);
     renderTabela(rank, ctx);
     renderConquistas();
-    renderPatentes(ctx);
+    renderPatentes();
+    renderFimTemporada();
     renderPremios();
     renderTemporadas(ctx);
     renderHall();
@@ -498,11 +499,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     ul.replaceChildren(...achados.slice(0, 80).map(({ r, s, pos: p }) => el('li', null,
       el('button', { type: 'button', class: 'busca-item', onclick: () => irPerfil(r.chave) },
         el('span', { class: `busca-pos pos p${p}`, text: p ? `#${p}` : '–' }),
-        avatarDe(r.nick, s ? s.pontos : 0),
+        avatarDe(r.nick, ptsPat(r.chave)),
         el('span', { class: 'busca-info' },
           el('span', { class: 'busca-nome' }, el('span', { class: 'busca-nick', text: r.nick }), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX' }) : null),
           el('span', { class: 'busca-sub', text: s ? `${ptsTxt(s.pontos)} · recorde ${fmt(s.melhor.mass)} · ${s.qtd} ${s.qtd === 1 ? 'partida' : 'partidas'}` : 'ainda sem partida' })),
-        chipPatente(s ? s.pontos : 0, 'busca-pat')))));
+        chipPatente(ptsPat(r.chave), 'busca-pat')))));
   }
   function irPerfil(k) {
     $('dlgBusca').close();
@@ -659,8 +660,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   function renderJogadores() {
     const lista = listaElenco();
-    const geral = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j]));
-    const ptsGeral = (k) => (geral.get(k) || { pontos: 0 }).pontos;
+    const ptsGeral = ptsPat; // a patente é a da temporada
     document.querySelectorAll('.aba[data-vista]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.vista === vistaJog)));
     document.querySelectorAll('.aba[data-perjog]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.perjog === perJog)));
     $('abasPerJog').hidden = vistaJog !== 'resumo';
@@ -690,7 +690,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       { rot: 'POS' },
       { id: 'nome', rot: 'JOGADOR', ord: true, texto: true },
       { id: 'cargo', rot: 'CARGO', ord: true, texto: true },
-      { id: 'ptsGeral', rot: 'PATENTE', ord: true, titulo: 'Patente pelos pontos de todas as partidas' },
+      { id: 'ptsGeral', rot: 'PATENTE', ord: true, titulo: 'Patente nesta temporada' },
       { id: 'pontos', rot: 'PONTOS', ord: true, dir: true },
       { id: 'qtd', rot: 'PARTIDAS', ord: true, dir: true },
       { id: 'recorde', rot: 'RECORDE', ord: true, dir: true },
@@ -730,8 +730,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       )));
     }
     $('notaJog').textContent = perJog === 'geral'
-      ? `Pontos, partidas e recorde de todas as partidas. A patente sempre conta tudo.`
-      : `Pontos, partidas e recorde só ${textoPer[perJog]}. A patente sempre conta tudo.`;
+      ? `Pontos, partidas e recorde de todas as partidas. A patente é a desta temporada.`
+      : `Pontos, partidas e recorde só ${textoPer[perJog]}. A patente é a desta temporada.`;
 
     const dia = (ms) => (ms ? new Date(ms).toLocaleDateString('pt-BR') : '');
     planilha = {
@@ -1015,11 +1015,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     }
   }
 
-  function geralPts(j) {
-    if (periodo === 'geral') return j.pontos;
-    const g = montarRanking('geral', 'pontos').find((x) => x.chave === j.chave);
-    return g ? g.pontos : 0;
-  }
+  const geralPts = (j) => ptsPat(j.chave); // pontos que valem pra patente (a da temporada)
 
   function renderPodio(rank, ctx) {
     const box = $('podio');
@@ -1123,7 +1119,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('partidasMaisBox').hidden = resto <= 0;
     $('btnPartidasMais').textContent = `Ver mais ${fmt(Math.min(resto, PARTIDAS_PASSO))} ${Math.min(resto, PARTIDAS_PASSO) === 1 ? 'partida' : 'partidas'}`;
     if (!lista.length) { ul.replaceChildren(el('li', { class: 'vazio', text: 'Nenhuma partida registrada ainda.' })); return; }
-    const ptsGeral = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.pontos]));
     ul.replaceChildren(...lista.map((p) => {
       const url = urlPrint(p);
       const pts = pontosDe(p.mass);
@@ -1132,7 +1127,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         url
           ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${nome}`, onclick: () => abrirPrint(p) },
               el('img', { src: url, alt: '', loading: 'lazy' }))
-          : el('span', { class: 'mini mini-av' }, avatarDe(nome, ptsGeral.get(chave(p.player)) || 0)),
+          : el('span', { class: 'mini mini-av' }, avatarDe(nome, ptsPat(chave(p.player)))),
         el('div', { class: 'partida-info' },
           el('span', { class: 'partida-nome', text: comTag(nome) }),
           el('span', { class: 'partida-massa' }, fmt(p.mass), p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
@@ -1209,6 +1204,61 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const prox = PATENTES[atual.nivel + 1] || null;
     const progresso = prox ? (pontos - atual.pontos) / (prox.pontos - atual.pontos) : 1;
     return { atual, prox, progresso: Math.max(0, Math.min(1, progresso)) };
+  }
+
+  // ---------- patente por temporada (igual ao ranqueado do Free Fire) ----------
+  // A patente vale só na temporada (o mês). Na virada, quem terminou cai 2 patentes e
+  // começa a nova no piso dela; os pontos do mês somam em cima disso. Recruta continua Recruta.
+  // O Pix da patente é pago de novo em toda temporada em que a pessoa chega nela.
+  const CAI_NA_VIRADA = 2;
+  // Temporada 1 = outubro de 2026 (no modo demonstração, o mês da partida mais velha)
+  function inicioTemp1() {
+    if (!DEMO || !partidas.length) return new Date(2026, 9, 1);
+    const d = new Date(partidas[partidas.length - 1].created_at);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+  function numTemp(ms) {
+    const d = new Date(ms), t1 = inicioTemp1();
+    return (d.getFullYear() - t1.getFullYear()) * 12 + d.getMonth() - t1.getMonth() + 1;
+  }
+  const nomeTemp = (ms) => (numTemp(ms) >= 1 ? `Temporada ${numTemp(ms)}` : `Temporada de ${nomeMes(ms)}`);
+  const fimDoMes = (ms = Date.now()) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(); };
+  // em que nível começa a próxima temporada quem terminou em "nivel"
+  const nivelNaVirada = (nivel) => Math.max(0, nivel - CAI_NA_VIRADA);
+
+  // "2026-10" -> Map(chave -> { chave, nome, ini, ganho, pts, fim, qtd }); ini/fim = nível da patente
+  let cachePat = null;
+  function patentesPorTemporada() {
+    if (cachePat) return cachePat;
+    cachePat = new Map();
+    if (!partidas.length) return cachePat;
+    const velha = new Date(partidas[partidas.length - 1].created_at);
+    let comeca = new Map(); // chave -> { ini, nome } de quem não começa em Recruta
+    for (let d = new Date(velha.getFullYear(), velha.getMonth(), 1); d.getTime() <= Date.now(); d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      const doMes = new Map(montarRanking(d.getTime(), 'pontos', true, fimDoMes(d.getTime())).map((j) => [j.chave, j]));
+      const mapa = new Map();
+      for (const k of new Set([...comeca.keys(), ...doMes.keys()])) {
+        const ini = comeca.has(k) ? comeca.get(k).ini : 0;
+        const j = doMes.get(k);
+        const ganho = j ? j.pontos : 0;
+        const pts = PATENTES[ini].pontos + ganho;
+        mapa.set(k, { chave: k, nome: j ? j.nome : comeca.get(k).nome, ini, ganho, pts, fim: patenteDe(pts).atual.nivel, qtd: j ? j.qtd : 0 });
+      }
+      cachePat.set(mesChave(d), mapa);
+      comeca = new Map();
+      for (const [k, x] of mapa) if (nivelNaVirada(x.fim) > 0) comeca.set(k, { ini: nivelNaVirada(x.fim), nome: x.nome });
+    }
+    return cachePat;
+  }
+  // como o jogador está na temporada de "ms" (null = nunca pontuou e começou em Recruta)
+  const patTemp = (k, ms = Date.now()) => (patentesPorTemporada().get(mesChave(ms)) || new Map()).get(k) || null;
+  // pontos que valem pra patente agora: o piso de onde começou + os pontos do mês
+  function ptsPat(k) { const x = patTemp(k); return x ? x.pts : 0; }
+  // Pix das patentes que a pessoa alcançou numa temporada (as que já começou tendo não contam)
+  function pixAlcancado(x) {
+    let soma = 0;
+    for (let n = x.ini + 1; n <= x.fim; n++) soma += premioPatente(PATENTES[n]);
+    return soma;
   }
   function chipPatente(pontos, extra = '') {
     const { atual } = patenteDe(pontos);
@@ -1311,7 +1361,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('dqSemana').replaceChildren(
       el('span', { class: 'dq-rot' }, svg(medalhasDe({ chave: '', cem: 0, qtd: 0 }, ctx)[2].icone, 16), 'COBRA DA SEMANA'),
       s1 && s1.pontos > 0
-        ? el('div', { class: 'dq-corpo' }, avatarDe(s1.nome, montarRanking('geral', 'pontos').find((x) => x.chave === s1.chave)?.pontos || 0, 'av-m'),
+        ? el('div', { class: 'dq-corpo' }, avatarDe(s1.nome, ptsPat(s1.chave), 'av-m'),
             el('div', null, btnPerfil(s1, 'dq-nome'), el('div', { class: 'dq-num', text: `+${ptsTxt(s1.pontos)}` }),
               el('div', { class: 'dq-sub', text: `em ${s1.qtd} ${s1.qtd === 1 ? 'partida' : 'partidas'} nesta semana` })))
         : el('div', { class: 'dq-corpo' }, el('div', null, el('div', { class: 'dq-num', text: 'Vaga aberta' }), el('div', { class: 'dq-sub', text: 'Ninguém pontuou nesta semana ainda.' }))),
@@ -1350,12 +1400,15 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
 
   // ---------- escada de patentes ----------
-  function renderPatentes(ctx) {
+  function renderPatentes() {
+    // quem está em cada degrau nesta temporada (quem desceu na virada já aparece no novo degrau)
     const porNivel = new Map();
-    for (const j of ctx.pontos) {
-      const n = patenteDe(j.pontos).atual.nivel;
-      if (!porNivel.has(n)) porNivel.set(n, []);
-      porNivel.get(n).push(j);
+    const agora = [...(patentesPorTemporada().get(mesChave(Date.now())) || new Map()).values()]
+      .filter((x) => !exMembro(x.chave)).sort((a, b) => b.pts - a.pts);
+    for (const x of agora) {
+      const j = { chave: x.chave, nome: x.nome, pontos: x.pts };
+      if (!porNivel.has(x.fim)) porNivel.set(x.fim, []);
+      porNivel.get(x.fim).push(j);
     }
     $('escadaPatentes').replaceChildren(...[...PATENTES].reverse().map((t) => {
       const gente = porNivel.get(t.nivel) || [];
@@ -1366,7 +1419,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'degrau-info' },
           el('span', { class: 'degrau-nome', text: t.nome }),
           el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' }),
-          pix ? el('span', { class: 'degrau-pix', title: 'Pago uma vez pelo dono do clã, quando você chega nessa patente' }, el('b', { text: `+${reais(pix)}` }), ' no Pix ao chegar') : null),
+          pix ? el('span', { class: 'degrau-pix', title: 'Pago pelo dono do clã em toda temporada em que você chega nessa patente' }, el('b', { text: `+${reais(pix)}` }), ' no Pix ao chegar') : null),
         el('div', { class: 'degrau-gente' },
           gente.length
             ? [...gente.slice(0, 4).map((j) => btnPerfil(j, 'av-btn', avatarDe(j.nome, j.pontos))), gente.length > 4 ? el('span', { class: 'mais', text: `+${gente.length - 4}` }) : null]
@@ -1382,21 +1435,44 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const d = Math.round(h / 24);
     return `fecha em ${d} ${d === 1 ? 'dia' : 'dias'}`;
   }
+  // contagem até a virada da temporada (no ranking e na página de patentes)
+  function renderFimTemporada() {
+    const agora = Date.now();
+    const mes = nomeMes(agora).toUpperCase();
+    $('seloPeriodo').textContent = `${nomeTemp(agora).toUpperCase()} · ${mes}`;
+    const eu = lerEu();
+    const x = eu && !exMembro(eu) ? patTemp(eu) : null;
+    const pat = PATENTES[x ? x.fim : 0];
+    // cria de novo pra cada caixa (o mesmo nó não pode ficar em dois lugares)
+    const minha = () => (eu && elenco.has(eu)
+      ? el('span', { class: 'ft-eu' }, 'Você está ', chipPatente(pat.pontos),
+          pat.nivel ? [' e começa a próxima como ', b(PATENTES[nivelNaVirada(pat.nivel)].nome), '.'] : '. Bora subir antes da virada!')
+      : null);
+    const montar = () => el('div', { class: 'ft-box' },
+      el('div', { class: 'ft-txt' },
+        el('span', { class: 'ft-rot', text: `${nomeTemp(agora).toUpperCase()} · ${mes}` }),
+        el('b', { class: 'ft-titulo', text: 'A temporada acaba no dia 1' }),
+        el('span', { class: 'ft-sub' }, 'Na virada a taça vai pro campeão, o top 3 leva o Pix e ', b(`todo mundo cai ${CAI_NA_VIRADA} patentes`), '. A patente que você fechar vira insígnia no seu perfil.'),
+        minha()),
+      contagem(fimDoMes(agora), 'FALTAM'));
+    for (const id of ['fimTemporada', 'fimTemporadaPat']) trocar($(id), montar());
+  }
+
   // sala de troféus: a taça em disputa primeiro, depois as já entregues
   function renderTemporadas(ctx) {
     const temps = ctx.temps;
     $('temporadas').hidden = !temps.length;
     const fechadas = temps.filter((t) => !t.atual).length;
     $('tempQtd').textContent = fechadas ? `${fechadas} ${fechadas === 1 ? 'taça entregue' : 'taças entregues'}` : 'a primeira taça está em disputa';
-    $('listaTemporadas').replaceChildren(...temps.map((t, i) => {
+    $('listaTemporadas').replaceChildren(...temps.map((t) => {
       const c = t.top[0];
-      const num = temps.length - i;
       return el('li', { class: `tr-item ${t.atual ? 'tr-disputa' : ''}`, style: `--gema:${gemaDe(t)[1]}` },
         el('button', { type: 'button', class: 'tr-vitrine', onclick: () => abrirTrofeu(chaveTemp(t)), 'aria-label': t.atual ? `Taça de ${nomeMes(t.inicio)}, em disputa` : `Taça de ${nomeMes(t.inicio)}: ${comTag(c.nome)} campeão` },
           trofeuDe(t),
           t.atual ? el('span', { class: 'tr-selo', text: 'EM DISPUTA' }) : null),
         el('div', { class: 'tr-info' },
-          el('div', { class: 'tr-mes' }, el('span', { text: rotTemp(t) }), el('small', { text: t.atual ? fechaTemporadaTxt(t.fim) : `temporada ${num}` })),
+          el('span', { class: 'tr-num', text: nomeTemp(t.inicio).toUpperCase() }),
+          el('div', { class: 'tr-mes' }, el('span', { text: rotTemp(t) }), el('small', { text: t.atual ? fechaTemporadaTxt(t.fim) : 'encerrada' })),
           el('div', { class: 'tr-campeao' },
             el('span', { class: 'tr-rot', text: t.atual ? 'liderando' : 'campeão' }),
             btnPerfil(c, 'link-nome', c.nome),
@@ -1425,7 +1501,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'cer-raios', 'aria-hidden': 'true' }),
         trofeuDe(t, `cer-trofeu ${t.atual ? 'tr-fantasma' : ''}`)),
       el('div', { class: 'cer-info' },
-        el('span', { class: 'cer-rot', text: festa && !t.atual ? `A TEMPORADA DE ${nomeMes(t.inicio).toUpperCase()} FECHOU!` : `TEMPORADA ${temps.length - i} · ${nomeMes(t.inicio).toUpperCase()} ${ano}` }),
+        el('span', { class: 'cer-rot', text: festa && !t.atual ? `A ${nomeTemp(t.inicio).toUpperCase()} (${nomeMes(t.inicio).toUpperCase()}) FECHOU!` : `${nomeTemp(t.inicio).toUpperCase()} · ${nomeMes(t.inicio).toUpperCase()} ${ano}` }),
         minha ? el('span', { class: 'cer-eu', text: '👑 ESSA TAÇA É SUA!' }) : null,
         el('span', { class: 'cer-titulo', text: t.atual ? 'LIDERANDO A DISPUTA' : 'CAMPEÃO' }),
         el('h2', { class: 'cer-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), c.nome),
@@ -1440,6 +1516,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
           k < 3 && temPremio(t) && premiosTemporada(t.inicio)[k] ? el('span', { class: `tt-premio pv${k + 1}`, title: t.atual ? 'prêmio em Pix se fechar assim' : 'prêmio em Pix', text: reais(premiosTemporada(t.inicio)[k]) }) : null,
           el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
         t.top.length > 5 ? el('p', { class: 'cer-mais', text: `${t.top.length} jogadores pontuaram nessa temporada` }) : null,
+        t.atual ? null : patentesDaCerimonia(t),
         el('p', { class: 'cer-gema' }, el('span', { class: 'cer-gema-cor', 'aria-hidden': 'true' }), `Pedra da temporada: ${gemaNome}`),
         el('div', { class: 'linha-btns' },
           el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharTrofeu(t) }, svg(ICONE_LINK, 18), 'Compartilhar'),
@@ -1451,11 +1528,46 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     dlg.scrollTop = 0;
     return true;
   }
+  // fim de temporada: a sua insígnia (se marcou "sou eu") e a patente final de cada um
+  function patentesDaCerimonia(t) {
+    const mapa = patentesPorTemporada().get(chaveTemp(t));
+    if (!mapa) return null;
+    const pos = new Map(t.top.map((j, i) => [j.chave, i + 1]));
+    const lista = [...mapa.values()].filter((x) => x.qtd || x.fim).sort((a, b) => b.fim - a.fim || b.pts - a.pts);
+    if (!lista.length) return null;
+    const ms = t.inicio;
+    const eu = mapa.get(lerEu());
+    const minha = eu && (eu.qtd || eu.fim) ? (() => {
+      const x = { ...eu, ms, atual: false, pat: PATENTES[eu.fim], pix: pixAlcancado(eu) };
+      const prox = PATENTES[nivelNaVirada(eu.fim)];
+      return el('div', { class: 'cer-minha', style: `--pc:${x.pat.cor}` },
+        insignia(x, 'ins-g'),
+        el('div', { class: 'cer-minha-txt' },
+          el('span', { class: 'cer-minha-rot', text: 'SUA TEMPORADA' }),
+          el('b', { text: `Fechou como ${x.pat.nome}` }),
+          el('span', { text: `${pos.get(eu.chave) ? `${pos.get(eu.chave)}º lugar · ` : ''}${ptsTxt(eu.ganho)} no mês${x.pix ? ` · ${reais(x.pix)} de Pix por patente` : ''}` }),
+          el('span', { class: 'sec', text: `Ganhou a insígnia da ${nomeTemp(ms)}. Começou a ${nomeTemp(fimDoMes(ms))} como ${prox.nome}.` })));
+    })() : null;
+    return el('div', { class: 'cer-pats' },
+      minha,
+      el('span', { class: 'cer-pats-rot', text: 'PATENTES FINAIS' }),
+      el('ul', { class: 'cer-pats-lista' }, ...lista.slice(0, 12).map((x) => {
+        const p = PATENTES[x.fim];
+        return el('li', { style: `--pc:${p.cor}` },
+          el('span', { class: 'tt-nome' }, btnPerfil(x, 'link-nome', x.nome)),
+          chipPatente(p.pontos),
+          el('span', { class: 'cer-pats-vai', title: `começou a ${nomeTemp(fimDoMes(ms))} como ${PATENTES[nivelNaVirada(x.fim)].nome}`, text: `→ ${PATENTES[nivelNaVirada(x.fim)].nome}` }));
+      })),
+      el('p', { class: 'cer-mais', text: `Na virada todo mundo caiu ${CAI_NA_VIRADA} patentes (→ é onde começou a temporada seguinte).` }));
+  }
+
   // cerimônia de quem virou Diamantes: cacos de diamante explodindo, raios e o prêmio
   function abrirDiamante(k, festa = false) {
-    const j = montarRanking('geral', 'pontos').find((x) => x.chave === k);
-    const pat = j && patenteDe(j.pontos).atual;
+    const x = patTemp(k);
+    const pat = x && PATENTES[x.fim];
     if (!pat || !pat.diamante) return false;
+    // números da temporada (só chega em Diamantes jogando no mês)
+    const j = montarRanking('mes', 'pontos', true).find((y) => y.chave === k) || { nome: x.nome, qtd: 0, melhor: { mass: 0 }, cem: 0 };
     const pix = premioPatente(pat);
     const minha = lerEu() === k;
     const cacos = el('div', { class: 'dia-cacos', 'aria-hidden': 'true' },
@@ -1475,9 +1587,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { class: 'dia-titulo', text: pat.nome.toUpperCase() }),
         el('h2', { class: 'cer-nome dia-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), j.nome),
         pix ? el('div', { class: 'dia-pix' }, el('small', { text: 'PRÊMIO' }), el('b', { text: `${reais(pix)} NO PIX` }), el('small', { text: 'pago pelo dono do clã' })) : null,
-        el('p', { class: 'cer-sub', text: `Passou de ${ptsTxt(pat.pontos)} somando todas as partidas. Pouca gente chega aqui.` }),
+        el('p', { class: 'cer-sub', text: `Passou de ${ptsTxt(pat.pontos)} na ${nomeTemp(Date.now())}. Pouca gente chega aqui, e no dia 1 a escalada recomeça.` }),
         el('div', { class: 'cer-stats' },
-          stat('PONTOS', fmt(j.pontos)), stat('PARTIDAS', fmt(j.qtd)), stat('MAIOR MASSA', fmt(j.melhor.mass)), stat(marcoTxt, `${j.cem}×`)),
+          stat('PONTOS', fmt(x.pts)), stat('PARTIDAS', fmt(j.qtd)), stat('MAIOR MASSA', fmt(j.melhor.mass)), stat(marcoTxt, `${j.cem}×`)),
         el('div', { class: 'linha-btns' },
           el('button', { type: 'button', class: 'btn btn-sec', onclick: () => $('dlgTrofeu').close() }, 'Fechar'),
           el('button', { type: 'button', class: 'btn btn-dia', onclick: () => { $('dlgTrofeu').close(); abrirPerfil(k); } }, 'Ver o perfil'))));
@@ -1488,15 +1600,16 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     dlg.scrollTop = 0;
     return true;
   }
-  // quem marcou "sou eu" e virou Diamantes ganha a cerimônia uma vez no aparelho
+  // quem marcou "sou eu" e virou Diamantes ganha a cerimônia uma vez no aparelho, em cada temporada
   function diamanteAutomatico() {
     const eu = lerEu();
     if (!eu) return false;
-    const j = montarRanking('geral', 'pontos').find((x) => x.chave === eu);
-    if (!j || !patenteDe(j.pontos).atual.diamante) return false;
+    const x = patTemp(eu);
+    if (!x || !PATENTES[x.fim].diamante) return false;
+    const marca = `${eu}|${mesChave(Date.now())}`;
     try {
-      if (localStorage.getItem('ranking_dia_visto') === eu) return false;
-      localStorage.setItem('ranking_dia_visto', eu);
+      if (localStorage.getItem('ranking_dia_visto') === marca) return false;
+      localStorage.setItem('ranking_dia_visto', marca);
     } catch (e) { return false; }
     setTimeout(() => { if (!document.querySelector('dialog[open]') && !perfilAtual && !torneioAtual) abrirDiamante(eu, true); }, 900);
     return true;
@@ -1542,6 +1655,37 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('button', { type: 'button', class: 'pp-trofeu', style: `--gema:${gemaDe(t)[1]}`, onclick: () => abrirTrofeu(chaveTemp(t)), 'aria-label': `Taça de ${nomeMes(t.inicio)}` },
           trofeuDe(t),
           el('span', { text: rotTemp(t) }))))));
+  }
+
+  // insígnias: a patente com que o jogador fechou cada temporada (ficam pra sempre)
+  function insigniasDe(k) {
+    const lista = [];
+    for (const [mc, mapa] of patentesPorTemporada()) {
+      const x = mapa.get(k);
+      if (!x || (!x.qtd && !x.fim)) continue;
+      const [a, m] = mc.split('-').map(Number);
+      const ms = new Date(a, m - 1, 1).getTime();
+      lista.push({ ...x, ms, atual: fimDoMes(ms) > Date.now(), pat: PATENTES[x.fim], pix: pixAlcancado(x) });
+    }
+    return lista.reverse(); // mais nova primeiro
+  }
+  function insignia(x, cls = '') {
+    const n = numTemp(x.ms);
+    const ano = new Date(x.ms).getFullYear();
+    return el('div', { class: `insignia ${x.pat.diamante ? 'ins-dia' : ''} ${x.atual ? 'ins-atual' : ''} ${cls}`, style: `--pc:${x.pat.cor}`, title: `${nomeTemp(x.ms)} (${nomeMes(x.ms)} ${ano}): ${x.atual ? 'está' : 'fechou'} como ${x.pat.nome}` },
+      el('span', { class: 'ins-escudo', 'aria-hidden': 'true' }, svg(x.pat.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 26), el('b', { text: n >= 1 ? `T${n}` : nomeMes(x.ms).slice(0, 3).toUpperCase() })),
+      el('span', { class: 'ins-nome', text: x.pat.nome }),
+      el('span', { class: 'ins-mes', text: `${nomeMes(x.ms).slice(0, 3)} ${String(ano).slice(2)}${x.atual ? ' · agora' : ''}` }),
+      x.pix ? el('span', { class: 'ins-pix', text: `+${reais(x.pix)}` }) : null);
+  }
+  function secaoInsigniasPerfil(k) {
+    const lista = insigniasDe(k);
+    if (!lista.length) return null;
+    const fechadas = lista.filter((x) => !x.atual);
+    const melhor = fechadas.reduce((m, x) => (!m || x.fim > m.fim ? x : m), null);
+    return el('section', { class: 'pp-sec', 'aria-labelledby': 'ppIns' },
+      el('h2', { class: 'perfil-h3', id: 'ppIns' }, 'INSÍGNIAS DE TEMPORADA ', el('span', { class: 'sec', text: melhor ? `melhor: ${melhor.pat.nome}` : 'a primeira sai no fim do mês' })),
+      el('div', { class: 'insignias' }, ...lista.map((x) => insignia(x))));
   }
 
   // ---------- hall da fama ----------
@@ -1618,8 +1762,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const btn = $('btnEu');
     btn.hidden = !r;
     if (!r) return;
-    const pts = (montarRanking('geral', 'pontos', true).find((x) => x.chave === k) || { pontos: 0 }).pontos;
-    btn.replaceChildren(avatarDe(r.nick, pts, 'av-p'), el('span', { class: 'btn-txt', text: 'Meu perfil' }));
+    btn.replaceChildren(avatarDe(r.nick, ptsPat(k), 'av-p'), el('span', { class: 'btn-txt', text: 'Meu perfil' }));
     btn.setAttribute('aria-label', `Meu perfil: ${comTag(r.nick)}`);
   }
 
@@ -1712,8 +1855,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     }
     document.title = `${comTag(nome)} · Ranking Clã ${TAG}`;
 
-    const pts = j ? j.pontos : 0;
-    const pat = patenteDe(pts);
+    const pts = j ? j.pontos : 0;            // pontos gerais (todas as partidas)
+    const ptsP = ptsPat(k);                   // pontos que valem pra patente nesta temporada
+    const pat = patenteDe(ptsP);
     const ativo = !r || r.ativo;
 
     // cabeçalho
@@ -1723,11 +1867,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
-        avatarDe(nome, pts, 'av-xg'),
+        avatarDe(nome, ptsP, 'av-xg'),
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
-          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
+          el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
@@ -1763,17 +1907,23 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         cartao('SEMANA', posicao(sem, k), sem.length, jSem ? ptsTxt(jSem.pontos) : 'sem partida nesta semana'),
         cartao('MAIOR MASSA', posicao(ctx.massa, k), ctx.massa.length, `recorde ${fmt(j.melhor.mass)}`)));
 
-    // patente
+    // patente (da temporada)
+    const xt = patTemp(k);
+    const desce = PATENTES[nivelNaVirada(pat.atual.nivel)];
     const prog = el('div', { class: 'perfil-prog', style: `--pc:${pat.atual.cor}` },
+      el('span', { class: 'prog-temp', text: `PATENTE NA ${nomeTemp(Date.now()).toUpperCase()}` }),
       el('div', { class: 'prog-linha' },
         el('span', { text: pat.atual.nome }),
-        el('span', { class: 'sec', text: pat.prox ? `${fmt(pts)} / ${fmt(pat.prox.pontos)} pts` : `${fmt(pts)} pts` }),
+        el('span', { class: 'sec', text: pat.prox ? `${fmt(ptsP)} / ${fmt(pat.prox.pontos)} pts` : `${fmt(ptsP)} pts` }),
         el('span', { text: pat.prox ? pat.prox.nome : 'NÍVEL MÁXIMO' })),
       el('div', { class: 'barra barra-pat', role: 'progressbar', 'aria-label': 'Progresso da patente', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pat.progresso * 100)) },
         el('span', { style: `width:${Math.round(pat.progresso * 100)}%` })),
       el('div', { class: 'prog-sub', text: pat.prox
-        ? `Faltam ${ptsTxt(pat.prox.pontos - pts)} pra virar ${pat.prox.nome}${premioPatente(pat.prox) ? ` e ganhar ${reais(premioPatente(pat.prox))} no Pix` : ''}${partidasPara(pat.prox.pontos - pts)}`
-        : premioPatente(pat.atual) ? `Chegou no topo e virou ${pat.atual.nome}: ${reais(premioPatente(pat.atual))} no Pix do dono do clã. Agora é defender o trono.` : 'Chegou no topo. Agora é defender o trono.' }));
+        ? `Faltam ${ptsTxt(pat.prox.pontos - ptsP)} pra virar ${pat.prox.nome}${premioPatente(pat.prox) ? ` e ganhar ${reais(premioPatente(pat.prox))} no Pix` : ''}${partidasPara(pat.prox.pontos - ptsP)}`
+        : premioPatente(pat.atual) ? `Chegou no topo e virou ${pat.atual.nome}: ${reais(premioPatente(pat.atual))} no Pix do dono do clã. Agora é defender o trono.` : 'Chegou no topo. Agora é defender o trono.' }),
+      el('div', { class: 'prog-virada' },
+        xt && xt.ini ? `Começou a temporada como ${PATENTES[xt.ini].nome} (sobrou da anterior) e fez +${ptsTxt(xt.ganho)} no mês. ` : '',
+        pat.atual.nivel ? ['No dia 1 a temporada vira e você começa a próxima como ', b(desce.nome), '.'] : 'No dia 1 a temporada vira e todo mundo recomeça a escalada.'));
     if ((pat.prox && pat.prox.diamante) || pat.atual.diamante) prog.classList.add('prog-dia');
 
     // números
@@ -1839,7 +1989,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'pp-col' }, posicoes, prog, numeros,
           el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g),
           medalhas),
-        el('div', { class: 'pp-col' }, secaoTrofeusPerfil(k, ctx), secaoTorneiosPerfil(k), momentos, historico)));
+        el('div', { class: 'pp-col' }, secaoTrofeusPerfil(k, ctx), secaoInsigniasPerfil(k), secaoTorneiosPerfil(k), momentos, historico)));
   }
   // troféu (campeão) e medalha de prata (vice) de torneio; curto = só o número (tabela do ranking)
   function chipTorneios(k, curto = false) {
@@ -1878,11 +2028,15 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   const NA_BASE = { geral: 'no ranking geral', mes: 'na temporada do mês', semana: 'no ranking da semana' };
   const baseDe = (t) => (BASES[t.base] ? t.base : 'geral');
 
-  // pontos do ranking geral de cada um (pra cor da patente no avatar e pra montar a chave)
-  let cachePts = null;
-  function ptsGeralDe(k) {
-    if (!cachePts) cachePts = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.pontos]));
-    return cachePts.get(k) || 0;
+  // pontos da patente de cada um (pra cor do avatar)
+  const ptsGeralDe = (k) => ptsPat(k);
+  // pontos do ranking geral (pra montar a chave do mata-mata pelo ranking)
+  let cacheGeral = null;
+  function ptsRankingDe(k) {
+    if (!cacheGeral || cacheGeral.n !== partidas.length || cacheGeral.p !== partidas[0]) {
+      cacheGeral = { n: partidas.length, p: partidas[0], m: new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.pontos])) };
+    }
+    return cacheGeral.m.get(k) || 0;
   }
 
   // até quando valem as partidas: o fim marcado ou a hora em que o dono encerrou
@@ -2746,7 +2900,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     if (ids.length < 2) { toast('Precisa de pelo menos 2 jogadores inscritos.', true); return; }
     if (ids.length > 64) { toast('O mata-mata aceita até 64 jogadores. Tira alguns da lista.', true); return; }
     if (t.semente === 'sorteio') ids = embaralhar(ids);
-    else ids.sort((a, b) => ptsGeralDe(chave(nickId(b))) - ptsGeralDe(chave(nickId(a))) || nickId(a).localeCompare(nickId(b), 'pt-BR'));
+    else ids.sort((a, b) => ptsRankingDe(chave(nickId(b))) - ptsRankingDe(chave(nickId(a))) || nickId(a).localeCompare(nickId(b), 'pt-BR'));
     try {
       await gravarChave(t, { slots: montarSlots(ids), res: {}, em: new Date().toISOString() });
       toast(t.semente === 'sorteio' ? 'Chave sorteada! Boa sorte pra todos.' : 'Chave montada pelo ranking. Que vença o melhor!');
@@ -3365,7 +3519,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     try {
       // quem era o 1º antes deste envio
       const reiAntes = montarRanking('geral')[0];
-      const ptsAntes = (montarRanking('geral', 'pontos').find((x) => x.chave === chave(nome)) || { pontos: 0 }).pontos;
+      const ptsAntes = ptsPat(chave(nome));
       const jogNovo = elencoOk && !elenco.has(chave(nome));
       let print_path = null;
       let print_url = null;
@@ -3396,7 +3550,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       render();
       const reiAgora = montarRanking('geral')[0];
       const ganhou = (pontosDe(massa) ? ` +${ptsTxt(pontosDe(massa))}.` : '') + (jogNovo ? ' Novo no elenco do clã!' : '');
-      const ptsDepois = (montarRanking('geral', 'pontos').find((x) => x.chave === chave(nome)) || { pontos: 0 }).pontos;
+      const ptsDepois = ptsPat(chave(nome));
       const patAntes = patenteDe(ptsAntes).atual, patDepois = patenteDe(ptsDepois).atual;
       if (patDepois.nivel > patAntes.nivel) {
         const pix = premioPatente(patDepois);

@@ -75,7 +75,7 @@
           <span class="premio-faixa-vals" id="faixaTemporadaVals"><b class="pv1">1º R$ 30</b><b class="pv2">2º R$ 15</b><b class="pv3">3º R$ 5</b></span>
         </a>
         <a class="premio-faixa faixa-pat" href="#patentes" id="faixaPatentes">
-          <span class="premio-faixa-rot">CHEGOU NA PATENTE? GANHA NO PIX</span>
+          <span class="premio-faixa-rot">CHEGOU NA PATENTE? GANHA NO PIX, TODA TEMPORADA</span>
           <span class="premio-faixa-vals" id="faixaPatentesVals"></span>
         </a>
       </div>
@@ -86,6 +86,8 @@
       </div>
     </div>
   </section>
+
+  <div class="wrap fim-temp" data-pag="ranking" id="fimTemporada" aria-label="Fim da temporada"></div>
 
   <div class="wrap" data-pag="ranking" id="faixaTnBox" hidden>
     <a class="faixa-tn" href="#torneios" id="faixaTn"></a>
@@ -213,10 +215,11 @@
     <div class="bloco-topo">
       <div>
         <h2>PATENTES <span class="laranja">E PONTOS</span></h2>
-        <p class="bloco-sub">Cada partida dá pontos e os pontos sobem sua patente. Até onde você chega? Lá no topo tem <b class="txt-dia">DIAMANTES</b>, com prêmio no Pix.</p>
+        <p class="bloco-sub">Cada temporada (um mês) é uma escalada nova, igual ao ranqueado do Free Fire: os pontos do mês sobem sua patente e, no dia 1, todo mundo cai 2 patentes e recomeça dali. Lá no topo tem <b class="txt-dia">DIAMANTES</b>, com prêmio no Pix em toda temporada que você chegar.</p>
       </div>
       <button type="button" class="btn btn-sec btn-editar-premios so-dono">Editar prêmios</button>
     </div>
+    <div class="fim-temp" id="fimTemporadaPat" aria-label="Fim da temporada"></div>
     <div class="pat-grade">
       <div class="painel lateral">
         <h3 class="painel-h3">A ESCADA</h3>
@@ -225,7 +228,7 @@
       <div class="painel lateral">
         <h3 class="painel-h3">QUANTO VALE CADA PARTIDA</h3>
         <ul class="tabela-pontos" id="tabelaPontos"></ul>
-        <p class="form-nota">Os pontos de todas as partidas somam. A patente olha os pontos de desde o começo.</p>
+        <p class="form-nota">A patente olha os pontos da temporada, somados ao piso da patente com que você começou o mês. Exemplo: fechou Mestre? Começa o mês seguinte como Guerreiro, já com 100 pts. Os pontos gerais (de todas as partidas) continuam no ranking Geral.</p>
       </div>
     </div>
   </section>
@@ -234,7 +237,7 @@
     <div class="bloco-topo">
       <div>
         <h2>SALA DE <span class="laranja">TROFÉUS</span></h2>
-        <p class="bloco-sub">Todo mês é uma temporada nova: os pontos do mês zeram e quem fizer mais leva a taça pra casa, com o nome gravado na placa. Cada taça tem a pedra do mês dela. Os pontos gerais e a patente continuam. Toque numa taça pra ver a cerimônia.</p>
+        <p class="bloco-sub">Todo mês é uma temporada nova: os pontos do mês zeram e quem fizer mais leva a taça pra casa, com o nome gravado na placa. Cada taça tem a pedra do mês dela. Na virada, todo mundo cai 2 patentes e a patente com que fechou vira insígnia no perfil. Os pontos gerais continuam. Toque numa taça pra ver a cerimônia.</p>
       </div>
       <span class="hall-qtd" id="tempQtd"></span>
     </div>
@@ -503,7 +506,7 @@
     <p class="form-nota">Vale pra temporada de agora em diante. As que já fecharam ficam com o valor da época.</p>
     <h3 class="painel-h3">AO CHEGAR NA PATENTE</h3>
     <div class="pe-patentes" id="pePatentes"></div>
-    <p class="form-nota">Quem chega na patente ganha uma vez, pago pelo dono do clã. Prêmio de torneio se muda no próprio torneio.</p>
+    <p class="form-nota">Quem chega na patente ganha, pago pelo dono do clã, em toda temporada que chegar (as patentes caem 2 níveis na virada do mês). Prêmio de torneio se muda no próprio torneio.</p>
     <p class="erro" id="erroPremios" role="alert" hidden></p>
     <div class="linha-btns">
       <button type="button" class="btn btn-sec" id="btnCancelarPremios">Cancelar</button>

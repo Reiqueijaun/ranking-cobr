@@ -1744,3 +1744,70 @@ body:not(.modo-dono) .so-dono { display: none; }
 .pe-nome { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--pc); font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
 .pe-nome small { color: var(--texto-3); font-weight: 400; letter-spacing: 0; text-transform: none; }
 .pe.pe-dia { border: 1px solid transparent; background: linear-gradient(var(--fundo-2), var(--fundo-2)) padding-box, var(--dia-anel) border-box; animation: giraAng 4s linear infinite; }
+
+/* ---------- temporadas: contagem até a virada ---------- */
+.fim-temp:empty { display: none; }
+#fimTemporada { padding-block: 8px 0; }
+#fimTemporadaPat { margin-bottom: 16px; }
+.ft-box {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; padding: 16px 20px; border-radius: 16px;
+  background: radial-gradient(90% 160% at 100% 0%, rgba(255, 122, 26, .16), transparent 60%), linear-gradient(180deg, var(--painel), var(--painel-2));
+  border: 1px solid var(--linha-forte);
+}
+.ft-txt { display: flex; flex-direction: column; gap: 4px; flex: 1 1 320px; min-width: 0; }
+.ft-rot { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--laranja-claro); }
+.ft-titulo { font-family: var(--f-titulo); font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: 1px; }
+.ft-sub { font-size: 14px; color: var(--texto-2); }
+.ft-sub b { color: var(--texto); }
+.ft-eu { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: 14px; color: var(--texto-2); }
+.ft-eu b { color: var(--texto); }
+.ft-box .tn-cel { min-width: 58px; padding: 8px 4px 6px; }
+.ft-box .tn-cel b { font-size: 36px; }
+@media (max-width: 420px) {
+  .ft-box { padding: 14px; }
+  .ft-box .tn-conta { width: 100%; }
+  .ft-box .tn-conta-num { justify-content: space-between; }
+  .ft-box .tn-cel { flex: 1; min-width: 0; }
+  .ft-titulo { font-size: 26px; }
+}
+
+/* número da temporada na sala de troféus e no perfil */
+.tr-num { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--laranja-claro); }
+.prog-temp { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--texto-3); }
+.prog-virada { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--linha); font-size: 13px; color: var(--texto-3); }
+.prog-virada b { color: var(--texto); }
+
+/* ---------- insígnias de temporada (perfil) ---------- */
+.insignias { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.insignia {
+  --pc: var(--texto-3);
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px 10px; border-radius: 12px; text-align: center; min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--pc) 45%, var(--linha));
+  background: radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, var(--pc) 22%, transparent), transparent 70%), var(--painel-2);
+}
+.ins-escudo { position: relative; display: grid; place-items: center; width: 52px; height: 56px; color: var(--pc); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pc) 45%, transparent)); }
+.ins-escudo svg { width: 52px; height: 56px; stroke-width: 1.4; fill: color-mix(in srgb, var(--pc) 18%, transparent); }
+.ins-escudo b { position: absolute; top: 15px; left: 0; right: 0; font-family: var(--f-titulo); font-size: 19px; line-height: 1; font-weight: 700; color: var(--texto); }
+.ins-dia .ins-escudo b { top: 12px; font-size: 16px; }
+.ins-nome { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--pc); }
+.ins-mes { font-size: 11px; color: var(--texto-3); text-transform: uppercase; letter-spacing: 1px; }
+.ins-pix { margin-top: 2px; padding: 0 6px; border-radius: 6px; background: #FFD84D; color: var(--tinta-btn); font-size: 11px; font-weight: 700; }
+.ins-atual { border-style: dashed; }
+.ins-atual .ins-escudo { opacity: .75; }
+.ins-dia { border-color: transparent; background: linear-gradient(var(--painel-2), var(--painel-2)) padding-box, var(--dia-anel, linear-gradient(90deg, #7DF9FF, #C6A8FF, #FF9FE0)) border-box; }
+.ins-g { flex: 0 0 auto; width: 104px; }
+
+/* ---------- patentes no fim da temporada (cerimônia) ---------- */
+.cer-pats { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linha); text-align: left; }
+.cer-pats-rot { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--texto-3); text-align: center; }
+.cer-pats-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cer-pats-lista li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cer-pats-vai { flex: 0 0 auto; font-size: 12px; color: var(--texto-3); white-space: nowrap; }
+.cer-minha { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--pc) 10%, rgba(0, 0, 0, .35)); border: 1px solid color-mix(in srgb, var(--pc) 50%, var(--linha)); }
+.cer-minha-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; color: var(--texto-2); }
+.cer-minha-txt b { font-family: var(--f-titulo); font-size: 26px; line-height: 1; color: var(--texto); }
+.cer-minha-rot { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--pc); }
+@media (max-width: 420px) {
+  .cer-minha { flex-direction: column; text-align: center; }
+  .cer-pats-vai { display: none; }
+}
