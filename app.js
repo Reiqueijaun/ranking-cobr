@@ -1762,7 +1762,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const fechadas = lista.filter((x) => !x.atual);
     const melhor = fechadas.reduce((m, x) => (!m || x.fim > m.fim ? x : m), null);
     return el('section', { class: 'pp-sec', 'aria-labelledby': 'ppIns' },
-      el('h2', { class: 'perfil-h3', id: 'ppIns' }, 'INSÍGNIAS DE TEMPORADA ', el('span', { class: 'sec', text: melhor ? `melhor: ${melhor.pat.nome}` : 'a primeira sai no fim do mês' })),
+      el('h2', { class: 'perfil-h3', id: 'ppIns' }, 'INSÍGNIAS DE TEMPORADA ', melhor ? el('span', { class: 'sec', text: `melhor: ${melhor.pat.nome}` }) : null),
       el('div', { class: 'insignias' }, ...lista.map((x) => insignia(x))));
   }
 
