@@ -1408,7 +1408,7 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   .hero { padding-block: 16px 4px; }
   .hero-txt { gap: 12px; }
   .hero h1 { font-size: clamp(40px, 12vw, 52px); }
-  .hero p { display: none; } /* o card "Como entrar no ranking" explica isso mais abaixo */
+  .hero p.hero-lema { font-size: 15px; } /* lema curto: cabe no celular */
   .premio-faixa { padding: 8px 12px; }
   .aba { min-height: 36px; }
   .abas { padding: 3px; }
@@ -1754,13 +1754,16 @@ body:not(.modo-dono) .so-dono { display: none; }
   background: radial-gradient(90% 160% at 100% 0%, rgba(255, 122, 26, .16), transparent 60%), linear-gradient(180deg, var(--painel), var(--painel-2));
   border: 1px solid var(--linha-forte);
 }
-.ft-txt { display: flex; flex-direction: column; gap: 4px; flex: 1 1 320px; min-width: 0; }
-.ft-rot { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--laranja-claro); }
-.ft-titulo { font-family: var(--f-titulo); font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: 1px; }
-.ft-sub { font-size: 14px; color: var(--texto-2); }
-.ft-sub b { color: var(--texto); }
-.ft-eu { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: 14px; color: var(--texto-2); }
-.ft-eu b { color: var(--texto); }
+.ft-txt { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.ft-rot { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--laranja-claro); }
+.ft-vivo { width: 8px; height: 8px; border-radius: 50%; background: var(--laranja); box-shadow: 0 0 0 0 rgba(255, 122, 26, .6); animation: pulsoTemp 2s infinite; }
+@keyframes pulsoTemp { 70% { box-shadow: 0 0 0 8px rgba(255, 122, 26, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 122, 26, 0); } }
+.ft-titulo { font-family: var(--f-titulo); font-size: 34px; font-weight: 700; line-height: .9; letter-spacing: 2px; }
+.ft-eu { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ft-eu-rot, .ft-dia1 { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.ft-seta { color: var(--texto-3); font-size: 12px; }
+.pat-apagada { opacity: .55; filter: saturate(.6); }
+.ft-box .tn-conta-rot:empty { display: none; }
 .ft-box .tn-cel { min-width: 58px; padding: 8px 4px 6px; }
 .ft-box .tn-cel b { font-size: 36px; }
 @media (max-width: 420px) {
@@ -1811,3 +1814,55 @@ body:not(.modo-dono) .so-dono { display: none; }
   .cer-minha { flex-direction: column; text-align: center; }
   .cer-pats-vai { display: none; }
 }
+
+/* ---------- botão ⓘ e janela "como funciona" ---------- */
+.info-btn {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 4px; padding: 0; border-radius: 50%; vertical-align: middle; flex: 0 0 auto;
+  border: 1px solid var(--linha-forte); background: transparent; color: var(--texto-3); cursor: pointer;
+  font: italic 700 12px/1 Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none;
+  position: relative;
+}
+.info-btn::before { content: ""; position: absolute; inset: -12px; } /* área de toque de 44px */
+.info-btn:hover, .info-btn:focus-visible { color: var(--laranja-claro); border-color: var(--laranja); }
+h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY(-4px); }
+.hero-lema { font-size: 18px; }
+.hero-lema b { color: var(--texto); }
+.mais-grade .mais-regras {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 96px; padding: 14px; text-align: left; cursor: pointer;
+  border-radius: 14px; border: 1px solid var(--linha-forte); background: var(--painel-2); color: var(--texto); font: inherit;
+}
+.mais-grade .mais-regras:hover { border-color: var(--laranja); }
+.mais-grade .mais-regras svg { margin-bottom: 6px; color: var(--laranja-claro); }
+
+.dlg-regras { max-width: min(94vw, 480px); max-height: min(90vh, 760px); overflow: hidden; }
+.dlg-regras[open] { display: flex; flex-direction: column; }
+.regras-abas { margin: 4px 14px 0; overflow-x: auto; scrollbar-width: none; }
+.regras-abas .aba { flex: 1 0 auto; padding: 0 12px; }
+.regras-corpo { overflow: auto; padding: 14px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.rg-destaque { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; background: var(--laranja-fundo); border: 1px solid var(--linha-forte); }
+.rg-num { font-family: var(--f-titulo); font-size: 30px; font-weight: 700; line-height: .95; letter-spacing: 1px; color: var(--laranja-claro); }
+.rg-h { margin: 6px 0 0; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--texto-3); }
+.rg-lista, .rg-virada, .rg-escada { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rg-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--linha); font-size: 14px; }
+.rg-linha:last-child { border-bottom: 0; }
+.rg-rot { color: var(--texto-3); white-space: nowrap; }
+.rg-val { text-align: right; color: var(--texto); font-weight: 600; min-width: 0; }
+.rg-val a { color: var(--laranja-claro); }
+.rg-reais { font-family: var(--f-titulo); font-size: 22px; line-height: 1; color: #FFD84D; }
+.rg-reais.pv2 { color: var(--azul); }
+.rg-reais.pv3 { color: var(--roxo); }
+.rg-virada li, .rg-escada li { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--linha); }
+.rg-virada li:last-child, .rg-escada li:last-child { border-bottom: 0; }
+.rg-mini { margin-left: auto; font-size: 12px; color: var(--texto-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rg-escada .rg-mini + .rg-pix { margin-left: 8px; }
+.rg-pix { padding: 1px 8px; border-radius: 6px; background: #FFD84D; color: var(--tinta-btn); font-size: 12px; }
+.prog-temp { display: flex; align-items: center; gap: 4px; }
+.prog-virada { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.prog-virada .rg-mini { margin-left: 0; }
+.cer-minha-vai { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--texto-3); }
+@media (max-width: 420px) { .cer-minha-vai { justify-content: center; } }
+.regras-abas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: auto !important; }
+.regras-abas .aba { padding: 0 4px; font-size: 13px; }
+.rg-virada .patente, .rg-escada .patente, .prog-virada .patente, .ft-eu .patente, .cer-minha-vai .patente { flex: 0 0 auto; }
+.pv-item { display: inline-flex; align-items: center; gap: 6px; }
+.prog-virada { column-gap: 16px; }

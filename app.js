@@ -672,7 +672,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const parados = ativos.filter((r) => !doPer.has(r.chave)).length;
     const somaPts = ativos.reduce((s, r) => s + ((doPer.get(r.chave) || {}).pontos || 0), 0);
     const ex = lista.length - ativos.length;
-    $('jogResumo').textContent = `${fmt(ativos.length)} ${ativos.length === 1 ? 'jogador' : 'jogadores'} no clã${ex ? ` · ${fmt(ex)} ${ex === 1 ? 'ex-membro' : 'ex-membros'}` : ''}. Toque no nome pra ver o perfil.`;
+    $('jogResumo').textContent = `${fmt(ativos.length)} ${ativos.length === 1 ? 'jogador' : 'jogadores'} no clã${ex ? ` · ${fmt(ex)} ${ex === 1 ? 'ex-membro' : 'ex-membros'}` : ''}`;
     const quando = vistaJog === 'resumo' ? textoPer[perJog] : textoPer.geral;
     $('jogNumeros').replaceChildren(...[
       ['MEMBROS', fmt(ativos.length), 'no elenco do clã', ''],
@@ -729,9 +729,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         celEditar(l.r)
       )));
     }
-    $('notaJog').textContent = perJog === 'geral'
-      ? `Pontos, partidas e recorde de todas as partidas. A patente é a desta temporada.`
-      : `Pontos, partidas e recorde só ${textoPer[perJog]}. A patente é a desta temporada.`;
+    $('notaJog').textContent = '';
 
     const dia = (ms) => (ms ? new Date(ms).toLocaleDateString('pt-BR') : '');
     planilha = {
@@ -824,7 +822,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         celEditar(l.r)
       )));
     }
-    $('notaJog').textContent = `Pontos por ${tipo === 'semanas' ? 'semana (segunda a domingo)' : 'mês'}. O número pequeno é quantas partidas. Destaque laranja = quem mais pontuou naquela ${tipo === 'semanas' ? 'semana' : 'mês'}.`;
+    $('notaJog').textContent = `número pequeno = partidas · laranja = quem mais pontuou ${tipo === 'semanas' ? 'na semana' : 'no mês'}`;
 
     planilha = {
       nome: `jogadores-por-${tipo === 'semanas' ? 'semana' : 'mes'}`,
@@ -1022,10 +1020,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     if (!rank.length) {
       const ultima = ctx.temps.find((t) => !t.atual);
       const msg = periodo === 'geral'
-        ? `Ninguém entrou no ranking ainda. Joga com a tag [${TAG}] que o dono puxa sua massa do servidor!`
+        ? 'Ninguém no ranking ainda.'
         : periodo === 'mes'
-          ? `A temporada de ${nomeMes(Date.now())} começou e ninguém pontuou ainda. O pódio está livre!${ultima ? ` Campeão de ${nomeMes(ultima.inicio)}: ${comTag(ultima.top[0].nome)}.` : ''}`
-          : 'Ninguém registrou massa nesta semana ainda.';
+          ? `Pódio livre na ${nomeTemp(Date.now())}.${ultima ? ` Último campeão: ${comTag(ultima.top[0].nome)}.` : ''}`
+          : 'Ninguém pontuou nesta semana ainda.';
       box.replaceChildren(el('p', { class: 'vazio', text: msg }));
       return;
     }
@@ -1444,18 +1442,98 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const x = eu && !exMembro(eu) ? patTemp(eu) : null;
     const pat = PATENTES[x ? x.fim : 0];
     // cria de novo pra cada caixa (o mesmo nó não pode ficar em dois lugares)
+    // "você": patente agora ▸ patente no dia 1 (a queda aparece, sem precisar explicar)
     const minha = () => (eu && elenco.has(eu)
-      ? el('span', { class: 'ft-eu' }, 'Você está ', chipPatente(pat.pontos),
-          pat.nivel ? [' e começa a próxima como ', b(PATENTES[nivelNaVirada(pat.nivel)].nome), '.'] : '. Bora subir antes da virada!')
+      ? el('span', { class: 'ft-eu', title: pat.nivel ? `No dia 1 você cai pra ${PATENTES[nivelNaVirada(pat.nivel)].nome}` : 'Sua patente nesta temporada' },
+          el('span', { class: 'ft-eu-rot', text: 'VOCÊ' }), chipPatente(pat.pontos),
+          pat.nivel ? [el('span', { class: 'ft-seta', 'aria-hidden': 'true', text: '▸' }), el('span', { class: 'ft-dia1', text: 'DIA 1' }), chipPatente(PATENTES[nivelNaVirada(pat.nivel)].pontos, 'pat-apagada')] : null)
       : null);
     const montar = () => el('div', { class: 'ft-box' },
       el('div', { class: 'ft-txt' },
-        el('span', { class: 'ft-rot', text: `${nomeTemp(agora).toUpperCase()} · ${mes}` }),
-        el('b', { class: 'ft-titulo', text: 'A temporada acaba no dia 1' }),
-        el('span', { class: 'ft-sub' }, 'Na virada a taça vai pro campeão, o top 3 leva o Pix e ', b(`todo mundo cai ${CAI_NA_VIRADA} patentes`), '. A patente que você fechar vira insígnia no seu perfil.'),
+        el('span', { class: 'ft-rot' }, el('span', { class: 'ft-vivo', 'aria-hidden': 'true' }), `${nomeTemp(agora).toUpperCase()} · ${mes}`,
+          el('button', { type: 'button', class: 'info-btn', 'data-info': 'temporada', 'aria-label': 'Como funciona a temporada', text: 'i' })),
+        el('b', { class: 'ft-titulo', text: 'TERMINA EM' }),
         minha()),
-      contagem(fimDoMes(agora), 'FALTAM'));
+      contagem(fimDoMes(agora), ''));
     for (const id of ['fimTemporada', 'fimTemporadaPat']) trocar($(id), montar());
+  }
+
+  // ---------- como funciona (regras em abas, no lugar dos textos no meio do site) ----------
+  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'premios'];
+  let regraAba = 'temporada';
+  // linha de regra: ícone/rótulo curto à esquerda, valor à direita (como tela de regras de jogo)
+  const linhaRegra = (rot, ...val) => el('li', { class: 'rg-linha' }, el('span', { class: 'rg-rot', text: rot }), el('span', { class: 'rg-val' }, ...val));
+  const tituloRegra = (t) => el('h3', { class: 'rg-h', text: t });
+  function abrirRegras(aba = regraAba) {
+    regraAba = REGRA_ABAS.includes(aba) ? aba : 'temporada';
+    document.querySelectorAll('.aba[data-regra]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.regra === regraAba)));
+    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, premios: regrasPremios }[regraAba]();
+    trocar($('regrasCorpo'), corpo);
+    const dlg = $('dlgRegras');
+    if (!dlg.open) dlg.showModal();
+    $('regrasCorpo').scrollTop = 0;
+    dlg.focus();
+  }
+  function regrasTemporada() {
+    const agora = Date.now();
+    return [
+      el('div', { class: 'rg-destaque' },
+        el('span', { class: 'rg-num', text: nomeTemp(agora).toUpperCase() }),
+        el('span', { class: 'sec', text: `${nomeMes(agora)} · termina dia 1º às 00:00` })),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Duração', '1 mês'),
+        linhaRegra('Campeão', 'mais pontos no mês leva a taça'),
+        linhaRegra('Pontos do mês', 'zeram no dia 1'),
+        linhaRegra('Patente', `cai ${CAI_NA_VIRADA} no dia 1`),
+        linhaRegra('Insígnia', 'a patente final fica no perfil'),
+        linhaRegra('Ranking geral', 'nunca zera')),
+      tituloRegra('NA VIRADA'),
+      el('ul', { class: 'rg-virada' }, ...[...PATENTES].reverse().filter((p) => p.nivel).map((p) => {
+        const vai = PATENTES[nivelNaVirada(p.nivel)];
+        return el('li', null, chipPatente(p.pontos), el('span', { class: 'ft-seta', 'aria-hidden': 'true', text: '▸' }), chipPatente(vai.pontos, 'pat-apagada'),
+          el('span', { class: 'rg-mini', text: ptsTxt(vai.pontos) }));
+      })),
+    ];
+  }
+  function regrasPatentes() {
+    return [
+      el('ul', { class: 'rg-escada' }, ...[...PATENTES].reverse().map((p) => el('li', { style: `--pc:${p.cor}` },
+        chipPatente(p.pontos),
+        el('span', { class: 'rg-mini', text: p.pontos ? ptsTxt(p.pontos) : 'início' }),
+        premioPatente(p) ? el('b', { class: 'rg-pix', text: reais(premioPatente(p)) }) : null))),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Conta', 'pontos da temporada'),
+        linhaRegra('Começo do mês', 'piso da patente que sobrou'),
+        linhaRegra('Pix da patente', 'toda temporada em que chegar')),
+    ];
+  }
+  function regrasPontos() {
+    const vale = (m) => { const d = detalhePontos(m); return d.bonus ? `${fmt(d.base)} + ${fmt(d.bonus)} = ${ptsTxt(d.total)}` : ptsTxt(d.total); };
+    return [
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('1.000 de massa', ptsTxt(POR_MIL)),
+        ...[1, 2, 3].filter((n) => bonusDaMeta(n) > 0).map((n) => linhaRegra(`Passou de ${fmtK(META * n)}`, el('b', { class: 'laranja', text: `+${ptsTxt(bonusDaMeta(n))}` }))),
+        BONUS_SOBE ? linhaRegra('Metas seguintes', `+${fmt(BONUS_SOBE)} a mais cada`) : null),
+      tituloRegra('EXEMPLOS'),
+      el('ul', { class: 'rg-lista' }, ...[50000, META, META * 2, META * 5].filter((m) => m <= MASSA_MAX).map((m) => linhaRegra(`${fmtK(m)}`, vale(m)))),
+      tituloRegra('ENTRAR NO RANKING'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Nick', `com a tag [${TAG}]`),
+        linhaRegra('Massa', 'vem do servidor, sem print')),
+    ];
+  }
+  function regrasPremios() {
+    const tv = premiosTemporada();
+    const pats = PATENTES.filter((p) => premioPatente(p) > 0).reverse();
+    return [
+      tituloRegra('TOP 3 DA TEMPORADA'),
+      el('ul', { class: 'rg-lista' }, ...['1º', '2º', '3º'].map((pos, i) => (tv[i] ? linhaRegra(pos, el('b', { class: `rg-reais pv${i + 1}`, text: reais(tv[i]) })) : null))),
+      pats.length ? tituloRegra('PATENTE (TODA TEMPORADA)') : null,
+      pats.length ? el('ul', { class: 'rg-lista' }, ...pats.map((p) => linhaRegra(p.nome, el('b', { class: 'rg-reais', text: reais(premioPatente(p)) })))) : null,
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Pagamento', 'Pix do dono do clã'),
+        linhaRegra('De onde vem', el('a', { href: '#doar', onclick: () => $('dlgRegras').close(), text: 'doações do clã' }))),
+    ];
   }
 
   // sala de troféus: a taça em disputa primeiro, depois as já entregues
@@ -1545,8 +1623,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'cer-minha-txt' },
           el('span', { class: 'cer-minha-rot', text: 'SUA TEMPORADA' }),
           el('b', { text: `Fechou como ${x.pat.nome}` }),
-          el('span', { text: `${pos.get(eu.chave) ? `${pos.get(eu.chave)}º lugar · ` : ''}${ptsTxt(eu.ganho)} no mês${x.pix ? ` · ${reais(x.pix)} de Pix por patente` : ''}` }),
-          el('span', { class: 'sec', text: `Ganhou a insígnia da ${nomeTemp(ms)}. Começou a ${nomeTemp(fimDoMes(ms))} como ${prox.nome}.` })));
+          el('span', { text: `${pos.get(eu.chave) ? `${pos.get(eu.chave)}º lugar · ` : ''}${ptsTxt(eu.ganho)}${x.pix ? ` · ${reais(x.pix)} de Pix` : ''}` }),
+          el('span', { class: 'cer-minha-vai' }, el('span', { class: 'ft-seta', 'aria-hidden': 'true', text: '▸' }), `T${numTemp(fimDoMes(ms))} `, chipPatente(prox.pontos, 'pat-apagada'))));
     })() : null;
     return el('div', { class: 'cer-pats' },
       minha,
@@ -1558,7 +1636,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
           chipPatente(p.pontos),
           el('span', { class: 'cer-pats-vai', title: `começou a ${nomeTemp(fimDoMes(ms))} como ${PATENTES[nivelNaVirada(x.fim)].nome}`, text: `→ ${PATENTES[nivelNaVirada(x.fim)].nome}` }));
       })),
-      el('p', { class: 'cer-mais', text: `Na virada todo mundo caiu ${CAI_NA_VIRADA} patentes (→ é onde começou a temporada seguinte).` }));
+      null);
   }
 
   // cerimônia de quem virou Diamantes: cacos de diamante explodindo, raios e o prêmio
@@ -1587,7 +1665,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { class: 'dia-titulo', text: pat.nome.toUpperCase() }),
         el('h2', { class: 'cer-nome dia-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), j.nome),
         pix ? el('div', { class: 'dia-pix' }, el('small', { text: 'PRÊMIO' }), el('b', { text: `${reais(pix)} NO PIX` }), el('small', { text: 'pago pelo dono do clã' })) : null,
-        el('p', { class: 'cer-sub', text: `Passou de ${ptsTxt(pat.pontos)} na ${nomeTemp(Date.now())}. Pouca gente chega aqui, e no dia 1 a escalada recomeça.` }),
+        el('p', { class: 'cer-sub', text: `${nomeTemp(Date.now())} · pouca gente chega aqui.` }),
         el('div', { class: 'cer-stats' },
           stat('PONTOS', fmt(x.pts)), stat('PARTIDAS', fmt(j.qtd)), stat('MAIOR MASSA', fmt(j.melhor.mass)), stat(marcoTxt, `${j.cem}×`)),
         el('div', { class: 'linha-btns' },
@@ -1877,7 +1955,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
 
     if (!j) {
-      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Joga com a tag no nick que o dono puxa a massa do servidor!' }));
+      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }));
       return;
     }
 
@@ -1911,7 +1989,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const xt = patTemp(k);
     const desce = PATENTES[nivelNaVirada(pat.atual.nivel)];
     const prog = el('div', { class: 'perfil-prog', style: `--pc:${pat.atual.cor}` },
-      el('span', { class: 'prog-temp', text: `PATENTE NA ${nomeTemp(Date.now()).toUpperCase()}` }),
+      el('span', { class: 'prog-temp' }, `PATENTE · ${nomeTemp(Date.now()).toUpperCase()}`,
+        el('button', { type: 'button', class: 'info-btn', 'data-info': 'patentes', 'aria-label': 'Como funcionam as patentes', text: 'i' })),
       el('div', { class: 'prog-linha' },
         el('span', { text: pat.atual.nome }),
         el('span', { class: 'sec', text: pat.prox ? `${fmt(ptsP)} / ${fmt(pat.prox.pontos)} pts` : `${fmt(ptsP)} pts` }),
@@ -1921,9 +2000,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       el('div', { class: 'prog-sub', text: pat.prox
         ? `Faltam ${ptsTxt(pat.prox.pontos - ptsP)} pra virar ${pat.prox.nome}${premioPatente(pat.prox) ? ` e ganhar ${reais(premioPatente(pat.prox))} no Pix` : ''}${partidasPara(pat.prox.pontos - ptsP)}`
         : premioPatente(pat.atual) ? `Chegou no topo e virou ${pat.atual.nome}: ${reais(premioPatente(pat.atual))} no Pix do dono do clã. Agora é defender o trono.` : 'Chegou no topo. Agora é defender o trono.' }),
+      // começo do mês ▸ agora ▸ dia 1, em chips (sem frase)
       el('div', { class: 'prog-virada' },
-        xt && xt.ini ? `Começou a temporada como ${PATENTES[xt.ini].nome} (sobrou da anterior) e fez +${ptsTxt(xt.ganho)} no mês. ` : '',
-        pat.atual.nivel ? ['No dia 1 a temporada vira e você começa a próxima como ', b(desce.nome), '.'] : 'No dia 1 a temporada vira e todo mundo recomeça a escalada.'));
+        xt && xt.ini ? el('span', { class: 'pv-item', title: `Começou a temporada como ${PATENTES[xt.ini].nome}` }, el('span', { class: 'ft-dia1', text: 'INÍCIO' }), chipPatente(PATENTES[xt.ini].pontos, 'pat-apagada')) : null,
+        pat.atual.nivel ? el('span', { class: 'pv-item', title: `No dia 1 cai pra ${desce.nome}` }, el('span', { class: 'ft-dia1', text: 'DIA 1' }), el('span', { class: 'ft-seta', 'aria-hidden': 'true', text: '▸' }), chipPatente(desce.pontos, 'pat-apagada')) : null));
+    if (!prog.lastChild.childNodes.length) prog.lastChild.remove();
     if ((pat.prox && pat.prox.diamante) || pat.atual.diamante) prog.classList.add('prog-dia');
 
     // números
@@ -4024,6 +4105,16 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('btnPartidasMais').addEventListener('click', () => { partidasQtd += PARTIDAS_PASSO; renderPartidas(); });
     $('btnHallMais').addEventListener('click', () => { hallQtd += 12; renderHall(); });
     $('btnFecharMais').addEventListener('click', () => $('dlgMais').close());
+    // botões ⓘ (data-info="temporada" | "patentes" | "pontos" | "premios") abrem as regras
+    document.addEventListener('click', (e) => {
+      const bt = e.target.closest('[data-info]');
+      if (!bt) return;
+      e.preventDefault();
+      if ($('dlgMais').open) $('dlgMais').close();
+      abrirRegras(bt.dataset.info);
+    });
+    document.querySelectorAll('.aba[data-regra]').forEach((a) => a.addEventListener('click', () => abrirRegras(a.dataset.regra)));
+    $('btnFecharRegras').addEventListener('click', () => $('dlgRegras').close());
     $('maisGrade').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgMais').close(); });
     document.addEventListener('keydown', (e) => {
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
@@ -4076,7 +4167,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       if (new URLSearchParams(location.search).has('trofeu')) { history.replaceState({}, '', location.pathname + '#temporadas'); mostrarRota(false, false); }
     });
     // fechar janelas tocando fora delas
-    ['dlgPrint', 'dlgBusca', 'dlgTrofeu', 'dlgMais'].forEach((id) => $(id).addEventListener('click', (e) => {
+    ['dlgPrint', 'dlgBusca', 'dlgTrofeu', 'dlgMais', 'dlgRegras'].forEach((id) => $(id).addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       if (e.target === e.currentTarget && fora) e.currentTarget.close();
