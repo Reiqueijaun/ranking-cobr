@@ -2045,6 +2045,28 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   const linkZap = (texto) => `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
+  // card pra pedir doação no WhatsApp: explica pra onde vai o dinheiro e como fazer o Pix
+  function textoPedirApoio() {
+    const med = ['🥇', '🥈', '🥉'];
+    return [
+      `🏆 *APOIE O CLÃ ${TAG}* 🏆`,
+      '',
+      `Opa! O clã ${TAG} do slither.io tem um ranking com prêmio em dinheiro todo mês, e quem banca esse prêmio são as doações.`,
+      '',
+      '💰 *Pra onde vai a doação:* direto pros prêmios em Pix. Todo mês é uma temporada nova e os 3 jogadores com mais pontos ganham:',
+      ...PREMIOS.map((v, i) => `${med[i]} ${i + 1}º lugar: R$ ${v}`),
+      '',
+      'Qualquer valor ajuda, até R$ 1. A doação é opcional e não mexe em nada no ranking.',
+      '',
+      `🔑 *Chave Pix (celular):* ${PIX_CHAVE}`,
+      `📲 QR code e ranking ao vivo: ${location.origin}${location.pathname}#doar`,
+      '',
+      'Valeu demais pela força! 🙏',
+    ].join('\n');
+  }
+  // mostra o texto como o WhatsApp mostra: *assim* vira negrito
+  const previaZap = (texto) => texto.split(/(\*[^*\n]+\*)/).map((p) => (/^\*.+\*$/.test(p) ? el('b', { text: p.slice(1, -1) }) : p));
+
   // ---------- contagem regressiva (atualiza a cada segundo) ----------
   function contagem(alvo, rotulo) {
     if (!isFinite(alvo) || alvo <= Date.now()) return null;
@@ -3557,6 +3579,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     // doação
     $('btnPixChave').addEventListener('click', () => copiarTexto(PIX_CHAVE, 'Chave Pix copiada. Valeu pelo apoio!'));
     $('btnPixCola').addEventListener('click', () => copiarTexto(PIX_COPIA_COLA, 'Pix copia e cola copiado. Cola no app do banco.'));
+    const pedido = textoPedirApoio();
+    $('btnPedirZap').href = linkZap(pedido);
+    $('btnPedirCopiar').addEventListener('click', () => copiarTexto(pedido, 'Mensagem copiada. Cola no WhatsApp de quem você quiser.'));
+    $('pedirPrevia').append(...previaZap(pedido));
     $('formCadastro').addEventListener('submit', cadastrar);
     $('fNicks').addEventListener('input', previaCadastro);
     $('formJogador').addEventListener('submit', salvarJogador);

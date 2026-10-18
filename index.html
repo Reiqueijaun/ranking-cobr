@@ -7,7 +7,7 @@
 <meta name="description" content="Ranking oficial de massa do clã COBR no slither.io">
 <meta name="theme-color" content="#0B0806">
 <meta property="og:title" content="Ranking Clã COBR">
-<meta property="og:description" content="Quem é a maior cobra do clã? Registre sua massa e suba no ranking.">
+<meta property="og:description" content="Quem é o melhor jogador do clã? Registre sua massa e suba no ranking.">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -67,7 +67,7 @@
     <div class="hero-logo"><img src="logo-cobr.webp" alt="Escudo do clã COBR" width="220" height="220"></div>
     <div class="hero-txt">
       <span class="selo" id="seloPeriodo">TEMPORADA</span>
-      <h1>QUEM É A MAIOR<br><span class="laranja">COBRA DO CLÃ?</span></h1>
+      <h1>QUEM É O MELHOR<br><span class="laranja">JOGADOR DO CLÃ?</span></h1>
       <p>Não precisa mais mandar print: o dono do clã puxa as massas de todo mundo direto do servidor e joga no ranking. É só jogar com a tag e ver seu nome subir. Bateu o recorde de alguém? O topo é seu.</p>
       <a class="premio-faixa" href="#temporadas">
         <span class="premio-faixa-rot">TOP 3 DA TEMPORADA GANHA NO PIX</span>
@@ -234,7 +234,7 @@
     <div class="premios" aria-label="Prêmios da temporada">
       <div class="premios-txt">
         <h3>PRÊMIO NO <span class="laranja">PIX</span></h3>
-        <p>Quem fechar a temporada no top 3 em pontos leva dinheiro na conta.</p>
+        <p>Quem fechar a temporada no top 3 em pontos leva dinheiro na conta. O dinheiro vem das doações: <a href="#doar">apoie o clã</a>.</p>
       </div>
       <ol class="premios-lista">
         <li class="pr pr1"><span class="pr-pos">1º</span><b>R$ 30</b><small>campeão</small></li>
@@ -337,7 +337,17 @@
       </div>
       <div class="doar-txt">
         <h2>APOIE O <span class="laranja">CLÃ</span></h2>
-        <p>Curte o ranking e os torneios? Qualquer valor ajuda a manter o servidor no ar. Abra o app do banco, escolha Pix e aponte a câmera pro QR code, ou copie a chave.</p>
+        <p class="doar-lead">Toda doação vai <b>direto pros prêmios em Pix</b> do clã. É desse dinheiro que sai o prêmio do top 3 de cada temporada.</p>
+        <div class="doar-destino">
+          <span class="doar-destino-rot">PRA ONDE VAI A SUA DOAÇÃO</span>
+          <ol class="doar-destino-lista">
+            <li class="pv1"><b>R$ 30</b> pro 1º</li>
+            <li class="pv2"><b>R$ 15</b> pro 2º</li>
+            <li class="pv3"><b>R$ 5</b> pro 3º</li>
+          </ol>
+          <small>Todo mês, pros 3 com mais pontos na temporada.</small>
+        </div>
+        <p>Qualquer valor ajuda. Abra o app do banco, escolha Pix e aponte a câmera pro QR code, ou copie a chave.</p>
         <div class="doar-chave">
           <span class="doar-chave-rot">CHAVE PIX (CELULAR)</span>
           <b id="pixChave">91984127730</b>
@@ -348,6 +358,21 @@
         </div>
         <p class="form-nota">Doação é opcional e não muda nada no ranking.</p>
       </div>
+    </div>
+
+    <div class="painel pedir">
+      <div class="pedir-txt">
+        <h3>PEÇA APOIO NO <span class="laranja">ZAP</span></h3>
+        <p>Conhece alguém que pode dar uma força? Manda esse card no WhatsApp: ele já explica pra onde vai a doação, quanto cada um ganha e como fazer o Pix. Você só escolhe o contato.</p>
+        <div class="doar-btns">
+          <a class="btn btn-zap" id="btnPedirZap" href="https://wa.me/" target="_blank" rel="noopener">Mandar no WhatsApp</a>
+          <button type="button" class="btn btn-sec" id="btnPedirCopiar">Copiar mensagem</button>
+        </div>
+      </div>
+      <figure class="zap-previa">
+        <figcaption>ASSIM A MENSAGEM CHEGA</figcaption>
+        <div class="zap-balao" id="pedirPrevia"></div>
+      </figure>
     </div>
   </section>
 </main>
