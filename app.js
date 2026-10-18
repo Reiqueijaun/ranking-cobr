@@ -12,10 +12,13 @@
   const BUCKET = 'prints';
   const MASSA_MIN = 10;
   const MASSA_MAX = 1000000;
-  // prêmio em Pix pro top 3 em pontos de cada temporada (vale a partir de outubro de 2026)
-  const PREMIOS = [30, 15, 5];
+  // prêmios em Pix: top 3 em pontos de cada temporada (a partir de outubro de 2026) e quem chega em
+  // certas patentes. O dono e os admins mudam pelo site (tabela config_site); isto é o padrão.
+  const PREMIOS_PADRAO = { temporada: [30, 15, 5], patentes: { diamantes: 100 }, porMes: {} };
   const PREMIOS_DESDE = new Date(2026, 9, 1).getTime();
   const temPremio = (t) => t.inicio >= PREMIOS_DESDE;
+  let premios = PREMIOS_PADRAO;
+  let configOk = true;        // false se a tabela config_site ainda não existe no banco
   // doação pro clã: chave Pix (celular) e o mesmo código do pix-qr.svg, pra copiar e colar no banco
   const PIX_CHAVE = '91984127730';
   const PIX_COPIA_COLA = '00020126360014br.gov.bcb.pix0114+55919841277305204000053039865802BR5908CLA COBR6005BELEM62070503***63041B13';
@@ -379,6 +382,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     renderTabela(rank, ctx);
     renderConquistas();
     renderPatentes(ctx);
+    renderPremios();
     renderTemporadas(ctx);
     renderHall();
     renderPartidas();
@@ -1049,7 +1053,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
-        periodo === 'mes' && modo === 'pontos' ? el('div', { class: `premio-selo pv${i + 1}` }, el('span', { class: 'ps-vale', text: 'VALE ' }), `R$ ${PREMIOS[i]} NO PIX`) : null,
+        periodo === 'mes' && modo === 'pontos' && premiosTemporada()[i] ? el('div', { class: `premio-selo pv${i + 1}` }, el('span', { class: 'ps-vale', text: 'VALE ' }), `${reais(premiosTemporada()[i])} NO PIX`) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
         url ? el('button', { type: 'button', class: 'ver-print', text: 'Ver print do recorde', onclick: () => abrirPrint(j.melhor) }) : null
       );
@@ -1086,7 +1090,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       const pulo = cortar && i === iEu && i > TABELA_TOPO
         ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
-      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : ''].join(' ').trim() || null },
+      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
         el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
@@ -1157,17 +1161,47 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   // ---------- patentes ----------
   const CORES_PATENTE = ['#A8998B', '#B98BFF', '#3BA4FF', '#FFB347', '#FF7A1A', '#FFD84D', '#FF5AA0', '#3DDC84'];
-  const PATENTES = (Array.isArray(CFG.PATENTES) && CFG.PATENTES.length ? CFG.PATENTES : [
+  const COR_DIAMANTE = '#7DF9FF';
+  const DIAMANTES = { nome: 'Diamantes', pontos: 10000 };
+  const ehDiamante = (nome) => /diamante/i.test(String(nome || ''));
+  const listaPatentes = Array.isArray(CFG.PATENTES) && CFG.PATENTES.length ? [...CFG.PATENTES] : [
     { nome: 'Recruta', pontos: 0 },
     { nome: 'Guerreiro', pontos: 100 },
     { nome: 'Elite', pontos: 300 },
     { nome: 'Mestre', pontos: 600 },
     { nome: 'Grão-Mestre', pontos: 1200 },
     { nome: 'Lendário', pontos: 2500 },
-  ]).map((x) => ({ nome: String(x.nome || '?'), pontos: Number(x.pontos) || 0 }))
+  ];
+  // Diamantes entra mesmo se o config.js tiver a lista antiga
+  if (!listaPatentes.some((x) => x && ehDiamante(x.nome))) listaPatentes.push(DIAMANTES);
+  const PATENTES = listaPatentes.map((x) => ({ nome: String(x.nome || '?'), pontos: Number(x.pontos) || 0 }))
     .sort((a, b) => a.pontos - b.pontos)
-    .map((x, i) => ({ ...x, nivel: i, cor: CORES_PATENTE[i % CORES_PATENTE.length] }));
+    .map((x, i) => {
+      const diamante = ehDiamante(x.nome);
+      return { ...x, nivel: i, diamante, chave: busca(x.nome), cor: diamante ? COR_DIAMANTE : CORES_PATENTE[i % CORES_PATENTE.length] };
+    });
   if (PATENTES[0].pontos > 0) PATENTES[0].pontos = 0;
+
+  // ---------- prêmios em Pix ----------
+  const mesChave = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const valorPix = (v) => Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
+  const reais = (v) => `R$ ${fmt(v)}`;
+  // valores do top 3 numa temporada: mudar o prêmio hoje não mexe nas que já fecharam
+  function premiosTemporada(ms = Date.now()) {
+    return (premios.porMes && premios.porMes[mesChave(ms)]) || premios.temporada;
+  }
+  function premioPatente(p) { return p ? valorPix(premios.patentes && premios.patentes[p.chave]) : 0; }
+  function lerPremios(v) {
+    if (!v || typeof v !== 'object') return PREMIOS_PADRAO;
+    const tres = (a) => (Array.isArray(a) ? [0, 1, 2].map((i) => valorPix(a[i])) : null);
+    const porMes = {};
+    if (v.porMes && typeof v.porMes === 'object') {
+      for (const [k, a] of Object.entries(v.porMes)) if (/^\d{4}-\d{2}$/.test(k) && tres(a)) porMes[k] = tres(a);
+    }
+    const patentes = {};
+    if (v.patentes && typeof v.patentes === 'object') for (const [k, x] of Object.entries(v.patentes)) patentes[k] = valorPix(x);
+    return { temporada: tres(v.temporada) || PREMIOS_PADRAO.temporada, patentes, porMes };
+  }
 
   function patenteDe(pontos) {
     let atual = PATENTES[0];
@@ -1178,12 +1212,43 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   function chipPatente(pontos, extra = '') {
     const { atual } = patenteDe(pontos);
-    return el('span', { class: `patente ${extra}`, style: `--pc:${atual.cor}` }, svg(ICONE_PATENTE, 12), atual.nome);
+    return el('span', { class: `patente ${atual.diamante ? 'pat-dia' : ''} ${extra}`, style: `--pc:${atual.cor}` }, svg(atual.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 12), atual.nome);
   }
   const ICONE_PATENTE = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/>';
+  const ICONE_DIAMANTE = '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M10 3 8 9l4 12 4-12-2-6"/>';
   function avatarDe(nome, pontos, tam = '') {
     const { atual } = patenteDe(pontos);
-    return el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: nome.charAt(0).toUpperCase() });
+    return el('span', { class: `av ${tam} ${atual.diamante ? 'av-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: nome.charAt(0).toUpperCase() });
+  }
+  // diamante lapidado (brilhante) com faíscas e um reflexo que passa por cima
+  let numGema = 0;
+  function diamanteSVG(cls = '') {
+    const id = 'gd' + (++numGema);
+    const w = el('span', { class: `gema-dia ${cls}`, 'aria-hidden': 'true' });
+    w.innerHTML = `<svg viewBox="0 0 100 92" width="100%" height="100%">
+<defs>
+<linearGradient id="${id}a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".5" stop-color="#B8FBFF"/><stop offset="1" stop-color="#55D8FF"/></linearGradient>
+<linearGradient id="${id}b" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E9D9FF"/><stop offset="1" stop-color="#8E7BFF"/></linearGradient>
+<linearGradient id="${id}c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DF9FF"/><stop offset="1" stop-color="#1F6FD6"/></linearGradient>
+<linearGradient id="${id}d" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC6EC"/><stop offset="1" stop-color="#5B8CFF"/></linearGradient>
+<linearGradient id="${id}e" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<clipPath id="${id}k"><path d="M25 10H75L95 34L50 88L5 34Z"/></clipPath>
+</defs>
+<path d="M25 10L5 34H32Z" fill="url(#${id}b)"/>
+<path d="M25 10L32 34L50 10Z" fill="url(#${id}a)"/>
+<path d="M50 10L32 34H68Z" fill="#F4FEFF"/>
+<path d="M50 10L68 34L75 10Z" fill="url(#${id}a)"/>
+<path d="M75 10L68 34H95Z" fill="url(#${id}d)"/>
+<path d="M5 34H32L50 88Z" fill="url(#${id}c)"/>
+<path d="M32 34H68L50 88Z" fill="url(#${id}a)"/>
+<path d="M68 34H95L50 88Z" fill="url(#${id}b)"/>
+<g clip-path="url(#${id}k)"><g class="gd-reflexo"><rect x="-60" y="-10" width="34" height="120" fill="url(#${id}e)" transform="rotate(20 50 46)"/></g></g>
+<path d="M25 10H75L95 34L50 88L5 34Z M5 34H95 M25 10L32 34L50 88L68 34L75 10 M50 10L32 34 M50 10L68 34" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.2" stroke-linejoin="round"/>
+<path class="gd-faisca f1" d="M84 4l2.2 6.8L93 13l-6.8 2.2L84 22l-2.2-6.8L75 13l6.8-2.2z" fill="#fff"/>
+<path class="gd-faisca f2" d="M12 50l1.4 4.1 4.1 1.4-4.1 1.4L12 61l-1.4-4.1L6.5 55.5l4.1-1.4z" fill="#fff"/>
+<path class="gd-faisca f3" d="M70 60l1.2 3.3 3.3 1.2-3.3 1.2L70 69l-1.2-3.3-3.3-1.2 3.3-1.2z" fill="#fff"/>
+</svg>`;
+    return w;
   }
   function btnPerfil(j, classe, conteudo) {
     return el('button', { type: 'button', class: classe, onclick: () => abrirPerfil(j.chave), 'aria-label': `Ver perfil de ${comTag(j.nome)}` }, conteudo || comTag(j.nome));
@@ -1294,11 +1359,14 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     }
     $('escadaPatentes').replaceChildren(...[...PATENTES].reverse().map((t) => {
       const gente = porNivel.get(t.nivel) || [];
-      return el('li', { class: `degrau ${gente.length ? '' : 'vazio-d'}`, style: `--pc:${t.cor}` },
-        el('span', { class: 'degrau-ins', 'aria-hidden': 'true' }, svg(ICONE_PATENTE, 18)),
+      const pix = premioPatente(t);
+      return el('li', { class: `degrau ${gente.length ? '' : 'vazio-d'} ${t.diamante ? 'degrau-dia' : ''}`, style: `--pc:${t.cor}` },
+        t.diamante ? el('span', { class: 'dia-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 9 }, () => el('i'))) : null,
+        t.diamante ? diamanteSVG('degrau-gema') : el('span', { class: 'degrau-ins', 'aria-hidden': 'true' }, svg(ICONE_PATENTE, 18)),
         el('div', { class: 'degrau-info' },
           el('span', { class: 'degrau-nome', text: t.nome }),
-          el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' })),
+          el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' }),
+          pix ? el('span', { class: 'degrau-pix', title: 'Pago uma vez pelo dono do clã, quando você chega nessa patente' }, el('b', { text: `+${reais(pix)}` }), ' no Pix ao chegar') : null),
         el('div', { class: 'degrau-gente' },
           gente.length
             ? [...gente.slice(0, 4).map((j) => btnPerfil(j, 'av-btn', avatarDe(j.nome, j.pontos))), gente.length > 4 ? el('span', { class: 'mais', text: `+${gente.length - 4}` }) : null]
@@ -1369,7 +1437,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('ol', { class: 'cer-podio' }, ...t.top.slice(0, 5).map((j, k) => el('li', { class: `tt tt${k + 1}` },
           el('span', { class: 'tt-pos', text: `${k + 1}º` }),
           el('span', { class: 'tt-nome' }, btnPerfil(j, 'link-nome', j.nome)),
-          k < 3 && temPremio(t) ? el('span', { class: `tt-premio pv${k + 1}`, title: t.atual ? 'prêmio em Pix se fechar assim' : 'prêmio em Pix', text: `R$ ${PREMIOS[k]}` }) : null,
+          k < 3 && temPremio(t) && premiosTemporada(t.inicio)[k] ? el('span', { class: `tt-premio pv${k + 1}`, title: t.atual ? 'prêmio em Pix se fechar assim' : 'prêmio em Pix', text: reais(premiosTemporada(t.inicio)[k]) }) : null,
           el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
         t.top.length > 5 ? el('p', { class: 'cer-mais', text: `${t.top.length} jogadores pontuaram nessa temporada` }) : null,
         el('p', { class: 'cer-gema' }, el('span', { class: 'cer-gema-cor', 'aria-hidden': 'true' }), `Pedra da temporada: ${gemaNome}`),
@@ -1377,9 +1445,60 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
           el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharTrofeu(t) }, svg(ICONE_LINK, 18), 'Compartilhar'),
           el('button', { type: 'button', class: 'btn btn-pri', onclick: () => abrirPerfil(c.chave) }, t.atual ? 'Ver o líder' : 'Ver o campeão'))));
     const dlg = $('dlgTrofeu');
+    dlg.classList.remove('dlg-dia');
     dlg.style.setProperty('--gema', gemaCor);
     if (!dlg.open) dlg.showModal();
     dlg.scrollTop = 0;
+    return true;
+  }
+  // cerimônia de quem virou Diamantes: cacos de diamante explodindo, raios e o prêmio
+  function abrirDiamante(k, festa = false) {
+    const j = montarRanking('geral', 'pontos').find((x) => x.chave === k);
+    const pat = j && patenteDe(j.pontos).atual;
+    if (!pat || !pat.diamante) return false;
+    const pix = premioPatente(pat);
+    const minha = lerEu() === k;
+    const cacos = el('div', { class: 'dia-cacos', 'aria-hidden': 'true' },
+      ...Array.from({ length: 48 }, (_, n) => el('i', { style: `--a:${Math.round(n * 7.5 + Math.random() * 6)}deg;--l:${Math.round(150 + Math.random() * 260)}px;--d:${(Math.random() * .5).toFixed(2)}s;--s:${(0.5 + Math.random()).toFixed(2)};--c:${['#7DF9FF', '#FFFFFF', '#C6A8FF', '#FF9FE0', '#5BC8FF'][n % 5]}` })));
+    const stat = (rot, v) => el('div', { class: 'cer-stat' }, el('span', { class: 'pstat-rot', text: rot }), el('b', { text: v }));
+    trocar($('trofeuCorpo'),
+      cacos,
+      el('div', { class: 'cer-palco dia-palco' },
+        el('div', { class: 'dia-raios', 'aria-hidden': 'true' }),
+        el('div', { class: 'dia-anel', 'aria-hidden': 'true' }),
+        el('span', { class: 'dia-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 16 }, () => el('i'))),
+        diamanteSVG('dia-gema-cer')),
+      el('div', { class: 'cer-info' },
+        el('span', { class: 'cer-rot', text: festa ? 'NOVA PATENTE DESBLOQUEADA' : `PATENTE MÁXIMA · ${ptsTxt(pat.pontos).toUpperCase()}+` }),
+        minha ? el('span', { class: 'cer-eu dia-eu', text: '💎 VOCÊ É DIAMANTE!' }) : null,
+        el('span', { class: 'cer-titulo dia-virou', text: 'VIROU' }),
+        el('span', { class: 'dia-titulo', text: pat.nome.toUpperCase() }),
+        el('h2', { class: 'cer-nome dia-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), j.nome),
+        pix ? el('div', { class: 'dia-pix' }, el('small', { text: 'PRÊMIO' }), el('b', { text: `${reais(pix)} NO PIX` }), el('small', { text: 'pago pelo dono do clã' })) : null,
+        el('p', { class: 'cer-sub', text: `Passou de ${ptsTxt(pat.pontos)} somando todas as partidas. Pouca gente chega aqui.` }),
+        el('div', { class: 'cer-stats' },
+          stat('PONTOS', fmt(j.pontos)), stat('PARTIDAS', fmt(j.qtd)), stat('MAIOR MASSA', fmt(j.melhor.mass)), stat(marcoTxt, `${j.cem}×`)),
+        el('div', { class: 'linha-btns' },
+          el('button', { type: 'button', class: 'btn btn-sec', onclick: () => $('dlgTrofeu').close() }, 'Fechar'),
+          el('button', { type: 'button', class: 'btn btn-dia', onclick: () => { $('dlgTrofeu').close(); abrirPerfil(k); } }, 'Ver o perfil'))));
+    const dlg = $('dlgTrofeu');
+    dlg.classList.add('dlg-dia');
+    dlg.style.setProperty('--gema', COR_DIAMANTE);
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+    return true;
+  }
+  // quem marcou "sou eu" e virou Diamantes ganha a cerimônia uma vez no aparelho
+  function diamanteAutomatico() {
+    const eu = lerEu();
+    if (!eu) return false;
+    const j = montarRanking('geral', 'pontos').find((x) => x.chave === eu);
+    if (!j || !patenteDe(j.pontos).atual.diamante) return false;
+    try {
+      if (localStorage.getItem('ranking_dia_visto') === eu) return false;
+      localStorage.setItem('ranking_dia_visto', eu);
+    } catch (e) { return false; }
+    setTimeout(() => { if (!document.querySelector('dialog[open]') && !perfilAtual && !torneioAtual) abrirDiamante(eu, true); }, 900);
     return true;
   }
   async function compartilharTrofeu(t) {
@@ -1402,6 +1521,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const q = new URLSearchParams(location.search).get('trofeu');
     if (q) { abrirTrofeu(q, true); return; }
     if (perfilAtual || torneioAtual) return;
+    if (diamanteAutomatico()) return;
     const ultima = montarTemporadas().find((t) => !t.atual);
     if (!ultima || Date.now() - ultima.fim > 10 * 86400000) return;
     const kt = chaveTemp(ultima);
@@ -1598,7 +1718,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
     // cabeçalho
     const posGeral = posicao(ctx.pontos, k);
-    const topo = el('header', { class: 'pp-topo', style: `--pc:${pat.atual.cor}` },
+    const dia = pat.atual.diamante;
+    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : ''}`, style: `--pc:${pat.atual.cor}` },
+      dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
+      dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
         avatarDe(nome, pts, 'av-xg'),
         el('div', { class: 'pp-nome-box' },
@@ -1648,7 +1771,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { text: pat.prox ? pat.prox.nome : 'NÍVEL MÁXIMO' })),
       el('div', { class: 'barra barra-pat', role: 'progressbar', 'aria-label': 'Progresso da patente', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pat.progresso * 100)) },
         el('span', { style: `width:${Math.round(pat.progresso * 100)}%` })),
-      el('div', { class: 'prog-sub', text: pat.prox ? `Faltam ${ptsTxt(pat.prox.pontos - pts)} pra virar ${pat.prox.nome}${partidasPara(pat.prox.pontos - pts)}` : 'Chegou no topo. Agora é defender o trono.' }));
+      el('div', { class: 'prog-sub', text: pat.prox
+        ? `Faltam ${ptsTxt(pat.prox.pontos - pts)} pra virar ${pat.prox.nome}${premioPatente(pat.prox) ? ` e ganhar ${reais(premioPatente(pat.prox))} no Pix` : ''}${partidasPara(pat.prox.pontos - pts)}`
+        : premioPatente(pat.atual) ? `Chegou no topo e virou ${pat.atual.nome}: ${reais(premioPatente(pat.atual))} no Pix do dono do clã. Agora é defender o trono.` : 'Chegou no topo. Agora é defender o trono.' }));
+    if ((pat.prox && pat.prox.diamante) || pat.atual.diamante) prog.classList.add('prog-dia');
 
     // números
     const minhas = partidas.filter((p) => chave(p.player) === k); // mais novas primeiro
@@ -2054,7 +2180,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       `Opa! O clã ${TAG} do slither.io tem um ranking com prêmio em dinheiro todo mês, e quem banca esse prêmio são as doações.`,
       '',
       '💰 *Pra onde vai a doação:* direto pros prêmios em Pix. Todo mês é uma temporada nova e os 3 jogadores com mais pontos ganham:',
-      ...PREMIOS.map((v, i) => `${med[i]} ${i + 1}º lugar: R$ ${v}`),
+      ...premiosTemporada().map((v, i) => (v ? `${med[i]} ${i + 1}º lugar: ${reais(v)}` : null)).filter(Boolean),
       '',
       'Qualquer valor ajuda, até R$ 1. A doação é opcional e não mexe em nada no ranking.',
       '',
@@ -3273,7 +3399,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const ptsDepois = (montarRanking('geral', 'pontos').find((x) => x.chave === chave(nome)) || { pontos: 0 }).pontos;
       const patAntes = patenteDe(ptsAntes).atual, patDepois = patenteDe(ptsDepois).atual;
       if (patDepois.nivel > patAntes.nivel) {
-        toast(`⬆ ${comTag(nome)} subiu pra ${patDepois.nome.toUpperCase()}!${ganhou}`);
+        const pix = premioPatente(patDepois);
+        toast(`${patDepois.diamante ? '💎' : '⬆'} ${comTag(nome)} subiu pra ${patDepois.nome.toUpperCase()}!${ganhou}${pix ? ` Paga ${reais(pix)} no Pix pra ele.` : ''}`);
+        if (patDepois.diamante) abrirDiamante(chave(nome), true);
       } else if (reiAgora && chave(reiAgora.nome) === chave(nome) && (!reiAntes || chave(reiAntes.nome) !== chave(nome))) {
         toast(`👑 ${comTag(nome)} agora é o REI DO CLÃ!${ganhou}`);
       } else if (massa >= MARCO) {
@@ -3294,6 +3422,74 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     } finally {
       btn.disabled = false;
       btn.textContent = 'COLOCAR NO RANKING';
+    }
+  }
+
+  // ---------- prêmios na tela (faixa do topo, sala de troféus, doação) ----------
+  function renderPremios() {
+    const tv = premiosTemporada();
+    const pos = ['campeão', 'vice', 'terceiro'];
+    const comValor = tv.map((v, i) => [v, i]).filter(([v]) => v > 0);
+    $('faixaTemporada').hidden = !comValor.length;
+    $('faixaTemporadaVals').replaceChildren(...comValor.map(([v, i]) => el('b', { class: `pv${i + 1}`, text: `${i + 1}º ${reais(v)}` })));
+    $('premiosBox').hidden = !comValor.length && !admin;
+    $('premiosLista').replaceChildren(...comValor.map(([v, i]) => el('li', { class: `pr pr${i + 1}` },
+      el('span', { class: 'pr-pos', text: `${i + 1}º` }), el('b', { text: reais(v) }), el('small', { text: pos[i] }))));
+    $('doarDestino').hidden = !comValor.length;
+    $('doarDestinoLista').replaceChildren(...comValor.map(([v, i]) => el('li', { class: `pv${i + 1}` }, el('b', { text: reais(v) }), ` pro ${i + 1}º`)));
+    // patentes que pagam Pix (Diamantes ganha a faixa brilhante)
+    const pats = PATENTES.filter((p) => premioPatente(p) > 0).reverse();
+    $('faixaPatentes').hidden = !pats.length;
+    $('faixaPatentesVals').replaceChildren(...pats.map((p) => el('b', { class: p.diamante ? 'fp-dia' : '', style: `--pc:${p.cor}` }, svg(p.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 16), `${p.nome} ${reais(premioPatente(p))}`)));
+  }
+
+  // ---------- editar prêmios (dono e admins) ----------
+  function abrirPremios() {
+    const tv = premiosTemporada();
+    [1, 2, 3].forEach((i) => { $('pe' + i).value = String(tv[i - 1] || 0); });
+    $('pePatentes').replaceChildren(...[...PATENTES].reverse().map((p) => el('label', { class: `pe ${p.diamante ? 'pe-dia' : ''}`, style: `--pc:${p.cor}` },
+      el('span', { class: 'pe-nome' }, svg(p.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 14), p.nome, el('small', { text: p.pontos ? ptsTxt(p.pontos) : 'início' })),
+      el('span', { class: 'pe-rs', text: 'R$' }),
+      el('input', { id: 'pePat' + p.nivel, type: 'text', inputmode: 'numeric', maxlength: '6', autocomplete: 'off', value: String(premioPatente(p)), 'aria-label': `Prêmio em reais ao chegar em ${p.nome}` }))));
+    erroPremios('');
+    $('dlgPremios').showModal();
+  }
+  function erroPremios(msg) { $('erroPremios').textContent = msg || ''; $('erroPremios').hidden = !msg; }
+  async function salvarPremios(ev) {
+    ev.preventDefault();
+    const ler = (id) => {
+      const t = $(id).value.replace(/r\$|\s/gi, '');
+      if (!t) return 0;
+      return /^\d{1,6}$/.test(t) && Number(t) <= 100000 ? Number(t) : NaN;
+    };
+    const temporada = [1, 2, 3].map((i) => ler('pe' + i));
+    const patentes = { ...premios.patentes };
+    for (const p of PATENTES) patentes[p.chave] = ler('pePat' + p.nivel);
+    if ([...temporada, ...Object.values(patentes)].some(Number.isNaN)) return erroPremios('Use só números inteiros, de 0 a 100.000 (0 = sem prêmio).');
+    // guarda o valor de cada temporada que já passou, pra mudança não mexer no passado
+    const porMes = { ...premios.porMes };
+    const agora = mesChave(Date.now());
+    for (let d = new Date(PREMIOS_DESDE); mesChave(d) < agora; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      if (!porMes[mesChave(d)]) porMes[mesChave(d)] = premiosTemporada(d.getTime());
+    }
+    porMes[agora] = temporada;
+    const novo = { temporada, patentes, porMes };
+    const btn = $('btnSalvarPremios');
+    btn.disabled = true;
+    try {
+      if (!DEMO) await rpcAdmin('admin_salvar_config', { p_chave: 'premios', p_valor: novo });
+      premios = lerPremios(novo);
+      $('dlgPremios').close();
+      render();
+      toast('Prêmios atualizados pra todo mundo.');
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgPremios').close(); return; }
+      erroPremios(/config_site|admin_salvar_config|does not exist|schema cache/i.test(e.message || '')
+        ? 'O banco ainda não tem a tabela de prêmios. Rode o supabase-setup.sql de novo.'
+        : 'Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -3433,11 +3629,12 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   async function carregar() {
     if (DEMO) return;
-    const [r, rj, rt, rl] = await Promise.all([
+    const [r, rj, rt, rl, rc] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
+      sb.from('config_site').select('chave, valor'),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -3451,6 +3648,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     if (!torneiosOk) console.warn('torneios:', (rt.error || rl.error).message);
     torneios = (rt.data || []).map((t) => ({ ...t, participantes: t.participantes || [], premios: t.premios || [] }));
     lancamentos = rl.data || [];
+    // prêmios: sem a tabela (SQL novo ainda não rodado) fica o valor padrão
+    configOk = !rc.error;
+    if (rc.error) console.warn('prêmios:', rc.error.message);
+    const cp = (rc.data || []).find((x) => x.chave === 'premios');
+    premios = cp ? lerPremios(cp.valor) : PREMIOS_PADRAO;
   }
 
   function dadosDemo() {
@@ -3463,6 +3665,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       ['VENO', 73400, 500], ['Shawdow', 30100, 560], ['VETERANO', 26700, 600], ['VENO', 120880, 640],
       ['Shawdow', 215000, 1000], ['Kaiser', 88000, 1100], ['Shawdow', 78000, 1200], ['VENO', 64000, 1300],
       ['Mamba', 47000, 1500], ['Kaiser', 39000, 1600], ['VETERANO', 31000, 1700],
+      // Shawdow passa de 10.000 pts: mostra a patente Diamantes no modo demonstração
+      ['Shawdow', 1000000, 1250], ['Shawdow', 980000, 1300], ['Shawdow', 1000000, 1350], ['Shawdow', 990000, 1400], ['Shawdow', 1000000, 1450], ['Shawdow', 1000000, 1550],
     ];
     return lista.map(([player, mass, horas], i) => ({ id: 'd' + i, player, mass, created_at: h(horas) }));
   }
@@ -3527,6 +3731,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         .on('postgres_changes', { event: '*', schema: 'public', table: 'torneio_lancamentos' }, recarregar)
         .subscribe();
     }
+    if (configOk) {
+      sb.channel('premios-ao-vivo')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'config_site' }, recarregar)
+        .subscribe();
+    }
     // reserva: atualiza a cada minuto mesmo sem tempo real
     setInterval(() => { if (!document.hidden) carregar().then(render).catch(() => {}); }, 60000);
   }
@@ -3587,6 +3796,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('fNicks').addEventListener('input', previaCadastro);
     $('formJogador').addEventListener('submit', salvarJogador);
     $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
+    document.querySelectorAll('.btn-editar-premios').forEach((b) => b.addEventListener('click', abrirPremios));
+    $('formPremios').addEventListener('submit', salvarPremios);
+    $('btnCancelarPremios').addEventListener('click', () => $('dlgPremios').close());
     $('btnApagarJog').addEventListener('click', apagarJogador);
 
     // torneios

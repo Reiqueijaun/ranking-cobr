@@ -69,10 +69,16 @@
       <span class="selo" id="seloPeriodo">TEMPORADA</span>
       <h1>QUEM É O MELHOR<br><span class="laranja">JOGADOR DO CLÃ?</span></h1>
       <p>Não precisa mais mandar print: o dono do clã puxa as massas de todo mundo direto do servidor e joga no ranking. É só jogar com a tag e ver seu nome subir. Bateu o recorde de alguém? O topo é seu.</p>
-      <a class="premio-faixa" href="#temporadas">
-        <span class="premio-faixa-rot">TOP 3 DA TEMPORADA GANHA NO PIX</span>
-        <span class="premio-faixa-vals"><b class="pv1">1º R$ 30</b><b class="pv2">2º R$ 15</b><b class="pv3">3º R$ 5</b></span>
-      </a>
+      <div class="faixas-premio">
+        <a class="premio-faixa" href="#temporadas" id="faixaTemporada">
+          <span class="premio-faixa-rot">TOP 3 DA TEMPORADA GANHA NO PIX</span>
+          <span class="premio-faixa-vals" id="faixaTemporadaVals"><b class="pv1">1º R$ 30</b><b class="pv2">2º R$ 15</b><b class="pv3">3º R$ 5</b></span>
+        </a>
+        <a class="premio-faixa faixa-pat" href="#patentes" id="faixaPatentes">
+          <span class="premio-faixa-rot">CHEGOU NA PATENTE? GANHA NO PIX</span>
+          <span class="premio-faixa-vals" id="faixaPatentesVals"></span>
+        </a>
+      </div>
       <div class="stats">
         <div class="stat"><span class="stat-rot">RECORDE DO CLÃ</span><span class="stat-num laranja" id="stRecorde">—</span><span class="stat-sub" id="stRecordeDono">ninguém ainda</span></div>
         <div class="stat"><span class="stat-rot">LÍDER EM PONTOS</span><span class="stat-num" id="stLider">—</span><span class="stat-sub" id="stLiderDono">ninguém ainda</span></div>
@@ -207,8 +213,9 @@
     <div class="bloco-topo">
       <div>
         <h2>PATENTES <span class="laranja">E PONTOS</span></h2>
-        <p class="bloco-sub">Cada partida dá pontos e os pontos sobem sua patente. Até onde você chega?</p>
+        <p class="bloco-sub">Cada partida dá pontos e os pontos sobem sua patente. Até onde você chega? Lá no topo tem <b class="txt-dia">DIAMANTES</b>, com prêmio no Pix.</p>
       </div>
+      <button type="button" class="btn btn-sec btn-editar-premios so-dono">Editar prêmios</button>
     </div>
     <div class="pat-grade">
       <div class="painel lateral">
@@ -231,12 +238,13 @@
       </div>
       <span class="hall-qtd" id="tempQtd"></span>
     </div>
-    <div class="premios" aria-label="Prêmios da temporada">
+    <div class="premios" id="premiosBox" aria-label="Prêmios da temporada">
       <div class="premios-txt">
         <h3>PRÊMIO NO <span class="laranja">PIX</span></h3>
         <p>Quem fechar a temporada no top 3 em pontos leva dinheiro na conta. O dinheiro vem das doações: <a href="#doar">apoie o clã</a>.</p>
+        <button type="button" class="btn btn-sec btn-editar-premios so-dono">Editar prêmios</button>
       </div>
-      <ol class="premios-lista">
+      <ol class="premios-lista" id="premiosLista">
         <li class="pr pr1"><span class="pr-pos">1º</span><b>R$ 30</b><small>campeão</small></li>
         <li class="pr pr2"><span class="pr-pos">2º</span><b>R$ 15</b><small>vice</small></li>
         <li class="pr pr3"><span class="pr-pos">3º</span><b>R$ 5</b><small>terceiro</small></li>
@@ -338,9 +346,9 @@
       <div class="doar-txt">
         <h2>APOIE O <span class="laranja">CLÃ</span></h2>
         <p class="doar-lead">Toda doação vai <b>direto pros prêmios em Pix</b> do clã. É desse dinheiro que sai o prêmio do top 3 de cada temporada.</p>
-        <div class="doar-destino">
+        <div class="doar-destino" id="doarDestino">
           <span class="doar-destino-rot">PRA ONDE VAI A SUA DOAÇÃO</span>
-          <ol class="doar-destino-lista">
+          <ol class="doar-destino-lista" id="doarDestinoLista">
             <li class="pv1"><b>R$ 30</b> pro 1º</li>
             <li class="pv2"><b>R$ 15</b> pro 2º</li>
             <li class="pv3"><b>R$ 5</b> pro 3º</li>
@@ -478,6 +486,28 @@
       <span class="espaco"></span>
       <button type="button" class="btn btn-sec" id="btnCancelarJog">Cancelar</button>
       <button type="submit" class="btn btn-pri" id="btnSalvarJog">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgPremios" class="dlg dlg-premios" aria-labelledby="tituloPremios">
+  <form id="formPremios" class="form-admin" novalidate>
+    <h2 class="laranja" id="tituloPremios">PRÊMIOS NO PIX</h2>
+    <p>Quanto vale cada prêmio, em reais. Coloque 0 pra não ter prêmio. Muda na hora pra todo mundo.</p>
+    <h3 class="painel-h3">TOP 3 DA TEMPORADA</h3>
+    <div class="pe-temporada">
+      <label class="pe pv1"><span class="pe-pos">1º</span><span class="pe-rs">R$</span><input id="pe1" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 1º lugar em reais"></label>
+      <label class="pe pv2"><span class="pe-pos">2º</span><span class="pe-rs">R$</span><input id="pe2" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 2º lugar em reais"></label>
+      <label class="pe pv3"><span class="pe-pos">3º</span><span class="pe-rs">R$</span><input id="pe3" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 3º lugar em reais"></label>
+    </div>
+    <p class="form-nota">Vale pra temporada de agora em diante. As que já fecharam ficam com o valor da época.</p>
+    <h3 class="painel-h3">AO CHEGAR NA PATENTE</h3>
+    <div class="pe-patentes" id="pePatentes"></div>
+    <p class="form-nota">Quem chega na patente ganha uma vez, pago pelo dono do clã. Prêmio de torneio se muda no próprio torneio.</p>
+    <p class="erro" id="erroPremios" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="button" class="btn btn-sec" id="btnCancelarPremios">Cancelar</button>
+      <button type="submit" class="btn btn-pri" id="btnSalvarPremios">Salvar prêmios</button>
     </div>
   </form>
 </dialog>

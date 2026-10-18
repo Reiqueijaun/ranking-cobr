@@ -466,6 +466,40 @@ grant execute on function public.admin_add_lancamento(uuid, uuid, integer, text,
 grant execute on function public.admin_apagar_lancamento(uuid) to authenticated;
 
 
+-- 5b) Prêmios (Pix da temporada e das patentes): o dono e os admins mudam pelo site
+create table if not exists public.config_site (
+  chave         text primary key,
+  valor         jsonb not null,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.config_site enable row level security;
+grant select on public.config_site to anon, authenticated;
+revoke insert, update, delete on public.config_site from anon, authenticated;
+drop policy if exists "todos leem config" on public.config_site;
+create policy "todos leem config" on public.config_site
+  for select to anon, authenticated using (true);
+
+create or replace function public.admin_salvar_config(p_chave text, p_valor jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('prêmios', jsonb_build_object('chave', p_chave, 'valor', p_valor));
+  if p_chave is distinct from 'premios' then
+    raise exception 'configuração desconhecida';
+  end if;
+  if p_valor is null or jsonb_typeof(p_valor) <> 'object' or octet_length(p_valor::text) > 20000 then
+    raise exception 'valor inválido';
+  end if;
+  insert into config_site (chave, valor, atualizado_em) values (p_chave, p_valor, now())
+  on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
+end;
+$$;
+revoke all on function public.admin_salvar_config(text, jsonb) from public;
+revoke all on function public.admin_salvar_config(text, jsonb) from anon;
+grant execute on function public.admin_salvar_config(text, jsonb) to authenticated;
+
+
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin
@@ -492,6 +526,12 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'players'
   ) then
     alter publication supabase_realtime add table public.players;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'config_site'
+  ) then
+    alter publication supabase_realtime add table public.config_site;
   end if;
 end;
 $$;
