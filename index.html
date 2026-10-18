@@ -9,7 +9,13 @@
 <meta property="og:title" content="Ranking Clã COBR">
 <meta property="og:description" content="Quem é a maior cobra do clã? Registre sua massa e suba no ranking.">
 <link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="favicon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="COBR">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:image" content="icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Teko:wght@500;600;700&display=swap" rel="stylesheet">
@@ -58,7 +64,11 @@
     <div class="hero-txt">
       <span class="selo" id="seloPeriodo">TEMPORADA</span>
       <h1>QUEM É A MAIOR<br><span class="laranja">COBRA DO CLÃ?</span></h1>
-      <p>Fez uma partida monstra? Manda o print pro dono do clã e veja seu nome subir no ranking. Bateu o recorde de alguém? O topo é seu.</p>
+      <p>Não precisa mais mandar print: o dono do clã puxa as massas de todo mundo direto do servidor e joga no ranking. É só jogar com a tag e ver seu nome subir. Bateu o recorde de alguém? O topo é seu.</p>
+      <a class="premio-faixa" href="#temporadas">
+        <span class="premio-faixa-rot">TOP 3 DA TEMPORADA GANHA NO PIX</span>
+        <span class="premio-faixa-vals"><b class="pv1">1º R$ 30</b><b class="pv2">2º R$ 15</b><b class="pv3">3º R$ 5</b></span>
+      </a>
       <div class="stats">
         <div class="stat"><span class="stat-rot">RECORDE DO CLÃ</span><span class="stat-num laranja" id="stRecorde">—</span><span class="stat-sub" id="stRecordeDono">ninguém ainda</span></div>
         <div class="stat"><span class="stat-rot">LÍDER EM PONTOS</span><span class="stat-num" id="stLider">—</span><span class="stat-sub" id="stLiderDono">ninguém ainda</span></div>
@@ -132,7 +142,7 @@
     <form class="painel form" id="registrar" novalidate hidden>
       <div>
         <h2 class="laranja">REGISTRAR MASSA</h2>
-        <p class="form-sub">Confira o print que o jogador mandou e registre aqui.</p>
+        <p class="form-sub">Pegue a massa da partida no servidor e registre aqui.</p>
       </div>
       <div class="campo">
         <label for="fNome">NICK DO JOGADOR</label>
@@ -181,13 +191,13 @@
         <h2>COMO ENTRAR NO RANKING</h2>
         <ol class="passos">
           <li><span><b>Jogue</b> com a tag <b>[<span data-tag>COBR</span>]</b> no nick.</span></li>
-          <li><span><b>Tire print</b> da tela de fim de jogo, com a massa aparecendo.</span></li>
-          <li><span><b>Mande o print</b> no grupo do clã. O dono confere e coloca no ranking.</span></li>
+          <li><span><b>O servidor guarda</b> a massa de cada partida sua. Não precisa tirar print.</span></li>
+          <li><span><b>O dono puxa</b> as massas do servidor e joga no ranking. Seus pontos aparecem aqui.</span></li>
         </ol>
         <details class="regras">
           <summary>Quanto vale cada partida</summary>
           <ul class="tabela-pontos" id="tabelaPontos"></ul>
-          <p class="form-nota">Os pontos de todas as partidas somam. Só vale massa com print.</p>
+          <p class="form-nota">Os pontos de todas as partidas somam.</p>
         </details>
       </aside>
     </div>
@@ -198,12 +208,23 @@
   <section class="wrap bloco" id="temporadas" hidden>
     <div class="bloco-topo">
       <div>
-        <h2>CAMPEÕES DAS <span class="laranja">TEMPORADAS</span></h2>
-        <p class="bloco-sub">Todo mês é uma temporada nova: os pontos do mês zeram e quem fizer mais leva o título. Os pontos gerais e a patente continuam.</p>
+        <h2>SALA DE <span class="laranja">TROFÉUS</span></h2>
+        <p class="bloco-sub">Todo mês é uma temporada nova: os pontos do mês zeram e quem fizer mais leva a taça pra casa, com o nome gravado na placa. Cada taça tem a pedra do mês dela. Os pontos gerais e a patente continuam. Toque numa taça pra ver a cerimônia.</p>
       </div>
       <span class="hall-qtd" id="tempQtd"></span>
     </div>
-    <ol class="temps" id="listaTemporadas"></ol>
+    <div class="premios" aria-label="Prêmios da temporada">
+      <div class="premios-txt">
+        <h3>PRÊMIO NO <span class="laranja">PIX</span></h3>
+        <p>Quem fechar a temporada no top 3 em pontos leva dinheiro na conta.</p>
+      </div>
+      <ol class="premios-lista">
+        <li class="pr pr1"><span class="pr-pos">1º</span><b>R$ 30</b><small>campeão</small></li>
+        <li class="pr pr2"><span class="pr-pos">2º</span><b>R$ 15</b><small>vice</small></li>
+        <li class="pr pr3"><span class="pr-pos">3º</span><b>R$ 5</b><small>terceiro</small></li>
+      </ol>
+    </div>
+    <ol class="trofeus" id="listaTemporadas"></ol>
   </section>
 
   <section class="wrap bloco" id="jogadores">
@@ -288,6 +309,27 @@
     </div>
     <ul class="partidas" id="listaPartidas"></ul>
   </section>
+
+  <section class="wrap bloco" id="doar">
+    <div class="painel doar">
+      <div class="doar-qr">
+        <img src="pix-qr.svg" alt="QR code Pix para doar ao clã" width="205" height="205">
+      </div>
+      <div class="doar-txt">
+        <h2>APOIE O <span class="laranja">CLÃ</span></h2>
+        <p>Curte o ranking e os torneios? Qualquer valor ajuda a manter o servidor no ar. Abra o app do banco, escolha Pix e aponte a câmera pro QR code, ou copie a chave.</p>
+        <div class="doar-chave">
+          <span class="doar-chave-rot">CHAVE PIX (CELULAR)</span>
+          <b id="pixChave">91984127730</b>
+        </div>
+        <div class="doar-btns">
+          <button type="button" class="btn btn-pri" id="btnPixChave">Copiar chave</button>
+          <button type="button" class="btn btn-sec" id="btnPixCola">Copiar Pix copia e cola</button>
+        </div>
+        <p class="form-nota">Doação é opcional e não muda nada no ranking.</p>
+      </div>
+    </div>
+  </section>
 </main>
 
 <main id="perfilPagina" class="perfil-pagina" hidden>
@@ -331,6 +373,7 @@
 <footer class="rodape">
   <div class="wrap rodape-in">
     <span>Clã <span data-tag>COBR</span> · Ranking de massa do slither.io</span>
+    <a href="#doar" id="linkDoar">Doar pro clã</a>
     <button type="button" class="link-btn" id="btnAdmin">Área do admin</button>
   </div>
 </footer>
@@ -339,6 +382,11 @@
   <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
   <img id="imgPrint" alt="Print da partida">
   <p id="legendaPrint"></p>
+</dialog>
+
+<dialog id="dlgTrofeu" class="dlg dlg-trofeu" aria-labelledby="cerNome">
+  <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+  <div id="trofeuCorpo"></div>
 </dialog>
 
 <dialog id="dlgAdmin" class="dlg" aria-labelledby="tituloAdmin">
@@ -406,12 +454,20 @@
         <input id="tnNome" type="text" maxlength="60" autocomplete="off" placeholder="ex: Copa COBR de Outubro" required>
       </div>
 
-      <fieldset class="tn-bloco">
+      <fieldset class="tn-bloco" id="tnMetricaBloco">
         <legend><span class="tn-passo">2</span><span id="tnMetricaRot">O QUE CONTA</span></legend>
         <div class="abas tn-abas" role="radiogroup" aria-label="O que conta" id="tnMetricas">
           <button type="button" class="aba" role="radio" data-metrica="pontos">Pontos</button>
           <button type="button" class="aba" role="radio" data-metrica="massa">Massa</button>
           <button type="button" class="aba" role="radio" data-metrica="custom">Outra coisa</button>
+        </div>
+        <div class="campo" id="tnBaseBox">
+          <label for="tnBase">QUAL RANKING</label>
+          <select id="tnBase">
+            <option value="mes">Temporada do mês</option>
+            <option value="semana">Ranking da semana</option>
+            <option value="geral">Ranking geral (desde o começo)</option>
+          </select>
         </div>
         <div class="campo" id="tnUnidadeBox">
           <label for="tnUnidade">O QUE VAI SER CONTADO</label>
@@ -441,7 +497,7 @@
         <legend><span class="tn-passo">3</span>QUANDO</legend>
         <div class="tn-datas">
           <div class="campo"><label for="tnInicio">COMEÇA</label><input id="tnInicio" type="datetime-local"></div>
-          <div class="campo"><label for="tnFim">TERMINA</label><input id="tnFim" type="datetime-local"></div>
+          <div class="campo"><label for="tnFim" id="tnFimRot">TERMINA</label><input id="tnFim" type="datetime-local"></div>
         </div>
         <div class="sugestoes tn-atalhos" id="tnAtalhosData"></div>
       </fieldset>
@@ -471,7 +527,7 @@
           <label class="tn-premio p3"><span>3º</span><input id="tnPremio3" type="text" maxlength="60" autocomplete="off" placeholder="opcional"></label>
         </div>
         <div class="campo">
-          <label for="tnRegras">REGRAS EXTRAS <span class="sec">(opcional)</span></label>
+          <label for="tnRegras" id="tnRegrasRot">REGRAS EXTRAS <span class="sec">(opcional)</span></label>
           <textarea id="tnRegras" rows="3" maxlength="2000" placeholder="ex: só vale print com o nick visível. Partida em sala lotada."></textarea>
         </div>
       </fieldset>
@@ -513,7 +569,7 @@
     <button type="button" class="link-btn" id="btnFecharBusca">Fechar</button>
   </div>
   <div class="busca-atalhos" id="buscaAtalhos">
-    <a href="#ranking">Pódio</a><a href="#torneios">Torneios</a><a href="#tabela">Tabela</a><a href="#temporadas">Temporadas</a><a href="#jogadores">Jogadores</a><a href="#patentes">Patentes</a><a href="#hall">Hall da fama</a><a href="#partidas">Partidas</a>
+    <a href="#ranking">Pódio</a><a href="#torneios">Torneios</a><a href="#tabela">Tabela</a><a href="#temporadas">Troféus</a><a href="#jogadores">Jogadores</a><a href="#patentes">Patentes</a><a href="#hall">Hall da fama</a><a href="#partidas">Partidas</a>
   </div>
   <ul class="busca-lista" id="listaBusca"></ul>
 </dialog>

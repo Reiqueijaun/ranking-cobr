@@ -399,15 +399,100 @@ td .cem-chip { margin-left: 0; }
 /* hall da fama */
 .hall-qtd { font-size: 14px; color: var(--texto-3); }
 
-/* campeões das temporadas */
-.temps { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
-.temp { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 16px; background: var(--painel-2); border: 1px solid var(--linha); min-width: 0; }
-.temp-atual { border-color: var(--laranja); background: var(--laranja-fundo); box-shadow: 0 0 40px rgba(255, 122, 26, .14); }
-.temp-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.temp-mes { font-family: var(--f-titulo); font-size: 26px; font-weight: 700; letter-spacing: 1px; line-height: 1; }
-.temp-status { font-size: 12px; color: var(--texto-3); }
-.temp-status.ao { color: var(--laranja-claro); }
-.temp-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+/* sala de troféus: cada taça numa vitrine iluminada */
+.trofeus { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 14px; }
+.tr-item { display: flex; flex-direction: column; border-radius: 18px; background: var(--painel-2); border: 1px solid var(--linha); overflow: hidden; min-width: 0; }
+.tr-vitrine {
+  position: relative; display: flex; justify-content: center; align-items: flex-end; padding: 22px 16px 0; border: 0; cursor: pointer; color: inherit;
+  background:
+    radial-gradient(60% 55% at 50% 0%, color-mix(in srgb, var(--gema) 30%, transparent), transparent 70%),
+    radial-gradient(70% 40% at 50% 100%, rgba(255, 200, 80, .16), transparent 70%),
+    linear-gradient(#1A120C, #0D0907);
+  border-bottom: 3px solid #3A2312; box-shadow: inset 0 -14px 18px -12px rgba(0, 0, 0, .9);
+}
+.tr-vitrine .trofeu { width: min(150px, 70%); transition: transform .35s cubic-bezier(.2, .8, .3, 1.3), filter .35s; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .7)); }
+.tr-vitrine:hover .trofeu, .tr-vitrine:focus-visible .trofeu { transform: translateY(-6px) scale(1.04); filter: drop-shadow(0 0 22px color-mix(in srgb, var(--gema) 55%, transparent)) drop-shadow(0 8px 18px rgba(0, 0, 0, .7)); }
+.trofeu { display: block; line-height: 0; }
+.trofeu-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.trofeu-brilho rect { animation: brilhoTaca 5.5s ease-in-out infinite; }
+.tr-item:nth-child(2n) .trofeu-brilho rect { animation-delay: 1.8s; }
+.tr-item:nth-child(3n) .trofeu-brilho rect { animation-delay: 3.1s; }
+@keyframes brilhoTaca { 0%, 55% { transform: translateX(0); } 100% { transform: translateX(560px); } }
+.tr-info { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; }
+.tr-mes { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.tr-mes span { font-family: var(--f-titulo); font-size: 26px; font-weight: 700; letter-spacing: 1px; line-height: 1; }
+.tr-mes small { font-size: 12px; color: var(--texto-3); }
+.tr-campeao { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.tr-campeao .link-nome { flex: 1; min-width: 0; font-weight: 700; color: #FFD84D; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-rot { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--laranja-claro); white-space: nowrap; }
+.tr-pts { font-size: 13px; color: var(--laranja); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tr-vices { display: flex; gap: 12px; font-size: 12px; color: var(--texto-3); border-top: 1px solid var(--linha); padding-top: 8px; min-width: 0; }
+.tr-vice { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-vice .link-nome { color: var(--texto-2); }
+.tr-vice.v2 { color: var(--azul); }
+.tr-vice.v3 { color: var(--roxo); }
+/* taça do mês atual: ainda sem dono, aparece apagada */
+.tr-disputa { border-color: var(--laranja); box-shadow: 0 0 40px rgba(255, 122, 26, .12); }
+.tr-disputa .tr-vitrine .trofeu, .tr-fantasma { filter: grayscale(.9) brightness(.45) contrast(1.1) drop-shadow(0 8px 18px rgba(0, 0, 0, .7)); }
+.tr-disputa .tr-vitrine:hover .trofeu { filter: grayscale(.4) brightness(.75) drop-shadow(0 0 22px rgba(255, 122, 26, .4)); }
+.tr-disputa .tr-campeao .link-nome { color: var(--texto); }
+.tr-selo { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 3px 10px; border-radius: 999px; background: var(--laranja); color: var(--tinta-btn); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; white-space: nowrap; animation: chamar 2.4s ease-in-out infinite; }
+
+/* cerimônia (janela da taça) */
+.dlg-trofeu { max-width: min(94vw, 520px); max-height: 94vh; overflow: auto; background: radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--gema, #FF7A1A) 22%, var(--painel)), var(--painel) 60%); border-color: color-mix(in srgb, var(--gema, #FF7A1A) 45%, var(--linha-forte)); }
+.dlg-trofeu[open] { animation: cerEntra .5s cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes cerEntra { from { opacity: 0; transform: scale(.85) translateY(20px); } }
+#trofeuCorpo { position: relative; }
+.cer-palco { position: relative; display: flex; justify-content: center; padding: 34px 20px 8px; overflow: hidden; }
+.cer-raios { position: absolute; left: 50%; top: 42%; width: 640px; height: 640px; margin: -320px 0 0 -320px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--gema) 26%, transparent) 0 7deg, transparent 7deg 20deg);
+  -webkit-mask: radial-gradient(closest-side, #000 15%, transparent); mask: radial-gradient(closest-side, #000 15%, transparent);
+  animation: girar 30s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.cer-trofeu { position: relative; width: min(220px, 58vw); perspective: 600px; animation: flutuar 4s ease-in-out infinite; filter: drop-shadow(0 0 30px color-mix(in srgb, var(--gema) 45%, transparent)) drop-shadow(0 14px 22px rgba(0, 0, 0, .8)); }
+.cer-trofeu .trofeu-svg { animation: balancar 7s ease-in-out infinite; transform-origin: 50% 90%; }
+.cer-trofeu.tr-fantasma { filter: grayscale(.9) brightness(.5) drop-shadow(0 14px 22px rgba(0, 0, 0, .8)); }
+@keyframes flutuar { 50% { transform: translateY(-8px); } }
+@keyframes balancar { 0%, 100% { transform: rotateY(-14deg); } 50% { transform: rotateY(14deg); } }
+.cer-info { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 6px 22px 22px; }
+.cer-rot { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--texto-3); }
+.cer-eu { margin: 6px 0 2px; padding: 4px 12px; border-radius: 999px; background: #FFD84D; color: var(--tinta-btn); font-weight: 700; font-size: 13px; letter-spacing: 1px; animation: chamar 2s ease-in-out infinite; }
+.cer-titulo { margin-top: 6px; font-family: var(--f-titulo); font-size: 22px; letter-spacing: 6px; line-height: 1; color: var(--laranja-claro); }
+.cer-nome { margin: 0; font-family: var(--f-titulo); font-size: clamp(40px, 12vw, 60px); line-height: .95; font-weight: 700; letter-spacing: 1px; overflow-wrap: anywhere;
+  background: linear-gradient(180deg, #FFF6CF 10%, #FFD84D 45%, #D99A22 80%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cer-tag { font-size: .5em; letter-spacing: 2px; vertical-align: middle; }
+.cer-sub { margin: 6px 0 4px; font-size: 14px; color: var(--texto-2); max-width: 36ch; }
+.cer-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 8px 0 4px; }
+.cer-stat { display: flex; flex-direction: column; padding: 8px 4px; border-radius: 10px; background: rgba(0, 0, 0, .35); border: 1px solid var(--linha); min-width: 0; }
+.cer-stat b { font-family: var(--f-titulo); font-size: 24px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.cer-stat .pstat-rot { font-size: 10px; letter-spacing: 1px; }
+.cer-podio { list-style: none; margin: 8px 0 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.cer-mais { margin: 4px 0 0; font-size: 12px; color: var(--texto-3); }
+.cer-gema { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: 13px; color: var(--texto-2); }
+.cer-gema-cor { width: 12px; height: 12px; transform: rotate(45deg); border-radius: 2px; background: var(--gema); box-shadow: 0 0 10px var(--gema); }
+.cer-info .linha-btns { width: 100%; justify-content: center; margin-top: 10px; }
+.cer-confete { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+.cer-confete i { position: absolute; top: -16px; left: var(--x); width: 8px; height: 13px; border-radius: 2px; background: var(--c); opacity: 0; animation: confete var(--t) var(--d) cubic-bezier(.3, .4, .6, 1) 2 both; }
+.cer-confete i:nth-child(3n) { width: 6px; height: 6px; border-radius: 50%; }
+@keyframes confete { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 100% { opacity: 0; transform: translate(30px, 104vh) rotate(var(--r)); } }
+@media (max-width: 420px) {
+  .cer-stats { grid-template-columns: repeat(2, 1fr); }
+  .trofeus { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tr-info { padding: 10px 12px 12px; }
+  .tr-mes span { font-size: 22px; }
+  .tr-vices { flex-direction: column; gap: 2px; }
+  .tr-campeao { flex-wrap: wrap; row-gap: 0; }
+  .tr-rot { width: 100%; }
+}
+
+/* troféus no perfil */
+.pp-trofeus { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.pp-trofeu { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px 10px; border-radius: 12px; cursor: pointer; color: var(--texto-2); font: 700 12px var(--f-texto); letter-spacing: 1px;
+  border: 1px solid var(--linha-forte); background: radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, var(--gema) 25%, transparent), transparent 70%), var(--painel-2); }
+.pp-trofeu .trofeu { width: 64px; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .7)); transition: transform .3s; }
+.pp-trofeu:hover .trofeu { transform: translateY(-4px) scale(1.05); }
+
+/* pódio da temporada (usado na cerimônia) */
 .tt { display: flex; align-items: center; gap: 10px; min-width: 0; font-variant-numeric: tabular-nums; }
 .tt-pos { width: 28px; flex: 0 0 auto; display: flex; justify-content: center; font-family: var(--f-titulo); font-size: 20px; font-weight: 700; color: var(--texto-3); }
 .tt1 .tt-pos { color: var(--laranja-claro); }
@@ -419,7 +504,6 @@ td .cem-chip { margin-left: 0; }
 .tt-nome small { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--laranja-claro); white-space: nowrap; }
 .tt-pts { flex: 0 0 auto; font-size: 14px; color: var(--texto-2); }
 .tt1 .tt-pts { color: var(--laranja); font-weight: 700; }
-.temp-pe { font-size: 12px; color: var(--texto-3); border-top: 1px solid var(--linha); padding-top: 10px; }
 .titulo-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 6px; background: var(--laranja-escuro); color: #FFD84D; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .hall { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; }
 .fama {
@@ -1082,6 +1166,36 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
 .pp-tn-info b { font-size: 15px; color: var(--texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tn-chip { color: #FFD84D; }
 
+/* troféu (campeão) e medalha de prata (vice) de torneio */
+.titulo-chip.tn-chip-vice { background: #1E242C; color: #D8E2EC; }
+.tn-taca { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 35% 30%, #FFE98A, #E0A21C 60%, #7A4A06); color: #3E2304; box-shadow: 0 0 28px rgba(255, 216, 77, .45); }
+.tn-vice { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; border: 1px solid #4A5563; background: #161A20; color: var(--texto); font: inherit; cursor: pointer; text-align: left; }
+.tn-vice:hover { border-color: #C9D3DD; }
+.tn-vice-ic { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 35% 30%, #FFFFFF, #B9C4CF 55%, #5D6773); color: #1E242C; }
+.tn-vice-txt { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+.tn-vice-txt small { font-size: 10px; letter-spacing: 2px; font-weight: 700; color: #C9D3DD; }
+.tn-vice-txt b { font-size: 16px; overflow-wrap: anywhere; }
+.tn-fechado-vice { display: inline-flex; align-items: center; gap: 4px; color: #C9D3DD; }
+.tn-med-ic { color: #D8E2EC; }
+.tn-card-regras { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pp-tn.vice { background: #14181D; border-color: #4A5563; }
+.pp-tn-pos.p2 svg { color: #D8E2EC; }
+.tnt-estante { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.tnt-item { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; padding: 14px 8px 12px; border-radius: 14px; text-align: center; text-decoration: none; color: inherit; border: 1px solid var(--linha); background: var(--painel-2); }
+.tnt-item:hover { color: inherit; border-color: var(--linha-forte); }
+.tnt-ic { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+.tnt-p1 { background: var(--laranja-fundo); border-color: #7A5A10; }
+.tnt-p1 .tnt-ic { background: radial-gradient(circle at 35% 30%, #FFE98A, #E0A21C 60%, #7A4A06); color: #3E2304; box-shadow: 0 0 18px rgba(255, 216, 77, .35); }
+.tnt-p2 { background: #14181D; border-color: #3A4450; }
+.tnt-p2 .tnt-ic { background: radial-gradient(circle at 35% 30%, #FFFFFF, #B9C4CF 55%, #5D6773); color: #1E242C; box-shadow: 0 0 14px rgba(201, 211, 221, .25); }
+.tnt-rot { font-size: 11px; letter-spacing: 2px; }
+.tnt-p1 .tnt-rot { color: #FFD84D; }
+.tnt-p2 .tnt-rot { color: #D8E2EC; }
+.tnt-nome { font-size: 12.5px; line-height: 1.25; color: var(--texto-2); overflow-wrap: anywhere; }
+.tn-podio-form { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.tn-podio-form select { flex: 1; min-width: 0; }
+.tn-podio-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
 @media (max-width: 760px) {
   .tn-hero { padding: 22px 18px; gap: 18px; }
   .tn-conta { width: 100%; }
@@ -1111,4 +1225,51 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   .tn-formato { padding: 10px 12px; font-size: 12px; }
   .tn-formato:last-child { grid-column: 1 / -1; }
   .tn-formato-ic { width: 32px; height: 32px; }
+}
+
+/* ---------- prêmio da temporada (Pix pro top 3) ---------- */
+.pv1 { --pc: var(--laranja-claro); }
+.pv2 { --pc: var(--azul-claro); }
+.pv3 { --pc: var(--roxo-claro); }
+.premio-faixa {
+  align-self: flex-start; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 16px; border-radius: 12px; text-decoration: none; color: var(--texto);
+  background: linear-gradient(90deg, var(--laranja-escuro), var(--painel)); border: 1px solid var(--laranja);
+}
+.premio-faixa:hover { color: var(--texto); box-shadow: 0 0 30px rgba(255, 122, 26, .25); }
+.premio-faixa-rot { font-size: 12px; letter-spacing: 1.5px; font-weight: 700; color: var(--laranja-claro); }
+.premio-faixa-vals { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--f-titulo); font-size: 22px; line-height: 1; font-variant-numeric: tabular-nums; }
+.premio-faixa-vals b { font-weight: 600; color: var(--pc); }
+
+.premios { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; margin-bottom: 24px; padding: 18px 22px; border-radius: 18px; background: var(--laranja-fundo); border: 1px solid var(--linha-forte); }
+.premios-txt { flex: 1 1 260px; min-width: 0; }
+.premios-txt h3 { margin: 0; font-family: var(--f-titulo); font-weight: 600; font-size: 32px; line-height: 1; letter-spacing: 1px; }
+.premios-txt p { margin: 6px 0 0; color: var(--texto-2); font-size: 15px; }
+.premios-lista { list-style: none; margin: 0; padding: 0; display: flex; gap: 10px; flex: 1 1 300px; }
+.pr { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 10px 8px; border-radius: 12px; background: var(--painel); border: 1px solid var(--pc); }
+.pr1 { --pc: var(--laranja); }
+.pr2 { --pc: var(--azul); }
+.pr3 { --pc: var(--roxo); }
+.pr-pos { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--pc); }
+.pr b { font-family: var(--f-titulo); font-size: 34px; font-weight: 700; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pr small { font-size: 12px; color: var(--texto-3); }
+
+.premio-selo { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--pc); color: var(--pc); font-weight: 700; font-size: 12px; letter-spacing: 1px; }
+.tt-premio { flex: 0 0 auto; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--pc); color: var(--pc); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* ---------- doação ---------- */
+.doar { display: flex; flex-wrap: wrap; align-items: center; gap: 24px 32px; padding: 24px; }
+.doar-qr { flex: 0 0 auto; margin: 0 auto; padding: 10px; border-radius: 14px; background: #fff; line-height: 0; }
+.doar-qr img { width: 205px; height: 205px; display: block; } /* 41 módulos × 5px: quadradinhos iguais */
+.doar-txt { flex: 999 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.doar-txt p { margin: 0; color: var(--texto-2); }
+.doar-chave { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 12px; background: var(--fundo-2); border: 1px solid var(--linha); align-self: flex-start; max-width: 100%; }
+.doar-chave-rot { font-size: 12px; letter-spacing: 1.5px; color: var(--texto-3); }
+.doar-chave b { font-family: var(--f-titulo); font-size: 30px; font-weight: 600; line-height: 1.1; letter-spacing: 1px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.doar-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.rodape-in a { color: var(--laranja-claro); font-weight: 600; }
+@media (max-width: 420px) {
+  .pr b { font-size: 28px; }
+  .doar { padding: 18px 16px; }
+  .doar-btns .btn { flex: 1 1 100%; }
 }

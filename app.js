@@ -12,6 +12,13 @@
   const BUCKET = 'prints';
   const MASSA_MIN = 10;
   const MASSA_MAX = 1000000;
+  // prêmio em Pix pro top 3 em pontos de cada temporada (vale a partir de outubro de 2026)
+  const PREMIOS = [30, 15, 5];
+  const PREMIOS_DESDE = new Date(2026, 9, 1).getTime();
+  const temPremio = (t) => t.inicio >= PREMIOS_DESDE;
+  // doação pro clã: chave Pix (celular) e o mesmo código do pix-qr.svg, pra copiar e colar no banco
+  const PIX_CHAVE = '91984127730';
+  const PIX_COPIA_COLA = '00020126360014br.gov.bcb.pix0114+55919841277305204000053039865802BR5908CLA COBR6005BELEM62070503***63041B13';
 
   const $ = (id) => document.getElementById(id);
   let sb = null;
@@ -80,6 +87,7 @@
   }
   const ICONE_COROA = '<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5L3 8z"/>';
   const ICONE_TROFEU = '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>';
+  const ICONE_MEDALHA = '<path d="M7.5 3h9M7.5 3l3.5 6.3M16.5 3L13 9.3"/><circle cx="12" cy="15" r="6"/><circle cx="12" cy="15" r="2.5"/>';
   const ICONE_LIXO = '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>';
 
   let toastTimer;
@@ -98,8 +106,9 @@
   }
 
   // ---------- cálculo do ranking ----------
-  function inicioPeriodo(per) {
-    const d = new Date();
+  // base = instante de referência (o torneio "hora H" olha o ranking como estava naquela hora)
+  function inicioPeriodo(per, base = Date.now()) {
+    const d = new Date(base);
     d.setHours(0, 0, 0, 0);
     if (per === 'semana') { const dia = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dia); return d.getTime(); }
     if (per === 'mes') { d.setDate(1); return d.getTime(); }
@@ -218,6 +227,99 @@
   }
   const nomeMes = (t) => new Date(t).toLocaleDateString('pt-BR', { month: 'long' });
 
+  // ---------- troféus das temporadas ----------
+  // Cada temporada tem a pedra do mês dela nas faixas da base, nos olhos das cobras e no globo.
+  const GEMAS = [
+    ['Granada', '#C21E3A'], ['Ametista', '#9B5DE5'], ['Água-marinha', '#4FD1E6'], ['Diamante', '#DCEBFF'],
+    ['Esmeralda', '#14C36B'], ['Pérola', '#EFE4D2'], ['Rubi', '#E8174F'], ['Peridoto', '#A3D930'],
+    ['Safira', '#2F63E0'], ['Turmalina', '#FF4FA3'], ['Topázio', '#FF8A2B'], ['Turquesa', '#22C7B8'],
+  ];
+  function misturar(hex, alvo, t) {
+    const a = parseInt(hex.slice(1), 16), b = parseInt(alvo.slice(1), 16);
+    const c = (s) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+    return '#' + ((1 << 24) | (c(16) << 16) | (c(8) << 8) | c(0)).toString(16).slice(1);
+  }
+  const escXml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  let trofeuSeq = 0;
+  // mes 0-11; nick vazio = troféu ainda em disputa
+  function trofeuSVG(mes, ano, nick) {
+    const id = 'tf' + (++trofeuSeq);
+    const g = GEMAS[mes % 12][1];
+    const gc = misturar(g, '#FFFFFF', 0.55), ge = misturar(g, '#000000', 0.55);
+    const mesTxt = new Date(ano, mes, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase();
+    const bruto = nick ? nick.toUpperCase() : 'EM DISPUTA';
+    const placa = escXml(bruto);
+    const fonte = Math.min(15, Math.round(80 / (bruto.length * 0.47) * 10) / 10); // nick grande diminui pra caber na placa
+    // largura da base cresce pra baixo (estilo taça do mundo)
+    const faixa = (y1, y2, fill) => {
+      const w = (y) => 30 + (y - 236) * 0.2;
+      return `<path d="M${100 - w(y1)} ${y1}H${100 + w(y1)}L${100 + w(y2)} ${y2}H${100 - w(y2)}Z" fill="${fill}"/>`;
+    };
+    const cobraLow = 'M76 254C68 226 124 222 120 196';
+    const cobraUp = 'M120 196C117 166 58 168 56 134C54 112 42 94 48 70C53 48 64 34 80 31';
+    const cobra = (d) => `<path d="${d}" stroke="#3E2304" stroke-width="15"/>`
+      + `<path d="${d}" stroke="url(#${id}o)" stroke-width="12"/>`
+      + `<path d="${d}" stroke="#5A3305" stroke-opacity=".5" stroke-width="7" stroke-dasharray="1.5 4.5"/>`
+      + `<path d="${d}" stroke="#FFF8D8" stroke-opacity=".6" stroke-width="2.2" transform="translate(-1.6 -2)"/>`;
+    const cabeca = `<g transform="translate(80 31) rotate(-12)">`
+      + `<path d="M-7 -9C1 -11 8 -6 13 -3.2C16 -1.6 16 1.6 13 3.2C8 6 1 11 -7 9Z" fill="url(#${id}h)" stroke="#3E2304" stroke-width="1.4"/><path d="M-3 -6C3 -6 8 -3 11 -1" stroke="#FFF8D8" stroke-opacity=".7" stroke-width="1.2" fill="none"/>`
+      + `<circle cx="7" cy="2.2" r="2.2" fill="${gc}"/><circle cx="7.3" cy="2.2" r="1.1" fill="${ge}"/>`
+      + `<path d="M15.5 0H19M19 0L21 -1.8M19 0L21 1.8" stroke="#FF4D3D" stroke-width="1.1" fill="none"/></g>`;
+    const lado = (inv) => `<g${inv ? ' transform="translate(200 0) scale(-1 1)"' : ''}>`;
+    return `<svg class="trofeu-svg" viewBox="0 0 200 340" role="img" aria-label="Troféu da temporada de ${mesTxt} ${ano}${nick ? ', campeão ' + escXml(nick) : ''}" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="${id}o" gradientUnits="userSpaceOnUse" x1="36" y1="0" x2="164" y2="0">
+<stop offset="0" stop-color="#6B3F07"/><stop offset=".28" stop-color="#F2C64A"/><stop offset=".42" stop-color="#FFF3C0"/><stop offset=".58" stop-color="#E3A92B"/><stop offset="1" stop-color="#5E3505"/></linearGradient>
+<linearGradient id="${id}c" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#4A2A04"/><stop offset=".45" stop-color="#C98E1E"/><stop offset="1" stop-color="#3E2304"/></linearGradient>
+<radialGradient id="${id}s" cx=".36" cy=".3" r=".75">
+<stop offset="0" stop-color="#FFF8D6"/><stop offset=".25" stop-color="#F6CF56"/><stop offset=".7" stop-color="#B57812"/><stop offset="1" stop-color="#4E2B04"/></radialGradient>
+<linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF0B0"/><stop offset=".5" stop-color="#D99A22"/><stop offset="1" stop-color="#6B3F07"/></linearGradient>
+<linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="${gc}"/><stop offset=".45" stop-color="${g}"/><stop offset="1" stop-color="${ge}"/></linearGradient>
+<linearGradient id="${id}p" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#2E2016"/><stop offset="1" stop-color="#0C0806"/></linearGradient>
+<linearGradient id="${id}b" x1="0" y1="0" x2="1" y2="1">
+<stop offset=".35" stop-color="#FFF" stop-opacity="0"/><stop offset=".5" stop-color="#FFF" stop-opacity=".75"/><stop offset=".65" stop-color="#FFF" stop-opacity="0"/></linearGradient>
+<clipPath id="${id}k"><circle cx="100" cy="78" r="44"/><path d="M84 236C93 220 95 205 95 190C95 165 86 140 78 120H122C114 140 105 165 105 190C105 205 107 220 116 236Z"/><path d="M70 236H130L142 296H58Z"/></clipPath>
+</defs>
+<ellipse cx="100" cy="334" rx="74" ry="5" fill="#000" opacity=".55"/>
+<path d="M84 236C93 220 95 205 95 190C95 165 86 140 78 120H122C114 140 105 165 105 190C105 205 107 220 116 236Z" fill="url(#${id}c)"/>
+<circle cx="100" cy="78" r="44" fill="url(#${id}s)"/>
+<g fill="none" stroke="#6B3A06" stroke-opacity=".45" stroke-width="1.4">
+<ellipse cx="100" cy="78" rx="18" ry="44"/><ellipse cx="100" cy="78" rx="33" ry="44"/><path d="M56 78H144M61 56C85 64 115 64 139 56M61 100C85 92 115 92 139 100"/></g>
+<path d="M100 62L113 74L100 98L87 74Z" fill="url(#${id}g)" stroke="#3E2304" stroke-width="1.2"/>
+<path d="M87 74H113M100 62L95 74L100 98L105 74Z" fill="none" stroke="#FFF" stroke-opacity=".45" stroke-width=".8"/>
+<ellipse cx="84" cy="56" rx="13" ry="8" fill="#FFF" opacity=".45" transform="rotate(-30 84 56)"/>
+<g fill="none" stroke-linecap="round">
+${lado(true)}${cobra(cobraLow)}</g>
+${lado(false)}${cobra(cobraLow)}${cobra(cobraUp)}</g>
+${lado(true)}${cobra(cobraUp)}</g>
+</g>
+${lado(false)}${cabeca}</g>${lado(true)}${cabeca}</g>
+${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261, 267, `url(#${id}o)`)}${faixa(267, 283, `url(#${id}g)`)}${faixa(283, 296, `url(#${id}o)`)}
+<path d="M72 248H128M70 274H130" stroke="#FFF" stroke-opacity=".35" stroke-width="1"/>
+<g class="trofeu-brilho" clip-path="url(#${id}k)"><rect x="-200" y="0" width="160" height="340" fill="url(#${id}b)"/></g>
+<path d="M44 296H156L164 332H36Z" fill="url(#${id}p)" stroke="#8A5A14" stroke-width="1.5"/>
+<rect x="58" y="303" width="84" height="25" rx="3" fill="url(#${id}o)" stroke="#3E2304" stroke-width="1"/>
+<text x="100" y="312.5" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="7" font-weight="700" letter-spacing="1.5" fill="#3E2304">${mesTxt} · ${ano}</text>
+<text x="100" y="325" text-anchor="middle" font-family="Teko, Impact, sans-serif" font-weight="700" fill="#2A1703" font-size="${fonte}">${placa}</text>
+</svg>`;
+  }
+  function trofeuDe(t, cls = '') {
+    const d = new Date(t.inicio);
+    const w = el('span', { class: `trofeu ${cls}` });
+    w.innerHTML = trofeuSVG(d.getMonth(), d.getFullYear(), t.atual ? '' : t.top[0].nome);
+    return w;
+  }
+  // "2026-09": vai no link ?trofeu= e marca qual cerimônia já foi vista
+  const chaveTemp = (t) => { const d = new Date(t.inicio); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const gemaDe = (t) => GEMAS[new Date(t.inicio).getMonth()];
+  function rotTemp(t) {
+    const ano = new Date(t.inicio).getFullYear();
+    return `${nomeMes(t.inicio).toUpperCase()}${ano !== new Date().getFullYear() ? ' ' + ano : ''}`;
+  }
+
   // k0 = só os momentos de um jogador; limite = quantos devolver
   function montarConquistas(k0 = null, limite = 6) {
     const eventos = [];
@@ -254,6 +356,7 @@
   // ---------- desenho da página ----------
   function render() {
     cachePts = null;
+    cacheTrofeus = null;
     const geralMassa = montarRanking('geral', 'massa');
     const geralPontos = montarRanking('geral', 'pontos');
     const rank = montarRanking(periodo, modo);
@@ -870,7 +973,7 @@
     if (!rank.length) {
       const ultima = ctx.temps.find((t) => !t.atual);
       const msg = periodo === 'geral'
-        ? 'Ninguém entrou no ranking ainda. Manda o print da sua melhor partida pro dono do clã!'
+        ? `Ninguém entrou no ranking ainda. Joga com a tag [${TAG}] que o dono puxa sua massa do servidor!`
         : periodo === 'mes'
           ? `A temporada de ${nomeMes(Date.now())} começou e ninguém pontuou ainda. O pódio está livre!${ultima ? ` Campeão de ${nomeMes(ultima.inicio)}: ${comTag(ultima.top[0].nome)}.` : ''}`
           : 'Ninguém registrou massa nesta semana ainda.';
@@ -896,6 +999,7 @@
         el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
+        periodo === 'mes' && modo === 'pontos' ? el('div', { class: `premio-selo pv${i + 1}`, text: `VALE R$ ${PREMIOS[i]} NO PIX` }) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
         url ? el('button', { type: 'button', class: 'ver-print', text: 'Ver print do recorde', onclick: () => abrirPrint(j.melhor) }) : null
       );
@@ -920,7 +1024,7 @@
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       return el('tr', { class: i === 0 ? 'topo1' : null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
@@ -1020,7 +1124,7 @@
     const sem = ctx.semana.find((x) => x.chave === j.chave);
     const recorde = j.melhor ? j.melhor.mass : 0;
     const titulos = (ctx.titulos && ctx.titulos.get(j.chave)) || 0;
-    const tnVit = vitoriasTorneio(j.chave);
+    const tnVit = vitoriasTorneio(j.chave), tnVice = vicesTorneio(j.chave);
     const minhas = j.chave ? partidas.filter((p) => chave(p.player) === j.chave).reverse() : []; // mais antigas primeiro
     const quando = (teste, n = 1) => { let c = 0; for (const p of minhas) if (teste(p) && ++c >= n) return p.created_at; return null; };
     const clube = (vezes, id, icone) => ({
@@ -1038,6 +1142,7 @@
       clube(10, 'clube10', '<path d="M3 20l6-10 4 6 3-4 5 8z"/><path d="M9 10V4l4 2-4 2"/>'),
       { id: 'campeao', nome: titulos > 1 ? `Campeão ${titulos}×` : 'Campeão de temporada', como: 'ganhar uma temporada (1º do mês)', ok: titulos > 0, icone: ICONE_TROFEU },
       { id: 'torneio', nome: tnVit > 1 ? `Rei dos torneios ${tnVit}×` : 'Campeão de torneio', como: 'ganhar um torneio do clã', ok: tnVit > 0, icone: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.8 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0V2z"/>' },
+      { id: 'vice', nome: tnVice > 1 ? `Prata ${tnVice}×` : 'Vice de torneio', como: 'ficar em 2º num torneio do clã', ok: tnVice > 0, icone: ICONE_MEDALHA },
       { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>', prog: [sem ? sem.qtd : 0, 3] },
       { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>', prog: [j.qtd, 10], quando: quando(() => true, 10) },
     ];
@@ -1138,24 +1243,114 @@
     const d = Math.round(h / 24);
     return `fecha em ${d} ${d === 1 ? 'dia' : 'dias'}`;
   }
+  // sala de troféus: a taça em disputa primeiro, depois as já entregues
   function renderTemporadas(ctx) {
-    const temps = ctx.temps.slice(0, 12);
+    const temps = ctx.temps;
     $('temporadas').hidden = !temps.length;
-    const fechadas = ctx.temps.filter((t) => !t.atual).length;
-    $('tempQtd').textContent = fechadas ? `${fechadas} ${fechadas === 1 ? 'temporada fechada' : 'temporadas fechadas'}` : 'a primeira temporada está rolando';
-    $('listaTemporadas').replaceChildren(...temps.map((t) => {
-      const ano = new Date(t.inicio).getFullYear();
-      return el('li', { class: `temp ${t.atual ? 'temp-atual' : ''}` },
-        el('div', { class: 'temp-topo' },
-          el('span', { class: 'temp-mes', text: `${nomeMes(t.inicio).toUpperCase()}${ano !== new Date().getFullYear() ? ' ' + ano : ''}` }),
-          el('span', { class: `temp-status ${t.atual ? 'ao' : ''}`, text: t.atual ? `em andamento · ${fechaTemporadaTxt(t.fim)}` : 'encerrada' })),
-        el('ol', { class: 'temp-top' }, ...t.top.slice(0, 3).map((j, i) => el('li', { class: `tt tt${i + 1}` },
-          el('span', { class: 'tt-pos' }, i === 0 && !t.atual ? svg(ICONE_TROFEU, 16) : `${i + 1}º`),
-          el('span', { class: 'tt-nome' }, btnPerfil(j, 'link-nome', j.nome), i === 0 ? el('small', { text: t.atual ? 'liderando' : 'campeão' }) : null),
-          el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
-        t.top.length > 3 ? el('div', { class: 'temp-pe', text: `${t.top.length} jogadores pontuaram` }) : null
+    const fechadas = temps.filter((t) => !t.atual).length;
+    $('tempQtd').textContent = fechadas ? `${fechadas} ${fechadas === 1 ? 'taça entregue' : 'taças entregues'}` : 'a primeira taça está em disputa';
+    $('listaTemporadas').replaceChildren(...temps.map((t, i) => {
+      const c = t.top[0];
+      const num = temps.length - i;
+      return el('li', { class: `tr-item ${t.atual ? 'tr-disputa' : ''}`, style: `--gema:${gemaDe(t)[1]}` },
+        el('button', { type: 'button', class: 'tr-vitrine', onclick: () => abrirTrofeu(chaveTemp(t)), 'aria-label': t.atual ? `Taça de ${nomeMes(t.inicio)}, em disputa` : `Taça de ${nomeMes(t.inicio)}: ${comTag(c.nome)} campeão` },
+          trofeuDe(t),
+          t.atual ? el('span', { class: 'tr-selo', text: 'EM DISPUTA' }) : null),
+        el('div', { class: 'tr-info' },
+          el('div', { class: 'tr-mes' }, el('span', { text: rotTemp(t) }), el('small', { text: t.atual ? fechaTemporadaTxt(t.fim) : `temporada ${num}` })),
+          el('div', { class: 'tr-campeao' },
+            el('span', { class: 'tr-rot', text: t.atual ? 'liderando' : 'campeão' }),
+            btnPerfil(c, 'link-nome', c.nome),
+            el('span', { class: 'tr-pts', text: ptsTxt(c.pontos) })),
+          t.top.length > 1 ? el('div', { class: 'tr-vices' }, ...t.top.slice(1, 3).map((j, k) => el('span', { class: `tr-vice v${k + 2}` }, `${k + 2}º `, btnPerfil(j, 'link-nome', j.nome)))) : null)
       );
     }));
+  }
+
+  // ---------- cerimônia da taça ----------
+  function abrirTrofeu(kt, festa = false) {
+    const temps = montarTemporadas();
+    const i = temps.findIndex((t) => chaveTemp(t) === kt);
+    if (i < 0) return false;
+    const t = temps[i];
+    const c = t.top[0], vice = t.top[1];
+    const [gemaNome, gemaCor] = gemaDe(t);
+    const ano = new Date(t.inicio).getFullYear();
+    const minha = !t.atual && lerEu() === c.chave;
+    const confete = t.atual ? null : el('div', { class: 'cer-confete', 'aria-hidden': 'true' },
+      ...Array.from({ length: 70 }, (_, n) => el('i', { style: `--x:${Math.random() * 100}%;--d:${(Math.random() * 2.4).toFixed(2)}s;--t:${(2.6 + Math.random() * 2.2).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg;--c:${['#FFD84D', '#FFB347', '#FFF3C0', gemaCor, '#FF7A1A'][n % 5]}` })));
+    const stat = (rot, v) => el('div', { class: 'cer-stat' }, el('span', { class: 'pstat-rot', text: rot }), el('b', { text: v }));
+    trocar($('trofeuCorpo'),
+      confete,
+      el('div', { class: 'cer-palco', style: `--gema:${gemaCor}` },
+        el('div', { class: 'cer-raios', 'aria-hidden': 'true' }),
+        trofeuDe(t, `cer-trofeu ${t.atual ? 'tr-fantasma' : ''}`)),
+      el('div', { class: 'cer-info' },
+        el('span', { class: 'cer-rot', text: festa && !t.atual ? `A TEMPORADA DE ${nomeMes(t.inicio).toUpperCase()} FECHOU!` : `TEMPORADA ${temps.length - i} · ${nomeMes(t.inicio).toUpperCase()} ${ano}` }),
+        minha ? el('span', { class: 'cer-eu', text: '👑 ESSA TAÇA É SUA!' }) : null,
+        el('span', { class: 'cer-titulo', text: t.atual ? 'LIDERANDO A DISPUTA' : 'CAMPEÃO' }),
+        el('h2', { class: 'cer-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), c.nome),
+        el('p', { class: 'cer-sub', text: t.atual
+          ? `A taça de ${nomeMes(t.inicio)} ainda não tem dono. ${fechaTemporadaTxt(t.fim).replace(/^f/, 'F')}.`
+          : vice ? `Levou a taça com ${ptsTxt(c.pontos - vice.pontos)} de vantagem sobre ${vice.nome}.` : 'Levou a taça sozinho: ninguém mais pontuou.' }),
+        el('div', { class: 'cer-stats' },
+          stat('PONTOS', fmt(c.pontos)), stat('PARTIDAS', fmt(c.qtd)), stat('MAIOR MASSA', fmt(c.melhor.mass)), stat(marcoTxt, `${c.cem}×`)),
+        el('ol', { class: 'cer-podio' }, ...t.top.slice(0, 5).map((j, k) => el('li', { class: `tt tt${k + 1}` },
+          el('span', { class: 'tt-pos', text: `${k + 1}º` }),
+          el('span', { class: 'tt-nome' }, btnPerfil(j, 'link-nome', j.nome)),
+          k < 3 && temPremio(t) ? el('span', { class: `tt-premio pv${k + 1}`, title: t.atual ? 'prêmio em Pix se fechar assim' : 'prêmio em Pix', text: `R$ ${PREMIOS[k]}` }) : null,
+          el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
+        t.top.length > 5 ? el('p', { class: 'cer-mais', text: `${t.top.length} jogadores pontuaram nessa temporada` }) : null,
+        el('p', { class: 'cer-gema' }, el('span', { class: 'cer-gema-cor', 'aria-hidden': 'true' }), `Pedra da temporada: ${gemaNome}`),
+        el('div', { class: 'linha-btns' },
+          el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharTrofeu(t) }, svg(ICONE_LINK, 18), 'Compartilhar'),
+          el('button', { type: 'button', class: 'btn btn-pri', onclick: () => abrirPerfil(c.chave) }, t.atual ? 'Ver o líder' : 'Ver o campeão'))));
+    const dlg = $('dlgTrofeu');
+    dlg.style.setProperty('--gema', gemaCor);
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+    return true;
+  }
+  async function compartilharTrofeu(t) {
+    const url = `${location.origin}${location.pathname}?trofeu=${chaveTemp(t)}`;
+    const txt = t.atual
+      ? `A taça de ${nomeMes(t.inicio)} do clã ${TAG} tá em disputa. Quem leva?`
+      : `${comTag(t.top[0].nome)} é o campeão de ${nomeMes(t.inicio)} do clã ${TAG}!`;
+    try {
+      if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: `Taça de ${nomeMes(t.inicio)} · Clã ${TAG}`, text: txt, url }); return; }
+      await navigator.clipboard.writeText(url);
+      toast('Link da taça copiado.');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      prompt('Copie o link da taça:', url);
+    }
+  }
+  // link ?trofeu=2026-09 abre a cerimônia; e a temporada que acabou de fechar
+  // é entregue sozinha uma vez em cada aparelho (até 10 dias depois)
+  function cerimoniaAutomatica() {
+    const q = new URLSearchParams(location.search).get('trofeu');
+    if (q) { abrirTrofeu(q, true); return; }
+    if (perfilAtual || torneioAtual) return;
+    const ultima = montarTemporadas().find((t) => !t.atual);
+    if (!ultima || Date.now() - ultima.fim > 10 * 86400000) return;
+    const kt = chaveTemp(ultima);
+    try {
+      if (localStorage.getItem('ranking_taca_vista') === kt) return;
+      localStorage.setItem('ranking_taca_vista', kt);
+    } catch (e) { return; }
+    setTimeout(() => { if (!document.querySelector('dialog[open]') && !perfilAtual && !torneioAtual) abrirTrofeu(kt, true); }, 900);
+  }
+
+  // troféus que o jogador ganhou, pro perfil
+  function secaoTrofeusPerfil(k, ctx) {
+    const ganhas = ctx.temps.filter((t) => !t.atual && t.top[0].chave === k);
+    if (!ganhas.length) return null;
+    return el('section', { class: 'pp-sec', 'aria-labelledby': 'ppTrof' },
+      el('h2', { class: 'perfil-h3', id: 'ppTrof' }, 'TROFÉUS ', el('span', { class: 'sec', text: `${ganhas.length} ${ganhas.length === 1 ? 'taça' : 'taças'}` })),
+      el('ul', { class: 'pp-trofeus' }, ...ganhas.map((t) => el('li', null,
+        el('button', { type: 'button', class: 'pp-trofeu', style: `--gema:${gemaDe(t)[1]}`, onclick: () => abrirTrofeu(chaveTemp(t)), 'aria-label': `Taça de ${nomeMes(t.inicio)}` },
+          trofeuDe(t),
+          el('span', { text: rotTemp(t) }))))));
   }
 
   // ---------- hall da fama ----------
@@ -1331,13 +1526,13 @@
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
-          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), chipTorneios(vitoriasTorneio(k)), ...chipsCadastro(r)))),
+          el('div', { class: 'perfil-chips' }, chipPatente(pts, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
 
     if (!j) {
-      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Manda o print da primeira pro dono do clã!' }));
+      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Ainda não tem partida registrada. Joga com a tag no nick que o dono puxa a massa do servidor!' }));
       return;
     }
 
@@ -1440,11 +1635,15 @@
         el('div', { class: 'pp-col' }, posicoes, prog, numeros,
           el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g),
           medalhas),
-        el('div', { class: 'pp-col' }, secaoTorneiosPerfil(k), momentos, historico)));
+        el('div', { class: 'pp-col' }, secaoTrofeusPerfil(k, ctx), secaoTorneiosPerfil(k), momentos, historico)));
   }
-  function chipTorneios(n) {
-    if (!n) return null;
-    return el('span', { class: 'titulo-chip tn-chip', title: `${n}× campeão de torneio` }, svg(ICONE_TROFEU, 12), `${n}× torneio`);
+  // troféu (campeão) e medalha de prata (vice) de torneio; curto = só o número (tabela do ranking)
+  function chipTorneios(k, curto = false) {
+    const v = vitoriasTorneio(k), p = vicesTorneio(k);
+    return [
+      v ? el('span', { class: 'titulo-chip tn-chip', title: `${v}× campeão de torneio` }, svg(ICONE_TROFEU, 12), curto ? (v > 1 ? `${v}×` : null) : `${v}× torneio`) : null,
+      p ? el('span', { class: 'titulo-chip tn-chip-vice', title: `${p}× vice-campeão de torneio` }, svg(ICONE_MEDALHA, 12), curto ? (p > 1 ? `${p}×` : null) : `${p}× vice`) : null,
+    ];
   }
   // massa vira 121K/200K pra caber; contagem fica 4/5
   const progTxt = ([a, b]) => (b >= 10000 ? `${fmt(Math.floor(Math.min(a, b) / 1000))}K/${fmtK(b)}` : `${fmt(Math.min(a, b))}/${fmt(b)}`);
@@ -1465,8 +1664,15 @@
     melhores: { nome: 'Melhores partidas', curto: 'MELHORES', icone: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>', desc: 'Soma só as melhores de cada um. Jogar mais não dá vantagem.' },
     meta: { nome: 'Corrida até a meta', curto: 'CORRIDA', icone: ICONE_BANDEIRA, desc: 'O primeiro a chegar no número vence.' },
     mata: { nome: 'Mata-mata', curto: 'MATA-MATA', icone: ICONE_ESPADAS, desc: 'Duelos 1 contra 1. Perdeu, tá fora.' },
+    hora: { nome: 'Líder na hora H', curto: 'HORA H', icone: ICONE_RELOGIO, desc: 'Quem estiver em 1º no ranking do clã na hora marcada é o campeão.' },
+    livre: { nome: 'Regras próprias', curto: 'REGRAS PRÓPRIAS', icone: '<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h4"/>', desc: 'Você escreve as regras e, no fim, escolhe o campeão e o vice.' },
   };
   const formatoDe = (t) => FORMATOS[t.formato] || FORMATOS.soma;
+  // como o "hora H" conta: no ranking por pontos soma tudo, no de massa vale a maior partida
+  const regraTn = (t) => (t.formato === 'hora' ? (t.metrica === 'massa' ? 'melhor' : 'soma') : t.formato);
+  const BASES = { geral: 'ranking geral', mes: 'temporada do mês', semana: 'ranking da semana' };
+  const NA_BASE = { geral: 'no ranking geral', mes: 'na temporada do mês', semana: 'no ranking da semana' };
+  const baseDe = (t) => (BASES[t.base] ? t.base : 'geral');
 
   // pontos do ranking geral de cada um (pra cor da patente no avatar e pra montar a chave)
   let cachePts = null;
@@ -1481,7 +1687,7 @@
     const agora = Date.now();
     if (t.formato === 'mata') {
       if (t.encerrado_em || campeaoMata(t)) return 'fim';
-    } else if (agora >= fimTn(t)) return 'fim';
+    } else if (agora >= fimTn(t) || (t.formato === 'livre' && podioLivre(t)[0])) return 'fim';
     return agora < Date.parse(t.inicio) ? 'breve' : 'vivo';
   }
   const torneiosVisiveis = () => (torneiosOk ? torneios.filter((t) => t.publicado || admin) : []);
@@ -1508,8 +1714,12 @@
   // tudo que conta no torneio: partidas do ranking no período (se ligado) + resultados lançados na mão
   function entradasTn(t) {
     const lista = [];
-    if (t.auto && t.metrica !== 'custom' && t.formato !== 'mata') {
-      const ini = Date.parse(t.inicio), fim = fimTn(t);
+    if (t.formato === 'livre') return lista;
+    const hora = t.formato === 'hora';
+    if (hora || (t.auto && t.metrica !== 'custom' && t.formato !== 'mata')) {
+      // hora H: vale o ranking escolhido (geral, do mês ou da semana) como estava na hora marcada
+      const fim = fimTn(t);
+      const ini = hora ? inicioPeriodo(baseDe(t), isFinite(fim) ? fim : Date.now()) : Date.parse(t.inicio);
       const insc = t.todos ? null : inscritosTn(t);
       for (const p of partidas) {
         const q = Date.parse(p.created_at);
@@ -1520,7 +1730,7 @@
       }
     }
     for (const l of lancamentos) {
-      if (l.torneio_id !== t.id) continue;
+      if (l.torneio_id !== t.id || hora) continue;
       const r = jogPorId.get(l.player_id);
       if (!r) continue;
       lista.push({ id: l.id, k: chave(r.nick), nome: r.nick, bruto: l.valor, quando: l.created_at, lanc: l });
@@ -1532,6 +1742,7 @@
 
   // classificação de torneio por pontos (todos os formatos menos o mata-mata)
   function classificarTn(t, ents = entradasTn(t)) {
+    const regra = regraTn(t);
     const mapa = new Map();
     const linha = (k, nome) => {
       let l = mapa.get(k);
@@ -1543,8 +1754,8 @@
     for (const l of mapa.values()) {
       const crono = [...l.ents].sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
       let contam = crono;
-      if (t.formato === 'melhor') contam = crono.length ? [crono.reduce((m, e) => (e.valor > m.valor ? e : m))] : [];
-      else if (t.formato === 'melhores') contam = [...crono].sort((a, b) => b.valor - a.valor || Date.parse(a.quando) - Date.parse(b.quando)).slice(0, Math.max(1, t.qtd || 3));
+      if (regra === 'melhor') contam = crono.length ? [crono.reduce((m, e) => (e.valor > m.valor ? e : m))] : [];
+      else if (regra === 'melhores') contam = [...crono].sort((a, b) => b.valor - a.valor || Date.parse(a.quando) - Date.parse(b.quando)).slice(0, Math.max(1, t.qtd || 3));
       l.qtd = crono.length;
       l.contadas = new Set(contam.map((e) => e.id));
       l.total = contam.reduce((s, e) => s + e.valor, 0);
@@ -1625,20 +1836,45 @@
     return { pos: 0, txt: `Está ${naRodada(c.r, total)}` };
   }
 
-  // quem ganhou (só de torneio encerrado)
-  function vencedorTn(t) {
-    if (statusTn(t) !== 'fim') return null;
+  // regras próprias: campeão, vice e 3º escolhidos pelo dono (só quem ainda está no elenco)
+  const podioLivre = (t) => (t.podio || []).map((id) => (id && jogPorId.has(id) ? id : null));
+  // campeão, vice e 3º de um torneio encerrado: [{chave, nome, txt}] (posição vazia = null)
+  function podioTn(t) {
+    if (statusTn(t) !== 'fim') return [];
+    const doId = (id, txt = '') => (id && jogPorId.has(id) ? { chave: chave(nickId(id)), nome: nickId(id), txt } : null);
+    if (t.formato === 'livre') return podioLivre(t).map((id) => doId(id));
     if (t.formato === 'mata') {
-      const c = campeaoMata(t);
-      return c && jogPorId.has(c) ? { chave: chave(nickId(c)), nome: nickId(c), txt: '' } : null;
+      const rs = rodadasMata(t);
+      const fin = rs && rs[rs.length - 1][0];
+      if (!fin || !fin.v) return [];
+      const vice = fin.v === fin.a ? fin.b : fin.a;
+      const pl = (j, id) => (j.va != null && j.vb != null ? `${fmt(id === j.a ? j.va : j.vb)} × ${fmt(id === j.a ? j.vb : j.va)} na final` : '');
+      return [doId(fin.v, pl(fin, fin.v)), doId(vice, pl(fin, vice))];
     }
-    const l = classificarTn(t)[0];
-    return l && l.qtd ? { chave: l.chave, nome: l.nome, txt: valorTn(t, l.total) } : null;
+    return classificarTn(t).filter((l) => l.qtd).slice(0, 3).map((l) => ({ chave: l.chave, nome: l.nome, txt: valorTn(t, l.total) }));
   }
-  function vitoriasTorneio(k) {
-    if (!k) return 0;
-    return torneiosVisiveis().filter((t) => t.publicado && (vencedorTn(t) || {}).chave === k).length;
+  function vencedorTn(t) { return podioTn(t)[0] || null; }
+
+  // troféus de torneio (campeão) e medalhas de prata (vice) de cada jogador, dos torneios publicados.
+  // Calculado uma vez por desenho da página (render() limpa o cache).
+  let cacheTrofeus = null;
+  function trofeusDe(k) {
+    if (!cacheTrofeus) {
+      cacheTrofeus = new Map();
+      for (const t of torneiosVisiveis()) {
+        if (!t.publicado) continue;
+        podioTn(t).slice(0, 2).forEach((p, i) => {
+          if (!p) return;
+          if (!cacheTrofeus.has(p.chave)) cacheTrofeus.set(p.chave, []);
+          cacheTrofeus.get(p.chave).push({ t, pos: i + 1, txt: p.txt, quando: isFinite(fimTn(t)) ? Math.min(fimTn(t), Date.now()) : Date.parse((t.chave && t.chave.em) || t.inicio) });
+        });
+      }
+      for (const l of cacheTrofeus.values()) l.sort((a, b) => a.pos - b.pos || b.quando - a.quando);
+    }
+    return (k && cacheTrofeus.get(k)) || [];
   }
+  const vitoriasTorneio = (k) => trofeusDe(k).filter((x) => x.pos === 1).length;
+  const vicesTorneio = (k) => trofeusDe(k).filter((x) => x.pos === 2).length;
 
   // ---------- textos ----------
   function tempoAte(alvo) {
@@ -1652,17 +1888,34 @@
   const dataHora = (ms) => new Date(ms).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/\./g, '');
   function periodoTn(t) {
     const ini = Date.parse(t.inicio);
+    if (t.formato === 'hora' && t.fim) return `hora H: ${dataHora(Date.parse(t.fim))}`;
     return t.fim ? `${dataHora(ini)} até ${dataHora(Date.parse(t.fim))}` : `começa ${dataHora(ini)} · sem data pra acabar`;
   }
   function statusTxt(t, st) {
     if (st === 'breve') return `começa em ${tempoAte(Date.parse(t.inicio))}`;
     if (st === 'fim') return 'encerrado';
+    if (t.formato === 'hora') return `hora H em ${tempoAte(fimTn(t))}`;
     return isFinite(fimTn(t)) ? `termina em ${tempoAte(fimTn(t))}` : 'rolando agora';
   }
   // as regras em frases curtas, montadas pela configuração do torneio
   function resumoTn(t) {
     const m = nomeMetrica(t);
     const itens = [];
+    const quem = t.todos ? 'O clã inteiro joga.' : `${idsInscritos(t).length} ${idsInscritos(t).length === 1 ? 'jogador inscrito' : 'jogadores inscritos'}.`;
+    if (t.formato === 'hora') {
+      const h = t.fim ? `na hora H (${dataHora(Date.parse(t.fim))})` : 'na hora marcada';
+      itens.push(`Quem estiver em 1º ${NA_BASE[baseDe(t)]} (${t.metrica === 'massa' ? 'por massa' : 'por pontos'}) ${h} é o campeão. O 2º leva a medalha de vice.`);
+      itens.push(t.metrica === 'massa' ? 'Vale a maior partida de cada um, igualzinho ao ranking.' : 'Contam todas as partidas registradas no ranking, com os mesmos pontos.');
+      itens.push('Partida registrada depois da hora H não conta. Até lá, a classificação mostra como está agora.');
+      itens.push(quem);
+      return itens;
+    }
+    if (t.formato === 'livre') {
+      itens.push('Regras próprias: o dono do clã confere e escolhe o campeão e o vice no fim.');
+      if (!t.regras) itens.push('As regras são combinadas no grupo.');
+      itens.push(quem);
+      return itens;
+    }
     if (t.formato === 'soma') itens.push(`Vence quem somar mais ${m} durante o torneio.`);
     if (t.formato === 'melhor') itens.push(t.metrica === 'massa' ? 'Vale só a maior massa de cada um. Vence quem fizer a maior partida.' : `Vale só a melhor partida de cada um. Vence quem fizer mais ${m} numa partida.`);
     if (t.formato === 'melhores') itens.push(`Contam só as ${t.qtd || 3} melhores partidas de cada um, e vence quem somar mais ${m} nelas. Jogar mais não dá vantagem: jogar melhor sim.`);
@@ -1688,15 +1941,22 @@
       if (!rs) linhas.push('A chave ainda vai ser montada.');
       else {
         const camp = rs[rs.length - 1][0].v;
-        if (camp) linhas.push(`👑 Campeão: ${comTag(nickId(camp))}`);
+        if (camp) linhas.push(`🏆 Campeão: ${comTag(nickId(camp))}`);
+        const vice = podioTn(t)[1];
+        if (vice) linhas.push(`🥈 Vice: ${comTag(vice.nome)}`);
         const atual = rs.find((js) => js.some((j) => !j.v));
         if (atual) {
           linhas.push(`*${nomeRodada(atual[0].r, rs.length)}*`);
           for (const j of atual) if (!j.bye) linhas.push(`${j.a ? nickId(j.a) : '?'} x ${j.b ? nickId(j.b) : '?'}${j.v ? `  ✅ ${nickId(j.v)}` : ''}`);
         }
       }
+    } else if (t.formato === 'livre') {
+      const pod = podioTn(t);
+      if (pod[0]) ['🏆 Campeão', '🥈 Vice', '🥉 3º'].forEach((r, i) => { if (pod[i]) linhas.push(`${r}: ${comTag(pod[i].nome)}`); });
+      else linhas.push(t.regras ? t.regras.slice(0, 400) : 'Valendo! As regras estão no site.');
     } else {
       const cls = classificarTn(t).filter((l) => l.qtd);
+      if (st === 'fim' && cls[0]) linhas.push(`🏆 Campeão: ${comTag(cls[0].nome)}${cls[1] ? ` · 🥈 Vice: ${comTag(cls[1].nome)}` : ''}`, '');
       if (!cls.length) linhas.push(st === 'breve' ? 'Prepara a cobra que já vai começar!' : 'Ninguém pontuou ainda. A liderança tá aberta!');
       const med = ['🥇', '🥈', '🥉'];
       cls.slice(0, 10).forEach((l, i) => linhas.push(`${med[i] || `${i + 1}º`} ${l.nome} — ${valorTn(t, l.total)}`));
@@ -1794,6 +2054,8 @@
         : el('div', { class: 'tn-card-mata' },
             el('span', { class: 'tn-card-rod', text: `${nomeRodada(atual[0].r, rs.length)} · ${atual.filter((j) => !j.v).length} ${atual.filter((j) => !j.v).length === 1 ? 'duelo' : 'duelos'} pra rolar` }),
             ...atual.filter((j) => !j.bye && !j.v).slice(0, 3).map((j) => el('div', { class: 'tn-card-duelo' }, nome(j.a), el('span', { class: 'vs-x', text: '×' }), nome(j.b))));
+    } else if (t.formato === 'livre') {
+      corpo = el('p', { class: 'tn-card-info tn-card-regras', text: t.regras || 'Regras próprias, combinadas no grupo. O dono escolhe o campeão no fim.' });
     } else {
       const cls = classificarTn(t).filter((l) => l.qtd);
       corpo = cls.length
@@ -1807,19 +2069,20 @@
     return linkTn(t, `tn-card st-${st}`,
       el('div', { class: 'tn-card-topo' }, pilulaStatus(t, st), chipFormato(t), chipRascunho(t)),
       el('h3', { class: 'tn-card-nome', text: t.nome }),
-      conta ? el('div', { class: 'tn-card-conta' }, el('span', { text: st === 'breve' ? 'começa em' : 'termina em' }), conta) : null,
+      conta ? el('div', { class: 'tn-card-conta' }, el('span', { text: st === 'breve' ? 'começa em' : t.formato === 'hora' ? 'hora H em' : 'termina em' }), conta) : null,
       corpo,
       t.premios && t.premios[0] ? el('div', { class: 'tn-card-premio' }, svg(ICONE_TROFEU, 16), el('span', { text: t.premios[0] })) : null,
       el('span', { class: 'tn-card-ver', text: 'Ver torneio →' }));
   }
 
   function cardFechado(t) {
-    const v = vencedorTn(t);
+    const [v, vice] = podioTn(t);
     return linkTn(t, 'tn-fechado',
       el('span', { class: 'tn-fechado-ic', 'aria-hidden': 'true' }, svg(ICONE_TROFEU, 20)),
       el('span', { class: 'tn-fechado-info' },
         el('b', { text: t.nome }),
-        el('span', { text: v ? `${comTag(v.nome)} campeão${v.txt ? ` · ${v.txt}` : ''}` : 'encerrado sem campeão' })),
+        el('span', { text: v ? `${comTag(v.nome)} campeão${v.txt ? ` · ${v.txt}` : ''}` : 'encerrado sem campeão' }),
+        vice ? el('span', { class: 'tn-fechado-vice' }, svg(ICONE_MEDALHA, 13), `vice: ${vice.nome}`) : null),
       chipRascunho(t));
   }
 
@@ -1863,9 +2126,10 @@
     document.title = `${t.nome} · Torneio Clã ${TAG}`;
     const st = statusTn(t);
     const mata = t.formato === 'mata';
+    const livre = t.formato === 'livre';
     const rodadas = mata ? rodadasMata(t) : null;
-    const ents = mata ? [] : entradasTn(t);
-    const cls = mata ? null : classificarTn(t, ents);
+    const ents = mata || livre ? [] : entradasTn(t);
+    const cls = mata || livre ? null : classificarTn(t, ents);
     const eu = lerEu();
 
     const barra = el('div', { class: 'pp-barra' }, voltar,
@@ -1875,22 +2139,27 @@
         admin ? el('button', { type: 'button', class: 'btn btn-pri', onclick: () => abrirBuilder(t) }, svg(ICONE_LAPIS, 18), el('span', { class: 'btn-txt', text: 'Editar' })) : null));
 
     // topo: nome, status e contagem regressiva (ou o campeão)
-    const camp = st === 'fim' ? vencedorTn(t) : null;
+    const [camp, vice] = podioTn(t);
     let lado;
     if (st === 'breve') lado = contagem(Date.parse(t.inicio), 'COMEÇA EM');
     else if (st === 'vivo') {
-      lado = contagem(fimTn(t), 'TERMINA EM');
+      lado = contagem(fimTn(t), t.formato === 'hora' ? 'HORA H EM' : 'TERMINA EM');
       const atual = rodadas && rodadas.find((js) => js.some((j) => !j.v));
       if (!lado && atual) lado = el('div', { class: 'tn-conta' }, el('span', { class: 'tn-conta-rot', text: 'RODADA ATUAL' }), el('b', { class: 'tn-rodada', text: nomeRodada(atual[0].r, rodadas.length) }));
+      if (!lado && livre) lado = el('div', { class: 'tn-conta' }, el('span', { class: 'tn-conta-rot', text: 'VALENDO' }), el('b', { class: 'tn-rodada', text: 'O DONO DÁ O RESULTADO' }));
     } else {
       lado = camp
         ? el('div', { class: 'tn-campeao' },
-            svg(ICONE_COROA, 36, 'class="coroa"'),
+            el('span', { class: 'tn-taca', 'aria-hidden': 'true' }, svg(ICONE_TROFEU, 40)),
             avatarDe(camp.nome, ptsGeralDe(camp.chave), 'av-g'),
             el('span', { class: 'tn-campeao-rot', text: 'CAMPEÃO' }),
             el('button', { type: 'button', class: 'tn-campeao-nome', onclick: () => abrirPerfil(camp.chave), text: camp.nome }),
-            camp.txt ? el('span', { class: 'tn-campeao-val', text: camp.txt }) : null)
-        : el('div', { class: 'tn-campeao' }, el('span', { class: 'tn-campeao-rot', text: 'ENCERRADO SEM CAMPEÃO' }));
+            camp.txt ? el('span', { class: 'tn-campeao-val', text: camp.txt }) : null,
+            vice ? el('button', { type: 'button', class: 'tn-vice', onclick: () => abrirPerfil(vice.chave) },
+              el('span', { class: 'tn-vice-ic', 'aria-hidden': 'true' }, svg(ICONE_MEDALHA, 18)),
+              el('span', { class: 'tn-vice-txt' }, el('small', { text: 'VICE' }), el('b', { text: vice.nome }))) : null)
+        : el('div', { class: 'tn-campeao' }, el('span', { class: 'tn-campeao-rot', text: 'ENCERRADO SEM CAMPEÃO' }),
+            admin && livre ? el('span', { class: 'tn-campeao-val', text: 'Escolha o campeão logo abaixo.' }) : null);
     }
     const hero = el('header', { class: `tn-hero st-${st}` },
       el('div', { class: 'tn-hero-txt' },
@@ -1911,6 +2180,14 @@
     if (mata) {
       formLanc.hidden = true;
       conteudo.push(blocoChave(t, st, rodadas, eu), el('div', { class: 'tn-info-grade' }, ...lateral));
+      trocar(box, conteudo);
+      return;
+    }
+    if (livre) {
+      formLanc.hidden = true;
+      conteudo.push(el('div', { class: 'pp-grade' },
+        el('div', { class: 'pp-col' }, blocoResultadoLivre(t, st), admin ? blocoEscolherPodio(t) : null),
+        el('div', { class: 'pp-col' }, ...lateral.filter(Boolean))));
       trocar(box, conteudo);
       return;
     }
@@ -1948,15 +2225,24 @@
       if (c.fora) return card('VOCÊ', c.r === total - 1 ? 'Vice-campeão. Bateu na trave!' : `Você caiu ${naRodada(c.r, total)}.`, outro ? `Quem te tirou: ${nickId(outro)}.` : null);
       return card('VOCÊ', c.jogo.bye ? 'Você passou direto pra próxima rodada.' : outro ? `Seu duelo ${naRodada(c.r, total)}: contra ${nickId(outro)}.` : `Você está ${naRodada(c.r, total)}.`, outro ? 'Vence e avança. Perde e tá fora.' : 'Esperando o adversário.');
     }
+    if (t.formato === 'livre') {
+      if (!r) return convite();
+      const i = podioLivre(t).indexOf(r.id);
+      if (i === 0) return card('VOCÊ', 'Você é o CAMPEÃO! 🏆', 'O troféu já está no seu perfil.');
+      if (i === 1) return card('VOCÊ', 'Vice-campeão! 🥈', 'A medalha de prata já está no seu perfil.');
+      if (i === 2) return card('VOCÊ', '3º lugar! 🥉', 'Pódio garantido.');
+      return inscrito ? (st === 'fim' ? null : card('VOCÊ', 'Você está no torneio.', 'Lê as regras e manda ver!')) : convite();
+    }
     if (!r) return convite();
     const i = cls.findIndex((l) => l.chave === eu);
     if (i < 0) return inscrito ? null : convite();
     const l = cls[i];
-    if (!l.qtd) return card('VOCÊ', st === 'breve' ? 'Você está no torneio.' : 'Você ainda não pontuou.', st === 'breve' ? 'Quando começar, cada partida conta. Prepara a cobra!' : 'Manda o print da sua partida pro dono do clã.');
+    if (!l.qtd) return card('VOCÊ', st === 'breve' ? 'Você está no torneio.' : 'Você ainda não pontuou.', st === 'breve' ? 'Quando começar, cada partida conta. Prepara a cobra!' : 'Joga com a tag no nick: o dono puxa as massas do servidor.');
     const n = cls.filter((x) => x.qtd).length;
     const acima = cls[i - 1];
     let fraco;
-    if (i === 0) fraco = st === 'fim' ? 'Você ganhou o torneio! 👑' : 'Você lidera. Segura o trono!';
+    if (i === 0) fraco = st === 'fim' ? 'Você ganhou o torneio! 🏆 O troféu já está no seu perfil.' : t.formato === 'hora' ? 'Você está em 1º. Segura até a hora H!' : 'Você lidera. Segura o trono!';
+    else if (i === 1 && st === 'fim') fraco = 'Vice-campeão! 🥈 A medalha de prata já está no seu perfil.';
     else if (t.formato === 'meta' && t.meta && !l.chegou) fraco = `Faltam ${valorTn(t, t.meta - l.total)} pra meta.`;
     else if (acima.total > l.total) fraco = `Faltam ${valorTn(t, acima.total - l.total)} pra alcançar ${acima.nome} (${i}º).`;
     else fraco = `Empatado com ${acima.nome}, que chegou primeiro.`;
@@ -1988,10 +2274,10 @@
       ? el('div', { class: 'podio tn-podio' }, ...[1, 0, 2].filter((i) => com[i]).map((i) => {
           const l = com[i];
           return el('article', { class: `lugar l${i + 1}` },
-            i === 0 ? svg(ICONE_COROA, 34, 'class="coroa"') : null,
+            i === 0 ? svg(st === 'fim' ? ICONE_TROFEU : ICONE_COROA, 34, 'class="coroa"') : i === 1 && st === 'fim' ? svg(ICONE_MEDALHA, 26, 'class="tn-med-ic"') : null,
             el('div', { class: 'avatar', 'aria-hidden': 'true', text: l.nome.charAt(0).toUpperCase() }),
             el('div', null,
-              el('div', { class: 'lugar-pos', text: i === 0 ? (st === 'fim' ? '1º · CAMPEÃO' : '1º · LIDERANDO') : `${i + 1}º LUGAR` }),
+              el('div', { class: 'lugar-pos', text: i === 0 ? (st === 'fim' ? '1º · CAMPEÃO' : '1º · LIDERANDO') : i === 1 && st === 'fim' ? '2º · VICE' : `${i + 1}º LUGAR` }),
               btnPerfil(l, 'lugar-nome', l.nome)),
             el('div', { class: 'lugar-massa', text: fmt(l.total) }),
             el('div', { class: 'lugar-data', text: `${unidadeTn(t, l.total)} · ${l.qtd} ${l.qtd === 1 ? 'partida' : 'partidas'}` }),
@@ -2020,7 +2306,7 @@
     });
     const semTxt = sem.length ? el('p', { class: 'tn-sem', text: `${sem.length} ${sem.length === 1 ? 'ainda sem resultado' : 'ainda sem resultado'}: ${sem.slice(0, 15).map((l) => l.nome).join(', ')}${sem.length > 15 ? '…' : ''}` }) : null;
     return el('section', { class: 'pp-sec', 'aria-label': 'Classificação' },
-      el('h2', { class: 'perfil-h3' }, 'CLASSIFICAÇÃO ', el('span', { class: 'sec', text: st === 'vivo' ? '· ao vivo' : '' })),
+      el('h2', { class: 'perfil-h3' }, 'CLASSIFICAÇÃO ', el('span', { class: 'sec', text: st !== 'vivo' ? '' : t.formato === 'hora' ? `· ${BASES[baseDe(t)]} agora` : '· ao vivo' })),
       podio,
       com.length || sem.length ? el('div', { class: 'painel tn-tabela' },
         com.length ? el('div', { class: 'tabela-box' }, el('table', null,
@@ -2055,7 +2341,7 @@
           admin && e.lanc ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar resultado de ${e.nome}`, onclick: () => pedirApagarLanc(t, e) }, svg(ICONE_LIXO)) : null);
       })),
       ents.length > 8 && tnMaisRes !== t.id ? el('button', { type: 'button', class: 'btn btn-sec pp-mais', onclick: () => { tnMaisRes = t.id; renderTorneioPagina(); } }, `Ver todos os ${fmt(ents.length)} resultados`) : null,
-      t.formato === 'melhor' || t.formato === 'melhores' ? el('p', { class: 'form-nota tn-nota', text: '"Não conta" = partida que ficou fora das que valem pro torneio.' }) : null);
+      regraTn(t) === 'melhor' || t.formato === 'melhores' ? el('p', { class: 'form-nota tn-nota', text: '"Não conta" = partida que ficou fora das que valem pro torneio.' }) : null);
   }
 
   function blocoPremios(t, st, cls, rodadas) {
@@ -2066,13 +2352,71 @@
         const fin = rodadas[rodadas.length - 1][0];
         const semi = rodadas.length > 1 ? rodadas[rodadas.length - 2].map((j) => (j.v && j.v === j.a ? j.b : j.a)).filter(Boolean) : [];
         ganhou = [fin.v ? nickId(fin.v) : null, fin.v ? nickId(fin.v === fin.a ? fin.b : fin.a) : null, semi.length ? semi.map(nickId).join(' e ') : null];
-      } else if (cls) ganhou = cls.filter((l) => l.qtd).slice(0, 3).map((l) => l.nome);
+      } else ganhou = podioTn(t).map((p) => (p ? p.nome : null));
     }
     return el('section', { class: 'pp-sec', 'aria-label': 'Prêmios' },
       el('h2', { class: 'perfil-h3', text: 'PRÊMIOS' }),
       el('ol', { class: 'tn-premios-lista' }, ...t.premios.map((p, i) => (p ? el('li', { class: `tn-pr p${i + 1}` },
         el('span', { class: 'tn-pr-pos', text: `${i + 1}º` }),
         el('span', { class: 'tn-pr-txt' }, el('b', { text: p }), ganhou[i] ? el('span', { text: `ficou com ${ganhou[i]}` }) : null)) : null))));
+  }
+
+  // ---------- regras próprias: resultado escolhido pelo dono ----------
+  const ROT_PODIO = ['CAMPEÃO', 'VICE', '3º LUGAR'];
+  function blocoResultadoLivre(t, st) {
+    const pod = podioTn(t);
+    const eu = lerEu();
+    return el('section', { class: 'pp-sec', 'aria-label': 'Resultado' },
+      el('h2', { class: 'perfil-h3', text: 'RESULTADO' }),
+      pod[0]
+        ? el('div', { class: 'podio tn-podio' }, ...[1, 0, 2].filter((i) => pod[i]).map((i) => {
+            const p = pod[i];
+            return el('article', { class: `lugar l${i + 1}` },
+              i === 0 ? svg(ICONE_TROFEU, 34, 'class="coroa"') : svg(ICONE_MEDALHA, 26, 'class="tn-med-ic"'),
+              el('div', { class: 'avatar', 'aria-hidden': 'true', text: p.nome.charAt(0).toUpperCase() }),
+              el('div', null,
+                el('div', { class: 'lugar-pos', text: `${i + 1}º · ${ROT_PODIO[i]}` }),
+                btnPerfil(p, 'lugar-nome', p.nome),
+                p.chave === eu ? el('span', { class: 'chip', text: 'VOCÊ' }) : null),
+              t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null);
+          }))
+        : el('p', { class: 'vazio', text: st === 'breve' ? 'O torneio ainda não começou. Lê as regras e se prepara!' : 'Valendo! Quando acabar, o dono do clã confere e o campeão e o vice aparecem aqui com troféu e medalha.' }));
+  }
+  // admin escolhe campeão, vice e 3º (pode ser depois do evento: já entrega o troféu e a medalha)
+  function blocoEscolherPodio(t) {
+    const atual = podioLivre(t);
+    const ids = new Set([...idsInscritos(t), ...atual.filter(Boolean)]);
+    const lista = [...ids].map((id) => jogPorId.get(id)).filter(Boolean).sort((a, b) => a.nick.localeCompare(b.nick, 'pt-BR'));
+    const sels = [0, 1, 2].map((i) => el('select', { id: `tnPodio${i}`, 'aria-label': ROT_PODIO[i] },
+      el('option', { value: '', text: i === 0 ? '— escolha —' : '— ninguém —' }),
+      ...lista.map((r) => el('option', { value: r.id, text: r.nick, selected: atual[i] === r.id }))));
+    const erro = el('p', { class: 'erro', role: 'alert', hidden: true });
+    const salvar = async (podio) => {
+      erro.hidden = true;
+      try {
+        await salvarTn(t, { podio });
+        toast(podio.length ? `Pronto! ${nickId(podio[0])} levou o troféu${podio[1] ? ` e ${nickId(podio[1])} a medalha de vice` : ''}.` : 'Resultado apagado. O torneio voltou a valer.');
+      } catch (e) {
+        if (!erroSessao(e)) { erro.textContent = 'Não deu pra salvar agora. (' + (e.message || 'erro') + ')'; erro.hidden = false; }
+      }
+    };
+    return el('section', { class: 'pp-sec tn-escolhe-podio', 'aria-label': 'Definir resultado' },
+      el('h2', { class: 'perfil-h3' }, el('span', { class: 'admin-tag', text: 'ADMIN' }), ' DEFINIR RESULTADO'),
+      el('form', { class: 'painel tn-podio-form', onsubmit: (ev) => {
+        ev.preventDefault();
+        const v = sels.map((s) => s.value);
+        if (!v[0]) { erro.textContent = 'Escolhe pelo menos o campeão.'; erro.hidden = false; return; }
+        if (!v[1] && v[2]) { erro.textContent = 'Escolhe o vice antes do 3º.'; erro.hidden = false; return; }
+        const podio = v.filter(Boolean);
+        if (new Set(podio).size !== podio.length) { erro.textContent = 'O mesmo jogador não pode ficar em dois lugares.'; erro.hidden = false; return; }
+        salvar(podio);
+      } },
+        ...sels.map((s, i) => el('label', { class: `tn-premio p${i + 1}` }, el('span', { text: `${i + 1}º` }), s)),
+        el('p', { class: 'form-nota', text: lista.length ? 'Salvou o campeão, o torneio encerra e o troféu (e a medalha do vice) aparece no perfil deles.' : 'Ninguém inscrito. Edite o torneio e escolha quem joga.' }),
+        erro,
+        el('div', { class: 'tn-podio-acoes' },
+          atual[0] ? el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('APAGAR RESULTADO?', `O pódio de "${t.nome}" some e os troféus saem dos perfis.`, 'Apagar', () => salvar([])) }, 'Apagar resultado') : null,
+          el('button', { type: 'submit', class: 'btn btn-pri' }, svg(ICONE_TROFEU, 18), atual[0] ? 'Salvar resultado' : 'Entregar troféus'))));
   }
 
   function blocoInscritos(t) {
@@ -2397,7 +2741,7 @@
   function fimDaSemana(base = Date.now()) { const d = new Date(base); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); d.setHours(23, 59, 0, 0); return d.getTime(); }
   function dadosDe(t) {
     const { nome, formato, metrica, unidade, auto, qtd, meta, semente, inicio, fim, encerrado_em, todos, participantes, premios, regras, publicado } = t;
-    return { nome, formato, metrica, unidade, auto, qtd, meta, semente, inicio, fim, encerrado_em, todos, participantes, premios, regras, publicado };
+    return { nome, formato, metrica, unidade, auto, qtd, meta, semente, inicio, fim, encerrado_em, todos, participantes, premios, regras, publicado, base: baseDe(t), podio: (t.podio || []).filter(Boolean) };
   }
   async function salvarTn(t, mudancas) {
     const dados = { ...dadosDe(t), ...mudancas };
@@ -2435,6 +2779,7 @@
     $('tnQtd').value = t && t.qtd ? t.qtd : 3;
     $('tnMeta').value = t && t.meta ? fmt(t.meta) : '';
     $('tnSemente').value = t ? t.semente || 'ranking' : 'ranking';
+    $('tnBase').value = t ? baseDe(t) : periodo === 'semana' || periodo === 'geral' ? periodo : 'mes';
     $('tnInicio').value = paraInput(t ? Date.parse(t.inicio) : agora.getTime());
     $('tnFim').value = t ? (t.fim ? paraInput(Date.parse(t.fim)) : '') : paraInput(fimDaSemana(agora.getTime() + 86400000));
     [1, 2, 3].forEach((i) => { $('tnPremio' + i).value = (t && t.premios && t.premios[i - 1]) || ''; });
@@ -2452,12 +2797,21 @@
   function atualizarBuilder() {
     const { formato, metrica, todos } = tnEstado;
     const mata = formato === 'mata';
+    const hora = formato === 'hora', livre = formato === 'livre';
+    // hora H só olha o ranking (pontos ou massa); regras próprias não tem métrica
+    if (hora && metrica === 'custom') { tnEstado.metrica = 'pontos'; return atualizarBuilder(); }
     document.querySelectorAll('.tn-formato').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.formato === formato)));
     document.querySelectorAll('#tnMetricas [data-metrica]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.metrica === metrica)));
     document.querySelectorAll('#tnQuem [data-todos]').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.todos === '1') === todos)));
-    $('tnMetricaRot').textContent = mata ? 'O QUE DECIDE O DUELO' : 'O QUE CONTA';
+    $('tnMetricaRot').textContent = mata ? 'O QUE DECIDE O DUELO' : hora ? 'QUAL RANKING VALE' : 'O QUE CONTA';
+    $('tnMetricaBloco').hidden = livre;
+    document.querySelector('#tnMetricas [data-metrica="custom"]').hidden = hora;
+    $('tnBaseBox').hidden = !hora;
     $('tnUnidadeBox').hidden = metrica !== 'custom';
-    $('tnAutoBox').hidden = mata || metrica === 'custom';
+    $('tnAutoBox').hidden = mata || hora || metrica === 'custom';
+    $('tnFimRot').textContent = hora ? 'HORA H (VALE O 1º DESSA HORA)' : livre ? 'TERMINA (OPCIONAL)' : 'TERMINA';
+    $('tnRegrasRot').replaceChildren(livre ? 'REGRAS DO TORNEIO ' : 'REGRAS EXTRAS ', el('span', { class: 'sec', text: livre ? '(obrigatório: explica como ganha)' : '(opcional)' }));
+    $('tnRegras').placeholder = livre ? 'ex: às 21h quem estiver em 1º na sala do clã é o campeão. Vale print com o horário.' : 'ex: só vale print com o nick visível. Partida em sala lotada.';
     $('tnQtdBox').hidden = formato !== 'melhores';
     $('tnMetaBox').hidden = formato !== 'meta';
     $('tnSementeBox').hidden = !mata;
@@ -2487,8 +2841,16 @@
       ['7 dias', () => fimEm(base + 7 * 86400000)],
       ['15 dias', () => fimEm(base + 15 * 86400000)],
       ['Até o fim do mês', () => { const d = new Date(base); fimEm(new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59).getTime()); }],
-      tnEstado.formato === 'mata' ? ['Sem data pra acabar', () => { $('tnFim').value = ''; }] : null,
+      tnEstado.formato === 'mata' || tnEstado.formato === 'livre' ? ['Sem data pra acabar', () => { $('tnFim').value = ''; }] : null,
     ].filter(Boolean);
+    if (tnEstado.formato === 'hora') {
+      const hj = (h) => { const d = new Date(); d.setHours(h, 0, 0, 0); return d.getTime(); };
+      ops.splice(1, ops.length,
+        ['Daqui 1 hora', () => { const d = new Date(); d.setSeconds(0, 0); fimEm(d.getTime() + 3600000); }],
+        ['Hoje às 21h', () => fimEm(hj(21))],
+        ['Hoje às 23h', () => fimEm(hj(23))],
+        ['Domingo 23:59', () => fimEm(fimDaSemana(base + 3600000))]);
+    }
     trocar($('tnAtalhosData'), ops.map(([rot, f]) => el('button', { type: 'button', class: 'sug', text: rot, onclick: () => { f(); atualizarBuilder(); } })));
   }
 
@@ -2521,9 +2883,9 @@
     const ini = doInput($('tnInicio').value), fim = doInput($('tnFim').value);
     return {
       id: editTn ? editTn.id : '', formato: tnEstado.formato, metrica: tnEstado.metrica, unidade: $('tnUnidade').value.trim(),
-      auto: $('tnAuto').checked, qtd: parseInt($('tnQtd').value, 10) || 3, meta: lerMetaBuilder(), semente: $('tnSemente').value,
+      auto: $('tnAuto').checked, qtd: parseInt($('tnQtd').value, 10) || 3, meta: lerMetaBuilder(), semente: $('tnSemente').value, base: $('tnBase').value, podio: [],
       inicio: new Date(isFinite(ini) ? ini : Date.now()).toISOString(), fim: isFinite(fim) ? new Date(fim).toISOString() : null,
-      todos: tnEstado.todos, participantes: [...tnEstado.sel], premios: [], regras: '', publicado: true, chave: null,
+      todos: tnEstado.todos, participantes: [...tnEstado.sel], premios: [], regras: $('tnRegras').value.trim(), publicado: true, chave: null,
     };
   }
   function renderResumoBuilder() {
@@ -2543,7 +2905,7 @@
     const nome = $('tnNome').value.replace(/\s+/g, ' ').trim();
     if (!nome) return { erro: 'Dá um nome pro torneio.', campo: 'tnNome' };
     const unidade = $('tnUnidade').value.replace(/\s+/g, ' ').trim().slice(0, 20);
-    if (metrica === 'custom' && !unidade) return { erro: 'Escreve o que vai ser contado (ex: kills).', campo: 'tnUnidade' };
+    if (metrica === 'custom' && formato !== 'livre' && !unidade) return { erro: 'Escreve o que vai ser contado (ex: kills).', campo: 'tnUnidade' };
     const qtd = parseInt($('tnQtd').value, 10);
     if (formato === 'melhores' && !(qtd >= 1 && qtd <= 100)) return { erro: 'Quantas partidas contam? De 1 a 100.', campo: 'tnQtd' };
     const meta = lerMetaBuilder();
@@ -2551,7 +2913,9 @@
     const ini = doInput($('tnInicio').value);
     if (!isFinite(ini)) return { erro: 'Escolhe quando o torneio começa.', campo: 'tnInicio' };
     const fim = doInput($('tnFim').value);
-    if (!$('tnFim').value && formato !== 'mata') return { erro: 'Escolhe quando o torneio termina.', campo: 'tnFim' };
+    if (!$('tnFim').value && formato === 'hora') return { erro: 'Escolhe a hora H: quem estiver em 1º nessa hora é o campeão.', campo: 'tnFim' };
+    if (!$('tnFim').value && formato !== 'mata' && formato !== 'livre') return { erro: 'Escolhe quando o torneio termina.', campo: 'tnFim' };
+    if (formato === 'livre' && !$('tnRegras').value.trim()) return { erro: 'Escreve as regras: como se ganha esse torneio?', campo: 'tnRegras' };
     if ($('tnFim').value && !(fim > ini)) return { erro: 'O fim tem que ser depois do começo.', campo: 'tnFim' };
     const ids = [...sel].filter((id) => jogPorId.has(id));
     if (!todos && ids.length < (formato === 'mata' ? 2 : 1)) return { erro: formato === 'mata' ? 'Escolhe pelo menos 2 jogadores pro mata-mata.' : 'Escolhe quem vai jogar.', campo: 'tnBuscaJog' };
@@ -2561,8 +2925,9 @@
     const premios = [1, 2, 3].map((i) => $('tnPremio' + i).value.replace(/\s+/g, ' ').trim().slice(0, 60));
     while (premios.length && !premios[premios.length - 1]) premios.pop();
     return { dados: {
-      nome: nome.slice(0, 60), formato, metrica, unidade: metrica === 'custom' ? unidade : '',
-      auto: formato !== 'mata' && metrica !== 'custom' && $('tnAuto').checked,
+      nome: nome.slice(0, 60), formato, metrica: formato === 'livre' ? 'pontos' : metrica, unidade: metrica === 'custom' && formato !== 'livre' ? unidade : '',
+      auto: formato === 'hora' || (formato !== 'mata' && formato !== 'livre' && metrica !== 'custom' && $('tnAuto').checked),
+      base: BASES[$('tnBase').value] ? $('tnBase').value : 'geral', podio: editTn ? (editTn.podio || []).filter(Boolean) : [],
       qtd: formato === 'melhores' ? qtd : null, meta: formato === 'meta' ? meta : null,
       semente: $('tnSemente').value === 'sorteio' ? 'sorteio' : 'ranking',
       inicio: new Date(ini).toISOString(), fim: $('tnFim').value ? new Date(fim).toISOString() : null,
@@ -2639,6 +3004,11 @@
         const lg = rs && r ? lugarMata(rs, r.id) : null;
         if (!lg) continue;
         out.push({ t, st, pos: lg.pos, txt: lg.txt });
+      } else if (t.formato === 'livre') {
+        const i = r ? podioLivre(t).indexOf(r.id) : -1;
+        const insc = r && idsInscritos(t).includes(r.id);
+        if (i < 0 && !(insc && st !== 'fim')) continue;
+        out.push({ t, st, pos: i + 1, txt: i >= 0 ? ['Campeão', 'Vice-campeão', '3º lugar'][i] : 'Inscrito · regras próprias' });
       } else {
         const cls = classificarTn(t);
         const l = cls.find((x) => x.chave === k);
@@ -2651,16 +3021,27 @@
   }
   function secaoTorneiosPerfil(k) {
     const lista = torneiosDoJogador(k);
-    if (!lista.length) return null;
+    const premios = trofeusDe(k);
+    if (!lista.length && !premios.length) return null;
+    // estante: um troféu por título e uma medalha de prata por vice
+    const estante = premios.length ? el('ul', { class: 'tnt-estante', 'aria-label': 'Troféus e medalhas de torneio' }, ...premios.map(({ t, pos }) => el('li', null,
+      linkTn(t, `tnt-item tnt-p${pos}`,
+        el('span', { class: 'tnt-ic', 'aria-hidden': 'true' }, svg(pos === 1 ? ICONE_TROFEU : ICONE_MEDALHA, 30)),
+        el('b', { class: 'tnt-rot', text: pos === 1 ? 'CAMPEÃO' : 'VICE' }),
+        el('span', { class: 'tnt-nome', text: t.nome }))))) : null;
+    const v = vitoriasTorneio(k), p = vicesTorneio(k);
+    const conta = [v ? `${v} ${v === 1 ? 'troféu' : 'troféus'}` : null, p ? `${p} ${p === 1 ? 'medalha' : 'medalhas'} de vice` : null].filter(Boolean).join(' · ');
     return el('section', { class: 'pp-sec', 'aria-labelledby': 'ppTn' },
-      el('h2', { class: 'perfil-h3', id: 'ppTn' }, 'TORNEIOS ', el('span', { class: 'sec', text: fmt(lista.length) })),
-      el('ul', { class: 'pp-tns' }, ...lista.map(({ t, st, pos, txt }) => {
+      el('h2', { class: 'perfil-h3', id: 'ppTn' }, 'TORNEIOS ', el('span', { class: 'sec', text: conta || fmt(lista.length) })),
+      estante,
+      lista.length ? el('ul', { class: 'pp-tns' }, ...lista.map(({ t, st, pos, txt }) => {
         const ganhou = pos === 1 && st === 'fim';
-        return el('li', null, linkTn(t, `pp-tn ${ganhou ? 'campeao' : ''}`,
-          el('span', { class: `pp-tn-pos p${pos}` }, ganhou ? svg(ICONE_TROFEU, 20) : pos ? `${pos}º` : '–'),
-          el('span', { class: 'pp-tn-info' }, el('b', { text: t.nome }), el('span', { text: ganhou ? `Campeão · ${txt}` : txt })),
+        const vice = pos === 2 && st === 'fim';
+        return el('li', null, linkTn(t, `pp-tn ${ganhou ? 'campeao' : vice ? 'vice' : ''}`,
+          el('span', { class: `pp-tn-pos p${pos}` }, ganhou ? svg(ICONE_TROFEU, 20) : vice ? svg(ICONE_MEDALHA, 20) : pos ? `${pos}º` : '–'),
+          el('span', { class: 'pp-tn-info' }, el('b', { text: t.nome }), el('span', { text: ganhou && !/^Campeão/.test(txt) ? `Campeão · ${txt}` : vice && !/^Vice/.test(txt) ? `Vice-campeão · ${txt}` : txt })),
           pilulaStatus(t, st)));
-      })));
+      })) : null);
   }
 
   // ---------- print ----------
@@ -2976,7 +3357,7 @@
   // dj0 VENO · dj1 Shawdow · dj2 VETERANO · dj3 Kaiser · dj4 Mamba · dj5 Naja · dj6 Cascavel
   function torneiosDemo() {
     const h = (horas) => new Date(Date.now() + horas * 3600 * 1000).toISOString();
-    const base = { unidade: '', auto: true, qtd: null, meta: null, semente: 'ranking', fim: null, encerrado_em: null, todos: true, participantes: [], premios: [], regras: '', chave: null, publicado: true };
+    const base = { unidade: '', auto: true, qtd: null, meta: null, semente: 'ranking', fim: null, encerrado_em: null, todos: true, participantes: [], premios: [], regras: '', chave: null, publicado: true, base: 'geral', podio: [] };
     const lista = [
       { ...base, id: 'dt1', nome: 'Copa COBR de Outubro', formato: 'soma', metrica: 'pontos', inicio: h(-240), fim: h(53.2),
         premios: ['Cargo Elite por 1 mês', 'Destaque no grupo', 'Respeito'], regras: 'Só vale partida com print mostrando o nick com a tag.\nQuem for pego com print editado é eliminado.' },
@@ -2991,6 +3372,12 @@
       { ...base, id: 'dt3', nome: 'Caça às Kills', formato: 'melhores', metrica: 'custom', unidade: 'kills', auto: false, qtd: 3, inicio: h(-30), fim: h(90), todos: false,
         participantes: ['dj0', 'dj1', 'dj3', 'dj5', 'dj6'], premios: ['Skin escolhida pelo campeão'] },
       { ...base, id: 'dt4', nome: 'Rei da Massa', formato: 'melhor', metrica: 'massa', inicio: h(74), fim: h(242), premios: ['Coroa no nick por 1 semana'] },
+      { ...base, id: 'dt6', nome: 'Rei das 21h', formato: 'hora', metrica: 'pontos', base: 'semana', inicio: h(-30), fim: h(-1.5), premios: ['Cargo Elite por 1 semana', 'Destaque no grupo'] },
+      { ...base, id: 'dt7', nome: 'Primeiro da Sala', formato: 'livre', inicio: h(-6), fim: null, todos: true, podio: ['dj1', 'dj3'],
+        regras: 'Às 22h em ponto, quem estiver em 1º no placar da sala do clã é o campeão. Vale print com o horário aparecendo.', premios: ['Coroa no nick por 1 semana'] },
+      { ...base, id: 'dt8', nome: 'Topo da Temporada às 23h', formato: 'hora', metrica: 'pontos', base: 'mes', inicio: h(-2), fim: h(4.5) },
+      { ...base, id: 'dt9', nome: 'Desafio do Dono', formato: 'livre', inicio: h(-3), fim: h(20), todos: false, participantes: ['dj0', 'dj2', 'dj4', 'dj5'],
+        regras: 'Quem fizer mais kills usando só a skin padrão. Manda o print pro dono até o fim do dia.' },
       { ...base, id: 'dt5', nome: 'Corrida dos 250K', formato: 'meta', metrica: 'massa', meta: 250000, inicio: h(-1680), fim: h(-720), premios: ['Cargo Vice-líder honorário'] },
     ];
     const lanc = [['dt3', 'dj0', 12, -26], ['dt3', 'dj1', 15, -20], ['dt3', 'dj5', 9, -18], ['dt3', 'dj0', 8, -12], ['dt3', 'dj5', 11, -9], ['dt3', 'dj5', 4, -6], ['dt3', 'dj3', 6, -3], ['dt3', 'dj0', 13, -1]]
@@ -3070,6 +3457,9 @@
       baixarCsv(planilha.nome, planilha.linhas);
     });
     $('btnCsvPartidas').addEventListener('click', baixarPartidas);
+    // doação
+    $('btnPixChave').addEventListener('click', () => copiarTexto(PIX_CHAVE, 'Chave Pix copiada. Valeu pelo apoio!'));
+    $('btnPixCola').addEventListener('click', () => copiarTexto(PIX_COPIA_COLA, 'Pix copia e cola copiado. Cola no app do banco.'));
     $('formCadastro').addEventListener('submit', cadastrar);
     $('fNicks').addEventListener('input', previaCadastro);
     $('formJogador').addEventListener('submit', salvarJogador);
@@ -3086,7 +3476,8 @@
     $('btnApagarTn').addEventListener('click', apagarTn);
     document.querySelectorAll('#tnMetricas [data-metrica]').forEach((b) => b.addEventListener('click', () => { tnEstado.metrica = b.dataset.metrica; atualizarBuilder(); }));
     document.querySelectorAll('#tnQuem [data-todos]').forEach((b) => b.addEventListener('click', () => { tnEstado.todos = b.dataset.todos === '1'; atualizarBuilder(); }));
-    ['tnUnidade', 'tnQtd', 'tnMeta', 'tnInicio', 'tnFim', 'tnAuto', 'tnSemente'].forEach((id) => $(id).addEventListener(id === 'tnAuto' || id === 'tnSemente' ? 'change' : 'input', atualizarBuilder));
+    ['tnUnidade', 'tnQtd', 'tnMeta', 'tnInicio', 'tnFim', 'tnAuto', 'tnSemente', 'tnBase'].forEach((id) => $(id).addEventListener(id === 'tnAuto' || id === 'tnSemente' || id === 'tnBase' ? 'change' : 'input', atualizarBuilder));
+    $('tnRegras').addEventListener('change', renderResumoBuilder);
     $('tnMeta').addEventListener('blur', () => { const v = lerMetaBuilder(); if (v) $('tnMeta').value = fmt(v); });
     $('tnBuscaJog').addEventListener('input', renderEscolher);
     $('tnBuscaJog').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
@@ -3184,7 +3575,11 @@
       if (alvo) alvo.scrollIntoView(); else scrollTo(0, 0);
     });
     // fechar janelas tocando fora delas
-    ['dlgPrint', 'dlgBusca'].forEach((id) => $(id).addEventListener('click', (e) => {
+    // fechou a taça aberta pelo link: tira o ?trofeu= pra não abrir de novo no F5
+    $('dlgTrofeu').addEventListener('close', () => {
+      if (new URLSearchParams(location.search).has('trofeu')) history.replaceState({}, '', location.pathname + '#temporadas');
+    });
+    ['dlgPrint', 'dlgBusca', 'dlgTrofeu'].forEach((id) => $(id).addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       if (e.target === e.currentTarget && fora) e.currentTarget.close();
@@ -3200,6 +3595,7 @@
       lancamentos = tn.lanc;
       render();
       mostrarRota();
+      cerimoniaAutomatica();
       ligarTempoReal();
       return;
     }
@@ -3216,6 +3612,7 @@
         admin = await lerAdmin().catch(() => null);
         aplicarAdmin(admin);
         mostrarRota();
+        cerimoniaAutomatica();
         ligarTempoReal();
       })
       .catch((e) => {
