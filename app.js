@@ -394,6 +394,12 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('avisoElenco').hidden = !admin || elencoOk;
     document.body.classList.toggle('modo-dono', !!admin);
 
+    // página que ficou vazia (ex.: o único torneio foi apagado) volta pro ranking
+    $('menuTrofeus').hidden = $('temporadas').hidden && $('hall').hidden;
+    if ($('menuTrofeus').hidden) $('bbTrofeus').hidden = true;
+    if (pagAtual && !temConteudo(pagAtual)) mostrarPagina(!perfilAtual && !torneioAtual);
+    else marcarMenu();
+
     if (admin) renderSugNick();
     if ($('dlgBusca').open) renderBusca();
     if (perfilAtual) renderPerfil();
@@ -499,31 +505,74 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     abrirPerfil(k);
   }
 
-  // ---------- barra de baixo (celular) ----------
+  // ---------- páginas ----------
+  // Em vez de uma rolagem só com tudo empilhado, cada item do menu abre a sua página
+  // (as seções com data-pag="..."). O #endereço diz qual: #torneios, #jogadores...;
+  // sem # (ou com um # que não existe) abre o ranking. #hall, #tabela etc. abrem a
+  // página de quem eles fazem parte e rolam até lá.
+  const PAG_INICIO = 'ranking';
+  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'doar']); // abrem no topo da página
+  let pagAtual = null;
+  function alvoDoEndereco(hash) {
+    const id = decodeURIComponent(String(hash || '').slice(1));
+    const n = id ? document.getElementById(id) : null;
+    const sec = n && n.closest('#principal [data-pag]');
+    return sec ? { pag: sec.dataset.pag, n, raiz: RAIZES.has(id) } : { pag: PAG_INICIO, n: null, raiz: true };
+  }
+  const secoesDa = (pag) => [...document.querySelectorAll(`#principal [data-pag="${pag}"]`)];
+  const temConteudo = (pag) => secoesDa(pag).some((s) => !s.hidden);
+  // pula direto, sem a rolagem suave do site (trocar de página não é rolar)
+  function rolarJa(destino) {
+    const h = document.documentElement;
+    h.style.scrollBehavior = 'auto';
+    if (typeof destino === 'number') scrollTo(0, destino); else destino.scrollIntoView({ block: 'start' });
+    h.style.scrollBehavior = '';
+  }
+  function mostrarPagina(rolar = true) {
+    let { pag, n, raiz } = alvoDoEndereco(location.hash);
+    if (!temConteudo(pag)) { pag = PAG_INICIO; n = null; raiz = true; }
+    const mudou = pag !== pagAtual;
+    pagAtual = pag;
+    document.querySelectorAll('#principal [data-pag]').forEach((s) => s.classList.toggle('fora', s.dataset.pag !== pag));
+    document.body.dataset.pag = pag;
+    marcarMenu();
+    if (mudou) {
+      const m = $('principal');
+      m.classList.remove('pag-entra');
+      void m.offsetWidth; // reinicia a animação de entrada
+      m.classList.add('pag-entra');
+    }
+    if (rolar) rolarJa(n && !raiz && !n.hidden ? n : 0);
+  }
+  // menu de cima, barra de baixo e janela "Mais" marcam a página aberta
+  function marcarMenu() {
+    const pag = perfilAtual || torneioAtual ? null : pagAtual;
+    let naBarra = false;
+    document.querySelectorAll('.menu a, #barraBaixo a, #maisGrade a').forEach((a) => {
+      const sim = !!pag && alvoDoEndereco(a.getAttribute('href')).pag === pag && a.getAttribute('href') !== '#hall';
+      a.classList.toggle('ativo', sim);
+      if (sim) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      if (sim && !a.hidden && a.closest('#barraBaixo')) naBarra = true;
+    });
+    $('bbMais').classList.toggle('ativo', !!pag && !naBarra && pag !== PAG_INICIO);
+  }
+  // abre uma página do site (vale também de dentro do perfil ou do torneio)
+  function irPara(hash) {
+    const url = location.pathname + (hash && hash.length > 1 ? hash : '');
+    if (location.pathname + location.search + location.hash !== url) history.pushState({}, '', url);
+    mostrarRota(false, false);
+  }
   function irRegistrar() {
-    $('registrar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    irPara('#registrar');
     $('fNome').focus({ preventScroll: true });
   }
-  function ligarBarraBaixo() {
-    const links = [...document.querySelectorAll('#barraBaixo a[data-sec]')];
-    // qual seção da página conta como qual botão
-    const alvos = [['torneios', 'torneios'], ['ranking', 'ranking'], ['tabela', 'ranking'], ['temporadas', 'ranking'], ['patentes', 'patentes'], ['jogadores', 'jogadores'], ['hall', 'partidas'], ['partidas', 'partidas']];
-    let pedido = false;
-    const marcar = () => {
-      pedido = false;
-      const linha = innerHeight * 0.4;
-      let atual = null, maior = -Infinity;
-      for (const [id, sec] of alvos) {
-        const n = $(id);
-        if (!n || n.hidden) continue;
-        const t = n.getBoundingClientRect().top;
-        if (t <= linha && t > maior) { maior = t; atual = sec; }
-      }
-      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) atual = 'partidas';
-      links.forEach((a) => a.classList.toggle('ativo', a.dataset.sec === atual));
-    };
-    addEventListener('scroll', () => { if (!pedido) { pedido = true; requestAnimationFrame(marcar); } }, { passive: true });
-    marcar();
+  function abrirMais() {
+    const dlg = $('dlgMais');
+    $('maisTorneios').hidden = $('torneios').hidden || !$('bbTorneios').hidden;
+    $('maisTrofeus').hidden = $('temporadas').hidden || !$('bbTrofeus').hidden;
+    $('maisHall').hidden = $('hall').hidden;
+    if (!dlg.open) dlg.showModal();
+    dlg.focus(); // sem anel de foco no X logo de cara
   }
 
   // ---------- jogadores do clã (elenco + tabelas) ----------
@@ -989,17 +1038,18 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const linha = modo === 'massa'
         ? `recorde · ${dataCurta(j.melhor.created_at)} · ${ptsTxt(j.pontos)}`
         : `pontos · recorde ${fmt(j.melhor.mass)}`;
+      // no celular os três ficam lado a lado: a tag e as partes "longas" somem pelo CSS
       return el('article', { class: `lugar l${i + 1}` },
         i === 0 ? svg(ICONE_COROA, 40, 'class="coroa"') : null,
         el('div', { class: 'avatar', 'aria-hidden': 'true', text: j.nome.charAt(0).toUpperCase() }),
-        el('div', null,
-          el('div', { class: 'lugar-pos', text: i === 0 ? '1º LUGAR · REI DO CLÃ' : `${i + 1}º LUGAR` }),
-          btnPerfil(j, 'lugar-nome'),
+        el('div', { class: 'lugar-id' },
+          el('div', { class: 'lugar-pos' }, `${i + 1}º LUGAR`, i === 0 ? el('span', { class: 'lugar-rei', text: ' · REI DO CLÃ' }) : null),
+          btnPerfil(j, 'lugar-nome', [el('span', { class: 'lugar-tag', text: `[${TAG}] ` }), j.nome]),
           el('div', { class: 'lugar-pat' }, chipPatente(geralPts(j)))),
         el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
-        periodo === 'mes' && modo === 'pontos' ? el('div', { class: `premio-selo pv${i + 1}`, text: `VALE R$ ${PREMIOS[i]} NO PIX` }) : null,
+        periodo === 'mes' && modo === 'pontos' ? el('div', { class: `premio-selo pv${i + 1}` }, el('span', { class: 'ps-vale', text: 'VALE ' }), `R$ ${PREMIOS[i]} NO PIX`) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
         url ? el('button', { type: 'button', class: 'ver-print', text: 'Ver print do recorde', onclick: () => abrirPrint(j.melhor) }) : null
       );
@@ -1011,26 +1061,39 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     return el('span', { class: 'titulo-chip', title: `${n}× campeão de temporada` }, svg(ICONE_TROFEU, 12), n > 1 ? `${n}×` : null);
   }
 
+  // a tabela abre com o top 10 (e a sua linha, se você marcou "sou eu"); o resto num toque
+  const TABELA_TOPO = 10;
+  let tabelaToda = false;
   function renderTabela(rank, ctx) {
     const corpo = $('corpoTabela');
     $('thPontos').classList.toggle('ativo', modo === 'pontos');
     $('thRecorde').classList.toggle('ativo', modo === 'massa');
+    $('tabelaMaisBox').hidden = true;
     if (!rank.length) {
       corpo.replaceChildren(el('tr', null, el('td', { colspan: '6', class: 'vazio-cel', text: 'A tabela aparece aqui assim que a primeira massa for registrada.' })));
       return;
     }
     const doisDias = Date.now() - 24 * 3600 * 1000;
-    corpo.replaceChildren(...rank.map((j, i) => {
+    const eu = lerEu();
+    const iEu = rank.findIndex((j) => j.chave === eu);
+    const cortar = !tabelaToda && rank.length > TABELA_TOPO + 2;
+    const linhas = rank.map((j, i) => [j, i]).filter(([, i]) => !cortar || i < TABELA_TOPO || i === iEu);
+    if (rank.length > TABELA_TOPO + 2) {
+      $('tabelaMaisBox').hidden = false;
+      $('btnTabelaToda').textContent = tabelaToda ? 'Mostrar só o top 10' : `Ver todos os ${rank.length} jogadores`;
+    }
+    trocar(corpo, linhas.flatMap(([j, i]) => {
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
-      return el('tr', { class: i === 0 ? 'topo1' : null },
+      const pulo = cortar && i === iEu && i > TABELA_TOPO
+        ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
+      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte'), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', text: '▲ RECORDE NOVO' }) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
         el('td', { class: `dir ${modo === 'massa' ? 'num' : 'sec'}`, text: fmt(j.melhor.mass) }),
-        el('td', { class: 'dir sec', text: fmt(j.qtd) })
-      );
+        el('td', { class: 'dir sec', text: fmt(j.qtd) }))];
     }));
   }
 
@@ -1045,21 +1108,29 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     )));
   }
 
+  // partidas aparecem aos poucos: 12 e depois mais 24 a cada toque
+  const PARTIDAS_PASSO = 24;
+  let partidasQtd = 12;
   function renderPartidas() {
     const ul = $('listaPartidas');
     $('adminTag').hidden = !admin;
-    const lista = partidas.slice(0, admin ? 200 : 12);
+    const lista = partidas.slice(0, partidasQtd);
+    const resto = partidas.length - lista.length;
+    $('partidasMaisBox').hidden = resto <= 0;
+    $('btnPartidasMais').textContent = `Ver mais ${fmt(Math.min(resto, PARTIDAS_PASSO))} ${Math.min(resto, PARTIDAS_PASSO) === 1 ? 'partida' : 'partidas'}`;
     if (!lista.length) { ul.replaceChildren(el('li', { class: 'vazio', text: 'Nenhuma partida registrada ainda.' })); return; }
+    const ptsGeral = new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.pontos]));
     ul.replaceChildren(...lista.map((p) => {
       const url = urlPrint(p);
       const pts = pontosDe(p.mass);
+      const nome = nomeDe(chave(p.player), p.player);
       return el('li', { class: `partida ${p.mass >= MARCO ? 'cem' : ''}` },
         url
-          ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${limparNick(p.player)}`, onclick: () => abrirPrint(p) },
+          ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${nome}`, onclick: () => abrirPrint(p) },
               el('img', { src: url, alt: '', loading: 'lazy' }))
-          : el('span', { class: 'mini', text: 'sem print' }),
+          : el('span', { class: 'mini mini-av' }, avatarDe(nome, ptsGeral.get(chave(p.player)) || 0)),
         el('div', { class: 'partida-info' },
-          el('span', { class: 'partida-nome', text: comTag(limparNick(p.player)) }),
+          el('span', { class: 'partida-nome', text: comTag(nome) }),
           el('span', { class: 'partida-massa' }, fmt(p.mass), p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
           el('span', { class: 'partida-data', text: `${pts ? '+' + ptsTxt(pts) : 'sem pontos'} · ${haQuanto(p.created_at)}` })),
         admin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null
@@ -1354,13 +1425,17 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
 
   // ---------- hall da fama ----------
+  let hallQtd = 6;
   function renderHall() {
     const lista = partidas.filter((p) => p.mass >= MARCO).sort((a, b) => b.mass - a.mass);
     $('hall').hidden = !lista.length;
     $('hallMarco').textContent = marcoTxt;
     $('hallQtd').textContent = `${lista.length} ${lista.length === 1 ? 'partida' : 'partidas'} no clã`;
+    const resto = lista.length - hallQtd;
+    $('hallMaisBox').hidden = resto <= 0;
+    $('btnHallMais').textContent = `Ver mais ${Math.min(resto, 12)}`;
     const pts = new Map(montarRanking('geral', 'pontos').map((j) => [j.chave, j]));
-    $('listaHall').replaceChildren(...lista.slice(0, 12).map((p, i) => {
+    $('listaHall').replaceChildren(...lista.slice(0, hallQtd).map((p, i) => {
       const j = pts.get(chave(p.player));
       const url = urlPrint(p);
       return el('li', { class: `fama ${i === 0 ? 'fama-1' : ''}` },
@@ -1449,7 +1524,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     history.pushState({}, '', location.pathname);
     mostrarRota();
   }
-  function mostrarRota(novo = false) {
+  // voltar = true: saiu do perfil/torneio pelo "voltar", então volta pro ponto onde estava
+  function mostrarRota(novo = false, voltar = true) {
     const k = chaveDaUrl();
     const tn = k ? null : torneioDaUrl();
     const antes = perfilAtual, antesTn = torneioAtual;
@@ -1461,14 +1537,17 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     document.body.classList.toggle('vendo-perfil', !!(k || tn));
     if (k) {
       renderPerfil();
-      if (novo || antes !== k) scrollTo(0, 0);
+      marcarMenu();
+      if (novo || antes !== k) rolarJa(0);
     } else if (tn) {
       renderTorneioPagina();
       tickContagens();
-      if (novo || antesTn !== tn) scrollTo(0, 0);
+      marcarMenu();
+      if (novo || antesTn !== tn) rolarJa(0);
     } else {
       document.title = `Ranking Clã ${TAG}`;
-      if (antes || antesTn) scrollTo(0, rolagemAntes);
+      if ((antes || antesTn) && voltar) { mostrarPagina(false); rolarJa(rolagemAntes); }
+      else mostrarPagina(true);
     }
   }
 
@@ -1501,8 +1580,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       nome ? el('div', { class: 'pp-acoes' },
         el('button', { type: 'button', class: `btn btn-sec ${lerEu() === k ? 'pp-eu-on' : ''}`, 'aria-pressed': String(lerEu() === k), onclick: () => {
           guardarEu(lerEu() === k ? null : k);
-          renderEu();
-          renderPerfil();
+          render(); // a tabela destaca a linha de quem é "eu"
           toast(lerEu() === k ? 'Pronto! Seu perfil fica no botão do topo.' : 'Perfil desmarcado.');
         } }, svg(ICONE_EU, 18), el('span', { class: 'btn-txt', text: lerEu() === k ? 'Este sou eu' : 'Sou eu' })),
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
@@ -2019,8 +2097,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('avisoTorneios').hidden = torneiosOk || !admin;
     $('btnNovoTorneio').hidden = !admin || !torneiosOk;
     $('menuTorneios').hidden = sec.hidden;
+    // sem torneio, o lugar dele na barra de baixo fica com a sala de troféus
     $('bbTorneios').hidden = !tem;
-    $('bbPatentes').hidden = tem;
+    $('bbTrofeus').hidden = tem;
+    $('faixaTnBox').hidden = true;
     if (sec.hidden) return;
     const box = $('listaTorneios');
     if (!torneiosOk) { trocar(box); return; }
@@ -2031,6 +2111,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const comSt = lista.map((t) => ({ t, st: statusTn(t) }));
     const ativos = comSt.filter((x) => x.st !== 'fim')
       .sort((a, b) => (a.st === b.st ? 0 : a.st === 'vivo' ? -1 : 1) || Date.parse(a.t.inicio) - Date.parse(b.t.inicio));
+    renderFaixaTn(ativos);
     const quandoAcabou = (t) => (isFinite(fimTn(t)) ? fimTn(t) : Date.parse((t.chave && t.chave.em) || t.inicio));
     const fechados = comSt.filter((x) => x.st === 'fim').sort((a, b) => quandoAcabou(b.t) - quandoAcabou(a.t));
     trocar(box,
@@ -2040,6 +2121,24 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       fechados.length ? el('div', { class: 'tn-fechados' },
         el('h3', { class: 'perfil-h3', text: 'JÁ ACABARAM' }),
         el('div', { class: 'tn-grade-p' }, ...fechados.slice(0, 6).map(({ t }) => cardFechado(t)))) : null);
+  }
+
+  // aviso curto no ranking: tem torneio rolando? um toque leva pra página dos torneios
+  function renderFaixaTn(ativos) {
+    const vivos = ativos.filter((x) => x.st === 'vivo');
+    const lista = vivos.length ? vivos : ativos;
+    if (!lista.length) return;
+    const { t, st } = lista[0];
+    const conta = contaCurta(st === 'breve' ? Date.parse(t.inicio) : fimTn(t));
+    const outros = lista.length - 1;
+    trocar($('faixaTn'),
+      pilulaStatus(t, st),
+      el('span', { class: 'faixa-tn-txt' },
+        el('b', { text: t.nome }),
+        conta ? el('span', { class: 'faixa-tn-conta' }, st === 'breve' ? 'começa em ' : t.formato === 'hora' ? 'hora H em ' : 'termina em ', conta) : null),
+      outros > 0 ? el('span', { class: 'faixa-tn-mais', text: `+${outros} ${st === 'vivo' ? 'rolando' : 'vindo aí'}` }) : null,
+      el('span', { class: 'faixa-tn-ver', text: 'Ver torneios →' }));
+    $('faixaTnBox').hidden = false;
   }
 
   function cardTorneio(t, st) {
@@ -2095,9 +2194,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   function fecharTorneio() {
     if (history.state && history.state.doSite) { history.back(); return; }
-    history.pushState({}, '', location.pathname + '#torneios');
-    mostrarRota();
-    if (!$('torneios').hidden) $('torneios').scrollIntoView();
+    irPara('#torneios');
   }
   function torneioDaUrl() { return new URLSearchParams(location.search).get('torneio'); }
 
@@ -3244,7 +3341,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       $('dlgAdmin').close();
       aplicarAdmin(novo);
       toast(`Bem-vindo, ${novo.nome}. Área do admin liberada.`);
-      if (!perfilAtual) $('registrar').scrollIntoView({ behavior: 'smooth' });
+      if (!perfilAtual && !torneioAtual && pagAtual === 'ranking') $('registrar').scrollIntoView({ behavior: 'smooth' });
     } catch (e) {
       console.error(e);
       falhar('Não consegui entrar agora. Confere a internet e tenta de novo.');
@@ -3526,13 +3623,24 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('fBuscaGlobal').addEventListener('input', renderBusca);
     $('fBuscaGlobal').addEventListener('keydown', (e) => { if (e.key === 'Enter' && achados[0]) { e.preventDefault(); irPerfil(achados[0].r.chave); } });
     $('buscaAtalhos').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgBusca').close(); });
+    $('bbMais').addEventListener('click', abrirMais);
+    $('btnTabelaToda').addEventListener('click', () => {
+      tabelaToda = !tabelaToda;
+      render();
+      if (!tabelaToda) rolarJa($('tabela'));
+    });
+    $('btnPartidasMais').addEventListener('click', () => { partidasQtd += PARTIDAS_PASSO; renderPartidas(); });
+    $('btnHallMais').addEventListener('click', () => { hallQtd += 12; renderHall(); });
+    $('btnFecharMais').addEventListener('click', () => $('dlgMais').close());
+    $('maisGrade').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgMais').close(); });
     document.addEventListener('keydown', (e) => {
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
       if (e.target.closest('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
       abrirBusca();
     });
-    ligarBarraBaixo();
+    // já abre na página certa, antes mesmo dos dados chegarem
+    mostrarPagina(false);
 
     // formulário
     $('registrar').addEventListener('submit', enviar);
@@ -3564,22 +3672,19 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     // perfil: página com link próprio, botão voltar do celular/navegador funciona
     $('btnEu').addEventListener('click', () => { const k = lerEu(); if (k) abrirPerfil(k); });
     addEventListener('popstate', () => mostrarRota());
-    // atalhos (#ranking, #jogadores...) com o perfil aberto: volta pro ranking e rola até lá
+    // links do menu (#ranking, #jogadores...): o site troca de página sozinho, de qualquer lugar
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[href^="#"]');
-      if (!a || (!perfilAtual && !torneioAtual)) return;
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
       e.preventDefault();
-      history.pushState({}, '', location.pathname + a.getAttribute('href'));
-      mostrarRota();
-      const alvo = a.getAttribute('href').length > 1 && document.querySelector(a.getAttribute('href'));
-      if (alvo) alvo.scrollIntoView(); else scrollTo(0, 0);
+      irPara(a.getAttribute('href'));
+    });
+    // fechou a taça aberta pelo link: tira o ?trofeu= pra não abrir de novo no F5 e mostra a sala de troféus
+    $('dlgTrofeu').addEventListener('close', () => {
+      if (new URLSearchParams(location.search).has('trofeu')) { history.replaceState({}, '', location.pathname + '#temporadas'); mostrarRota(false, false); }
     });
     // fechar janelas tocando fora delas
-    // fechou a taça aberta pelo link: tira o ?trofeu= pra não abrir de novo no F5
-    $('dlgTrofeu').addEventListener('close', () => {
-      if (new URLSearchParams(location.search).has('trofeu')) history.replaceState({}, '', location.pathname + '#temporadas');
-    });
-    ['dlgPrint', 'dlgBusca', 'dlgTrofeu'].forEach((id) => $(id).addEventListener('click', (e) => {
+    ['dlgPrint', 'dlgBusca', 'dlgTrofeu', 'dlgMais'].forEach((id) => $(id).addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       if (e.target === e.currentTarget && fora) e.currentTarget.close();

@@ -273,7 +273,6 @@ input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px
   .hero { padding-block: 28px 8px; gap: 24px; }
   .hero-logo img { width: 160px; height: 160px; }
   .hero-txt { text-align: left; }
-  .lugar.l1 { order: -1; }
   .bloco-topo h2 { font-size: 38px; }
 }
 @media (max-width: 420px) {
@@ -730,7 +729,7 @@ button, a, summary { touch-action: manipulation; }
     font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .3px; text-decoration: none; cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .barra-baixo a.ativo { color: var(--laranja); }
+  .barra-baixo a.ativo, .barra-baixo button.ativo { color: var(--laranja); }
   .barra-baixo a:active, .barra-baixo button:active { transform: scale(.94); }
   .barra-baixo .bb-centro { color: var(--texto); }
   .bb-bola {
@@ -1300,4 +1299,182 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   .pr b { font-size: 28px; }
   .doar { padding: 18px 16px; }
   .doar-btns .btn { flex: 1 1 100%; }
+}
+
+/* ============ páginas: um assunto por tela, sem rolar o site inteiro ============ */
+#principal { min-height: 70vh; }
+#principal .fora { display: none !important; }
+.pag-entra { animation: pagEntra .22s ease-out; }
+@keyframes pagEntra { from { opacity: 0; transform: translateY(6px); } }
+
+/* menu de cima marca a página aberta */
+.menu a.ativo { color: var(--laranja-claro); background: var(--laranja-fundo); box-shadow: inset 0 -2px 0 var(--laranja); }
+
+/* topo mais enxuto: o pódio aparece sem precisar rolar tanto */
+.hero { padding-block: 28px 12px; gap: 32px; }
+.hero-logo img { width: 150px; height: 150px; }
+.hero-txt { gap: 14px; }
+.hero h1 { font-size: clamp(46px, 5.4vw, 62px); }
+.hero p { font-size: 16px; }
+.stat { padding: 10px 16px; }
+.stat-num { font-size: 34px; }
+.destaques { padding-block: 12px 0; }
+.dq { padding: 16px 18px; gap: 10px; }
+.dq-num, .vs-pts { font-size: 40px; }
+
+/* aviso de torneio rolando, no ranking */
+.faixa-tn {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; padding: 12px 16px;
+  border-radius: 14px; border: 1px solid var(--laranja); color: var(--texto); text-decoration: none;
+  background: linear-gradient(90deg, var(--laranja-fundo), var(--painel));
+}
+.faixa-tn:hover { color: var(--texto); box-shadow: 0 0 30px rgba(255, 122, 26, .2); }
+.faixa-tn-txt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex: 1 1 220px; min-width: 0; }
+.faixa-tn-txt b { font-size: 16px; overflow-wrap: anywhere; }
+.faixa-tn-conta { font-size: 13px; color: var(--texto-3); }
+.faixa-tn-conta .tn-curta { font-size: 22px; }
+.faixa-tn-mais { font-size: 12px; font-weight: 700; color: var(--texto-2); white-space: nowrap; }
+.faixa-tn-ver { font-size: 13px; font-weight: 700; color: var(--laranja-claro); white-space: nowrap; }
+
+/* pódio um pouco menor no computador */
+.lugar { padding: 22px 18px 18px; gap: 10px; }
+.lugar.l1 { padding-block: 26px 22px; }
+.avatar { width: 64px; height: 64px; font-size: 34px; }
+.l1 .avatar { width: 84px; height: 84px; font-size: 46px; }
+.lugar-massa { font-size: 54px; }
+.l1 .lugar-massa { font-size: 74px; }
+.lugar-id { width: 100%; min-width: 0; }
+
+/* tabela: top 10, a linha de quem é "eu" e o resto num toque */
+.duas-col { padding-block: 28px 16px; }
+#tabela tr.eu-linha { background: color-mix(in srgb, var(--laranja) 9%, transparent); box-shadow: inset 3px 0 0 var(--laranja); }
+#tabela tr.pulo td { padding: 0 8px; height: 22px; text-align: center; color: var(--texto-3); border-top: 1px dashed var(--linha-forte); line-height: 1; }
+.ver-mais-box { display: flex; justify-content: center; padding: 12px 16px; border-top: 1px solid var(--linha); }
+.ver-mais-box.solto { border-top: 0; padding: 4px 0 24px; }
+.ver-mais { min-width: 220px; }
+.conquistas.lateral { border-top: 1px solid var(--linha); gap: 12px; }
+.conquistas.lateral h3 { margin: 0; }
+.link-seta { padding-top: 12px; border-top: 1px solid var(--linha); font-size: 14px; font-weight: 700; text-decoration: none; }
+
+/* página de patentes */
+.pat-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 24px; align-items: start; margin-bottom: 24px; }
+.painel-h3 { margin: 0; font-size: 13px; letter-spacing: 2px; color: var(--texto-3); font-weight: 600; }
+
+/* partidas sem print: o quadradinho mostra o jogador */
+.partidas { margin-bottom: 16px; }
+.mini-av { width: 48px; height: 48px; border: 0; background: transparent; cursor: default; }
+.mini-av .av { width: 44px; height: 44px; font-size: 24px; }
+
+/* janela "Mais" (celular) */
+.dlg-mais { max-width: min(94vw, 520px); }
+.mais-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 6px 18px; }
+.mais-topo h2 { margin: 0; font-family: var(--f-titulo); font-size: 32px; font-weight: 600; line-height: 1; letter-spacing: 1px; }
+.mais-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px 14px 16px; }
+.mais-grade a {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 96px; padding: 14px;
+  border-radius: 14px; border: 1px solid var(--linha-forte); background: var(--painel-2); color: var(--texto); text-decoration: none;
+}
+.mais-grade a:hover { color: var(--texto); border-color: var(--laranja); }
+.mais-grade a.ativo { border-color: var(--laranja); background: var(--laranja-fundo); }
+.mais-grade svg { margin-bottom: 6px; color: var(--laranja-claro); }
+.mais-grade .mais-apoie svg { color: var(--laranja); }
+.mais-grade b { font-size: 15px; }
+.mais-grade small { font-size: 12px; line-height: 1.3; color: var(--texto-3); }
+
+@media (max-width: 760px) {
+  /* topo: a logo grande sai (já tem a do cabeçalho) */
+  .hero-logo { display: none; }
+  .hero { padding-block: 16px 4px; }
+  .hero-txt { gap: 12px; }
+  .hero h1 { font-size: clamp(40px, 12vw, 52px); }
+  .hero p { display: none; } /* o card "Como entrar no ranking" explica isso mais abaixo */
+  .premio-faixa { padding: 8px 12px; }
+  .aba { min-height: 36px; }
+  .abas { padding: 3px; }
+  .painel-topo { padding-block: 14px; }
+  .painel-topo h2 { font-size: 28px; }
+  .premios { padding: 14px 16px; gap: 12px; margin-bottom: 16px; }
+  .premios-txt h3 { font-size: 26px; }
+  .premios-txt p { font-size: 14px; }
+  .stat-num { font-size: 28px; }
+  .dq { padding: 14px 16px; }
+  .dq-num, .vs-pts { font-size: 32px; }
+  .faixa-tn { padding: 10px 12px; gap: 6px 10px; }
+  .faixa-tn-ver { display: none; }
+
+  .bloco { padding-block: 18px 4px; }
+  .bloco-topo { margin-bottom: 16px; gap: 12px; }
+  .duas-col { padding-block: 18px 12px; gap: 16px; }
+  .col-lateral { gap: 16px; }
+  .lateral { padding: 18px 16px; }
+
+  /* pódio: os três lado a lado, só o essencial */
+  .podio { flex-wrap: nowrap; gap: 8px; }
+  .podio .lugar { flex: 1 1 0; padding: 12px 6px 12px; gap: 6px; border-radius: 14px; }
+  .podio .lugar.l1 { flex-grow: 1.3; padding-block: 10px 14px; box-shadow: 0 0 30px rgba(255, 122, 26, .18); }
+  .podio .lugar .coroa { width: 24px; height: 24px; margin-bottom: -4px; }
+  .podio .avatar { width: 42px; height: 42px; font-size: 24px; border-width: 2px; }
+  .podio .l1 .avatar { width: 54px; height: 54px; font-size: 30px; }
+  .podio .lugar-pos { font-size: 10px; letter-spacing: 1px; }
+  .podio .lugar-rei, .podio .lugar-tag, .podio .lugar-data, .podio .lugar .cem-selo, .podio .ver-print, .podio .ps-vale { display: none; }
+  .podio .lugar-nome { font-size: 14px; min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .podio .l1 .lugar-nome { font-size: 15px; }
+  .podio .lugar-pat { margin-top: 4px; }
+  .podio .lugar-pat .patente { font-size: 9px; padding: 1px 6px; letter-spacing: .5px; }
+  .podio .lugar-pat .patente svg { display: none; }
+  .podio .lugar-massa { font-size: clamp(24px, 8vw, 34px); white-space: nowrap; }
+  .podio .l1 .lugar-massa { font-size: clamp(30px, 10vw, 44px); }
+  .podio .premio-selo { padding: 2px 6px; font-size: 10px; letter-spacing: .3px; white-space: nowrap; }
+  .podio .barra { height: 5px; }
+  .tn-podio { margin-bottom: 12px; }
+
+  /* torneios: cartões mais baixos */
+  .tn-card { padding: 16px; gap: 10px; }
+  .tn-card-nome { font-size: 30px; }
+  .tn-curta { font-size: 26px; }
+
+  /* partidas viram uma lista corrida, uma por linha */
+  .partidas { gap: 0; border: 1px solid var(--linha); border-radius: 14px; overflow: hidden; background: var(--painel-2); }
+  .partida { padding: 8px 12px; border: 0; border-radius: 0; border-top: 1px solid var(--linha); }
+  .partida:first-child { border-top: 0; }
+  .partida .mini { width: 40px; height: 40px; }
+  .mini-av .av { width: 36px; height: 36px; font-size: 20px; }
+  .partida-massa { font-size: 24px; }
+  .partidas > .vazio { border: 0; }
+  .hall { gap: 8px; }
+  .fama { padding: 10px 12px; gap: 12px; }
+  .fama-massa { font-size: 34px; }
+
+  /* "Mais" sobe de baixo, como nos apps */
+  .dlg-mais { width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 20px 20px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .dlg-mais[open] { animation: sobeFolha .22s ease-out; }
+  @keyframes sobeFolha { from { transform: translateY(40px); opacity: 0; } }
+}
+
+@media (max-width: 560px) {
+  #tabela .nome-melhor, #tabela .patente, #tabela .tag-nick, #tabela .chip-longo { display: none; }
+  #tabela .nome-linha { gap: 6px; flex-wrap: nowrap; min-width: 0; }
+  #tabela .nome-linha > * { flex-shrink: 0; }
+  #tabela .nome-linha .link-nome { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #tabela .chip { margin-left: 0; padding: 2px 6px; }
+  #tabela td.nome-cel { max-width: 0; width: 100%; }
+  #tabela td { padding-block: 11px; }
+}
+
+/* tablet / notebook pequeno: o menu cabe sem empurrar o nome do clã */
+@media (min-width: 761px) { .destaques { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
+.dlg:focus { outline: none; }
+@media (max-width: 1100px) and (min-width: 761px) {
+  .topo-in { gap: 10px; }
+  .menu { gap: 0; }
+  .menu a { padding: 10px 10px; font-size: 13.5px; }
+}
+@media (max-width: 960px) and (min-width: 761px) {
+  .marca-txt { display: none; }
+  .marca { flex-grow: 0; }
+  .menu { flex-grow: 1; justify-content: center; }
+}
+@media (min-width: 761px) {
+  .podio { flex-wrap: nowrap; }
+  .podio .lugar { flex: 1 1 0; }
 }
