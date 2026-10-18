@@ -876,6 +876,34 @@ button, a, summary { touch-action: manipulation; }
 .btn-eu:hover { border-color: var(--laranja); }
 .btn-eu .av { pointer-events: none; }
 
+/* botão "apoie o clã" no topo: leva pro Pix lá embaixo */
+.btn-apoie {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--laranja); background: var(--laranja-fundo); color: var(--laranja-claro);
+  font-weight: 700; font-size: 13px; letter-spacing: .3px; text-decoration: none; white-space: nowrap;
+}
+.btn-apoie svg { color: var(--laranja); animation: bate 2.4s ease-in-out infinite; }
+.btn-apoie:hover { background: var(--laranja); color: var(--tinta-btn); }
+.btn-apoie:hover svg { color: var(--tinta-btn); }
+@keyframes bate { 0%, 60%, 100% { transform: scale(1); } 30% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) { .btn-apoie svg { animation: none; } }
+@media (max-width: 1100px) { .btn-apoie-mais { display: none; } }
+@media (max-width: 420px) {
+  .btn-apoie { height: 32px; padding: 0 10px; gap: 5px; font-size: 12px; }
+  .marca-nome { white-space: nowrap; }
+}
+/* tela bem estreita com o botão "meu perfil" aparecendo: fica só o coração */
+@media (max-width: 380px) {
+  .topo-in { gap: 8px; }
+  .marca { gap: 8px; }
+  .marca img { width: 36px; height: 36px; }
+  .marca-nome { font-size: 24px; }
+  .topo-in:has(.btn-eu:not([hidden])) .btn-apoie > span { display: none; }
+}
+@media (max-width: 340px) {
+  .topo-in:has(.btn-eu:not([hidden])) .marca-nome { font-size: 20px; }
+}
+
 @media (max-width: 900px) {
   .pp-grade { grid-template-columns: minmax(0, 1fr); }
 }
