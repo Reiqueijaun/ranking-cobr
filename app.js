@@ -27,6 +27,8 @@
   let lancamentos = [];       // resultados lançados na mão nos torneios (kills, massa extra...)
   let torneiosOk = true;      // false se as tabelas de torneio ainda não existem no banco
   let torneioAtual = null;    // id do torneio aberto na página própria
+  let visuais = new Map();    // id do elenco -> { visual, tem_codigo } (avatar, estilo do nome, capa, título)
+  let visualOk = true;        // false se a tabela player_visual ainda não existe no banco
   const CARGOS = (Array.isArray(CFG.CARGOS) && CFG.CARGOS.length ? CFG.CARGOS : ['Líder', 'Vice-líder', 'Membro'])
     .map((c) => String(c).trim().slice(0, 24)).filter(Boolean);
   const CARGO_PADRAO = CARGOS.includes('Membro') ? 'Membro' : CARGOS[CARGOS.length - 1];
@@ -365,6 +367,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
     const temps = montarTemporadas();
     const ctx = { pontos: geralPontos, massa: geralMassa, semana: montarRanking('semana', 'pontos'), temps, titulos: contarTitulos(temps) };
+    titulosAgora = ctx.titulos;
     renderDestaques(ctx);
     renderTorneios();
     renderPodio(rank, ctx);
@@ -489,7 +492,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { class: `busca-pos pos p${p}`, text: p ? `#${p}` : '–' }),
         avatarDe(r.nick, ptsPat(r.chave)),
         el('span', { class: 'busca-info' },
-          el('span', { class: 'busca-nome' }, el('span', { class: 'busca-nick', text: r.nick }), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX' }) : null),
+          el('span', { class: 'busca-nome' }, el('span', { class: 'busca-nick' }, nick(r.chave, r.nick)), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX' }) : null),
           el('span', { class: 'busca-sub', text: s ? `${ptsTxt(s.pontos)} · recorde ${fmt(s.melhor.mass)} · ${s.qtd} ${s.qtd === 1 ? 'partida' : 'partidas'}` : 'ainda sem partida' })),
         chipPatente(ptsPat(r.chave), 'busca-pat')))));
   }
@@ -635,7 +638,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function celNome(r, ptsGeral) {
     return el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' },
       avatarDe(r.nick, ptsGeral, 'av-p'),
-      el('button', { type: 'button', class: 'link-nome forte', onclick: () => abrirPerfil(r.chave), 'aria-label': `Ver perfil de ${comTag(r.nick)}` }, r.nick),
+      el('button', { type: 'button', class: 'link-nome forte', onclick: () => abrirPerfil(r.chave), 'aria-label': `Ver perfil de ${comTag(r.nick)}` }, nick(r.chave, r.nick)),
       !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null,
       r.semCadastro && admin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null));
   }
@@ -934,6 +937,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('erroJogador').hidden = true;
     $('btnApagarJog').hidden = qtd > 0;
     $('btnApagarJog').textContent = 'Apagar';
+    $('linhaCodigo').hidden = !(r.id && (visuais.get(r.id) || {}).tem_codigo);
     $('notaJogador').textContent = qtd
       ? `Tem ${qtd} ${qtd === 1 ? 'partida' : 'partidas'}. Se saiu do clã, desmarque "Ainda está no clã": ele some do ranking e o histórico fica guardado.`
       : 'Ainda não tem partida. Se foi cadastro errado, pode apagar.';
@@ -1006,10 +1010,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // no pódio: o escudo da patente (se tiver) ou a bolinha com a cor do lugar
   function avatarPodio(j) {
     const { atual } = patenteDe(geralPts(j));
-    const letra = j.nome.charAt(0).toUpperCase();
-    if (!atual.nivel) return el('div', { class: 'avatar', 'aria-hidden': 'true', text: letra });
+    const sim = simboloDe(j.chave);
+    const letra = sim || j.nome.charAt(0).toUpperCase();
+    if (!atual.nivel) return el('div', { class: `avatar ${sim ? 'av-emo' : ''}`, 'aria-hidden': 'true' }, sim ? el('span', { class: 'av-emo-i', text: sim }) : letra);
     const a = el('div', { class: `avatar avatar-esc ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
-    a.innerHTML = escudoSVG(atual, letra);
+    a.innerHTML = escudoSVG(atual, letra, !!sim);
     return a;
   }
   function renderPodio(rank, ctx) {
@@ -1039,7 +1044,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         avatarPodio(j),
         el('div', { class: 'lugar-id' },
           el('div', { class: 'lugar-pos' }, `${i + 1}º LUGAR`, i === 0 ? el('span', { class: 'lugar-rei', text: ' · REI DO CLÃ' }) : null),
-          btnPerfil(j, 'lugar-nome', [el('span', { class: 'lugar-tag', text: `[${TAG}] ` }), j.nome]),
+          btnPerfil(j, 'lugar-nome', [el('span', { class: 'lugar-tag', text: `[${TAG}] ` }), nick(j.chave, j.nome)]),
           el('div', { class: 'lugar-pat' }, chipPatente(geralPts(j)))),
         el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
@@ -1082,7 +1087,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
       return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), nick(j.chave, j.nome)]), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
@@ -1234,12 +1239,13 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   const ICONE_PATENTE = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/>';
   const ICONE_DIAMANTE = '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M10 3 8 9l4 12 4-12-2-6"/>';
   // quem tem patente ganha o escudo dela no lugar da bolinha (Recruta continua com a bolinha)
-  function avatarDe(nome, pontos, tam = '') {
+  // sim = símbolo que o jogador escolheu no visual (null = a inicial do nick)
+  function avatarDe(nome, pontos, tam = '', sim = simboloDe(chave(nome))) {
     const { atual } = patenteDe(pontos);
-    const letra = nome.charAt(0).toUpperCase();
-    if (!atual.nivel) return el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: letra });
+    const letra = sim || nome.charAt(0).toUpperCase();
+    if (!atual.nivel) return el('span', { class: `av ${tam} ${sim ? 'av-emo' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' }, sim ? el('span', { class: 'av-emo-i', text: sim }) : letra);
     const a = el('span', { class: `av av-esc ${tam} ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
-    a.innerHTML = escudoSVG(atual, letra);
+    a.innerHTML = escudoSVG(atual, letra, !!sim);
     return a;
   }
 
@@ -1274,7 +1280,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   const faisca = (x, y, r) => `M${x} ${y - r}L${x + r * .28} ${y - r * .28}L${x + r} ${y}L${x + r * .28} ${y + r * .28}L${x} ${y + r}L${x - r * .28} ${y + r * .28}L${x - r} ${y}L${x - r * .28} ${y - r * .28}Z`;
   const gema = (x, y, r) => `M${x} ${y - r}L${x + r * .8} ${y}L${x} ${y + r}L${x - r * .8} ${y}Z`;
   let numEsc = 0;
-  function escudoSVG(p, letra = '') {
+  function escudoSVG(p, letra = '', emoji = false) {
     const id = 'es' + (++numEsc);
     const dia = p.diamante;
     const n = ESC_NIVEIS[dia ? ESC_NIVEIS.length - 1 : Math.min(p.nivel, ESC_NIVEIS.length - 1)];
@@ -1338,7 +1344,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     }).join('');
     // lapidação do cristal: linhas do centro pras pontas do escudo
     const facetas = dia ? `<path d="M60 ${t + 8}L60 ${t + h - 10}M${l + 8} ${t + h * .14}L60 ${t + h * .5}L${120 - l - 8} ${t + h * .14}M${l + 8} ${t + h * .5}L60 ${t + h * .5}L${120 - l - 8} ${t + h * .5}" stroke="#BFFBFF" stroke-opacity=".22" stroke-width="1.2" fill="none"/>` : '';
-    const meio = letra
+    const meio = emoji
+      ? `<text class="esc-emo" x="60" y="${(cy + 2).toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${(w * .52).toFixed(1)}">${letra}</text>`
+      : letra
       ? `<text x="60" y="${cy.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${fs.toFixed(1)}" fill="${claro}" stroke="${escuro}" stroke-width="3" paint-order="stroke">${letra.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</text>`
       : `<polygon points="${estrela(60, cy, w * .2)}" fill="${claro}" stroke="${escuro}" stroke-width="2" stroke-linejoin="round"/>`;
     return `<svg class="esc" viewBox="0 0 120 120" aria-hidden="true">
@@ -1389,7 +1397,325 @@ ${frente}
     return w;
   }
   function btnPerfil(j, classe, conteudo) {
-    return el('button', { type: 'button', class: classe, onclick: () => abrirPerfil(j.chave), 'aria-label': `Ver perfil de ${comTag(j.nome)}` }, conteudo || comTag(j.nome));
+    return el('button', { type: 'button', class: classe, onclick: () => abrirPerfil(j.chave), 'aria-label': `Ver perfil de ${comTag(j.nome)}` }, conteudo || [`[${TAG}] `, nick(j.chave, j.nome)]);
+  }
+
+  // ---------- visual do jogador: avatar, estilo do nome, capa e título ----------
+  // O nick nunca muda, só o jeito que ele aparece. No banco vai só o id curto de cada
+  // item; o desenho fica aqui. req = exclusivo de quem já chegou lá (lenda, diamante, campeao).
+  const VIS_SIMBOLOS = [
+    ['letra', '', 'Inicial'],
+    ['cobra', '🐍', 'Cobra'], ['dragao', '🐉', 'Dragão'], ['escorpiao', '🦂', 'Escorpião'], ['lobo', '🐺', 'Lobo'],
+    ['leao', '🦁', 'Leão'], ['tigre', '🐯', 'Tigre'], ['aguia', '🦅', 'Águia'], ['tubarao', '🦈', 'Tubarão'],
+    ['polvo', '🐙', 'Polvo'], ['aranha', '🕷️', 'Aranha'], ['morcego', '🦇', 'Morcego'], ['caveira', '💀', 'Caveira'],
+    ['pirata', '☠️', 'Pirata'], ['demonio', '👹', 'Demônio'], ['tengu', '👺', 'Tengu'], ['diabinho', '😈', 'Diabinho'],
+    ['fantasma', '👻', 'Fantasma'], ['alien', '👽', 'Alien'], ['robo', '🤖', 'Robô'], ['dino', '🦖', 'Dinossauro'],
+    ['palhaco', '🤡', 'Palhaço'], ['brabo', '😎', 'Brabo'], ['fogo', '🔥', 'Fogo'], ['raio', '⚡', 'Raio'],
+    ['explosao', '💥', 'Explosão'], ['gelo', '❄️', 'Gelo'], ['lua', '🌙', 'Lua'], ['estrela', '⭐', 'Estrela'],
+    ['cometa', '☄️', 'Cometa'], ['tornado', '🌪️', 'Tornado'], ['alvo', '🎯', 'Alvo'], ['espada', '🗡️', 'Espada'],
+    ['arco', '🏹', 'Arco'], ['escudo', '🛡️', 'Escudo'], ['bomba', '💣', 'Bomba'], ['controle', '🎮', 'Controle'],
+    ['foguete', '🚀', 'Foguete'], ['trevo', '🍀', 'Trevo'],
+    ['coroa', '👑', 'Coroa', 'lenda'], ['trofeu', '🏆', 'Troféu', 'campeao'], ['diamante', '💎', 'Diamante', 'diamante'],
+  ].map(([id, emo, nome, req]) => ({ id, emo, nome, req }));
+  const VIS_CORES = [
+    ['padrao', 'Normal'], ['fogo', 'Fogo'], ['gelo', 'Gelo'], ['ouro', 'Ouro'], ['prata', 'Cromo'], ['neon', 'Neon'],
+    ['toxico', 'Tóxico'], ['eletrico', 'Elétrico'], ['galaxia', 'Galáxia'], ['sangue', 'Sangue'], ['oceano', 'Oceano'],
+    ['pordosol', 'Pôr do sol'], ['arcoiris', 'Arco-íris'], ['glitch', 'Glitch'], ['fantasma', 'Fantasma'], ['retro', 'Retrô'],
+    ['trevas', 'Trevas'], ['lenda', 'Lendário', 'lenda'], ['campeao', 'Campeão', 'campeao'], ['diamante', 'Diamante', 'diamante'],
+  ].map(([id, nome, req]) => ({ id, nome, req }));
+  // gf = nome da família no Google Fonts (só baixa a fonte que alguém está usando)
+  const VIS_FONTES = [
+    ['padrao', 'Normal', ''], ['militar', 'Militar', 'Black+Ops+One'], ['bloco', 'Bloco', 'Bungee'],
+    ['futuro', 'Futuro', 'Orbitron:wght@800'], ['esporte', 'Esporte', 'Russo+One'], ['arcade', 'Arcade', 'Audiowide'],
+    ['pixel', 'Pixel', 'Press+Start+2P'], ['terror', 'Terror', 'Creepster'], ['grafite', 'Grafite', 'Permanent+Marker'],
+    ['imperial', 'Imperial', 'Cinzel:wght@800'], ['gibi', 'Gibi', 'Bangers'],
+  ].map(([id, nome, gf]) => ({ id, nome, gf }));
+  const VIS_ENFEITES = [
+    ['nenhum', '', ''], ['ffx', '꧁', '꧂'], ['asas', '༺', '༻'], ['colchete', '『', '』'], ['chaves', '〖', '〗'],
+    ['estrelas', '★', '★'], ['brilho', '✧', '✧'], ['losango', '◆', '◆'], ['nai', '乂', '乂'], ['xx', '×͜×', ''],
+    ['coroa', '♛', ''], ['espadas', '⚔', ''], ['caveiras', '☠', '☠'], ['onda', '', '彡'], ['raios', '⚡', '⚡'],
+    ['fogos', '🔥', '🔥'], ['cobras', '🐍', '🐍'], ['mira', '🎯', ''],
+  ].map(([id, esq, dir]) => ({ id, esq, dir, nome: id === 'nenhum' ? 'Nenhum' : '' }));
+  const VIS_CAPAS = [
+    ['padrao', 'Patente'], ['fogo', 'Fogo'], ['gelo', 'Gelo'], ['noite', 'Noite'], ['selva', 'Selva'], ['escamas', 'Escamas'],
+    ['neon', 'Neon'], ['sangue', 'Sangue'], ['ouro', 'Ouro'], ['galaxia', 'Galáxia'], ['camuflado', 'Camuflado'], ['aurora', 'Aurora'],
+    ['lenda', 'Lendário', 'lenda'], ['campeao', 'Campeão', 'campeao'], ['diamante', 'Diamante', 'diamante'],
+  ].map(([id, nome, req]) => ({ id, nome, req }));
+  const VIS_TITULOS = [
+    ['nenhum', ''], ['brabo', 'O Brabo'], ['cacador', 'Caçador de Massa'], ['predador', 'Predador'], ['tryhard', 'Tryhard'],
+    ['humilde', 'Na Humildade'], ['madrugada', 'Rei da Madrugada'], ['semfreio', 'Sem Freio'], ['mododeus', 'Modo Deus'],
+    ['cobracriada', 'Cobra Criada'], ['venenoso', 'Venenoso'], ['imparavel', 'Imparável'], ['silencioso', 'O Silencioso'],
+    ['caos', 'Rei do Caos'], ['devorador', 'Devorador'], ['encantador', 'Encantador de Cobras'], ['fominha', 'Fominha'],
+    ['imortal', 'Imortal'], ['focototal', 'Foco Total'], ['bot', 'Bot Assumido'],
+    ['lendaviva', 'Lenda Viva', 'lenda'], ['campeao', 'Campeão do Clã', 'campeao'], ['diamantebruto', 'Diamante Bruto', 'diamante'],
+  ].map(([id, txt, req]) => ({ id, txt, req, nome: txt || 'Nenhum' }));
+  const VIS = { sim: VIS_SIMBOLOS, cor: VIS_CORES, fonte: VIS_FONTES, enf: VIS_ENFEITES, capa: VIS_CAPAS, tit: VIS_TITULOS };
+
+  // exclusivos: vale a melhor patente que o jogador já teve em qualquer temporada (não some na virada)
+  let titulosAgora = new Map(); // títulos de temporada, atualizado a cada render()
+  const nivelLenda = () => { const i = PATENTES.findIndex((p) => p.chave === busca('Lendário')); return i > 0 ? i : PATENTES.length - 2; };
+  const nivelDia = () => { const i = PATENTES.findIndex((p) => p.diamante); return i > 0 ? i : PATENTES.length - 1; };
+  function melhorNivel(k) {
+    let m = 0;
+    for (const mapa of patentesPorTemporada().values()) { const x = mapa.get(k); if (x && x.fim > m) m = x.fim; }
+    return m;
+  }
+  const VIS_REQ = {
+    lenda: { ok: (k) => melhorNivel(k) >= nivelLenda(), txt: () => PATENTES[nivelLenda()].nome },
+    diamante: { ok: (k) => melhorNivel(k) >= nivelDia(), txt: () => PATENTES[nivelDia()].nome },
+    campeao: { ok: (k) => (titulosAgora.get(k) || 0) > 0 || vitoriasTorneio(k) > 0, txt: () => 'Campeão' },
+  };
+  const liberado = (k, it) => !it.req || VIS_REQ[it.req].ok(k);
+
+  // bruto = rascunho do editor; livre = mostra mesmo se for exclusivo (amostra no editor)
+  function visualDe(k, bruto = null, livre = false) {
+    const r = k && elenco.get(k);
+    const v = bruto || (r && r.id && visuais.has(r.id) ? visuais.get(r.id).visual : null) || {};
+    const out = {};
+    for (const [campo, lista] of Object.entries(VIS)) {
+      const it = lista.find((x) => x.id === v[campo]);
+      out[campo] = it && (livre || liberado(k, it)) ? it : lista[0];
+    }
+    return out;
+  }
+  const simboloDe = (k) => visualDe(k).sim.emo || null;
+  const temEmoji = (s) => /\p{Extended_Pictographic}/u.test(s);
+  // o nick com o estilo que o jogador escolheu (cor, fonte e enfeite)
+  function nick(k, nome, bruto = null, livre = false) {
+    const v = visualDe(k, bruto, livre);
+    const enf = (s) => (s ? el('span', { class: `nk-enf ${temEmoji(s) ? 'nk-emo' : ''}`, 'aria-hidden': 'true', text: s }) : null);
+    return el('span', { class: `nk nk-${v.cor.id} nf-${v.fonte.id}` }, enf(v.enf.esq), el('span', { class: 'nk-txt', text: nome }), enf(v.enf.dir));
+  }
+
+  // fontes do Google só de quem usa (todas = editor aberto, pra mostrar as amostras)
+  let fontesPedidas = '';
+  function carregarFontes(todas = false) {
+    const usadas = new Set(fontesPedidas.split('|').filter(Boolean));
+    if (todas) VIS_FONTES.forEach((f) => f.gf && usadas.add(f.gf));
+    else for (const x of visuais.values()) { const f = VIS_FONTES.find((y) => y.id === (x.visual || {}).fonte); if (f && f.gf) usadas.add(f.gf); }
+    const lista = [...usadas].sort();
+    if (lista.join('|') === fontesPedidas) return;
+    fontesPedidas = lista.join('|');
+    let link = $('fontesVisual');
+    if (!link) { link = el('link', { id: 'fontesVisual', rel: 'stylesheet' }); document.head.append(link); }
+    link.href = `https://fonts.googleapis.com/css2?${lista.map((g) => 'family=' + g).join('&')}&display=swap`;
+  }
+
+  // ---------- editor do visual (protegido pelo código de 4 números do jogador) ----------
+  const ICONE_PINCEL = '<path d="M14 4l6 6-8.5 8.5a3 3 0 0 1-2.1.9H7v-2.4a3 3 0 0 1 .9-2.1z"/><path d="M12 6l6 6M4 20l3-.6"/>';
+  const ICONE_CADEADO = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+  const VIS_ABAS = [['sim', 'Avatar'], ['cor', 'Cor'], ['fonte', 'Fonte'], ['enf', 'Enfeite'], ['capa', 'Capa'], ['tit', 'Título']];
+  let visEd = null; // { k, r, aba, rascunho, codigo, modo }
+
+  // o código fica salvo no aparelho de quem criou/acertou, pra não pedir toda vez
+  function codigosSalvos() { try { return JSON.parse(localStorage.getItem('ranking_codigos') || '{}') || {}; } catch (e) { return {}; } }
+  function guardarCodigo(id, c) {
+    try {
+      const m = codigosSalvos();
+      if (c) m[id] = c; else delete m[id];
+      localStorage.setItem('ranking_codigos', JSON.stringify(m));
+    } catch (e) {}
+  }
+
+  // no modo demonstração os códigos ficam só na memória
+  const demoCodigos = new Map();
+  async function rpcVisual(nome, args) {
+    if (DEMO) {
+      const id = args.p_player, cod = demoCodigos.get(id);
+      if (nome === 'visual_entrar') {
+        if (!/^\d{4}$/.test(args.p_codigo || '')) return 'invalido';
+        if (!cod) {
+          demoCodigos.set(id, args.p_codigo);
+          visuais.set(id, { visual: (visuais.get(id) || {}).visual || {}, tem_codigo: true });
+          return 'criado';
+        }
+        return cod === args.p_codigo ? 'ok' : 'errado';
+      }
+      if (!cod) return 'sem_codigo';
+      if (cod !== args.p_codigo) return 'errado';
+      if (nome === 'visual_salvar') visuais.set(id, { visual: args.p_visual, tem_codigo: true });
+      if (nome === 'visual_trocar_codigo') demoCodigos.set(id, args.p_novo);
+      return 'ok';
+    }
+    const r = await sb.rpc(nome, args);
+    if (r.error) throw new Error(r.error.message);
+    return r.data;
+  }
+
+  function abrirVisual(k) {
+    const r = elenco.get(k);
+    if (!r || !r.id || !visualOk) return;
+    const linha = visuais.get(r.id);
+    visEd = { k, r, aba: 'sim', rascunho: { ...((linha && linha.visual) || {}) }, codigo: null };
+    carregarFontes(true);
+    const salvo = codigosSalvos()[r.id];
+    if (linha && linha.tem_codigo && salvo) { visEd.codigo = salvo; mostrarEditorVis(); }
+    else {
+      if (salvo) guardarCodigo(r.id, null); // o admin zerou: o código velho não vale mais
+      passoCodigo(linha && linha.tem_codigo ? 'entrar' : 'novo');
+    }
+    $('dlgVisual').showModal();
+  }
+
+  const MODOS_COD = {
+    novo: { tit: 'CRIE SEU CÓDIGO', btn: 'Criar e personalizar', dois: true, nota: (n) => `Só quem souber o código muda o visual de ${n}. Esqueceu? O admin zera.` },
+    entrar: { tit: 'DIGITE SEU CÓDIGO', btn: 'Entrar', dois: false, nota: (n) => `O código que você criou pra ${n}. Esqueceu? O admin zera.` },
+    trocar: { tit: 'NOVO CÓDIGO', btn: 'Trocar código', dois: true, nota: (n) => `Novo código de 4 números pra ${n}.` },
+  };
+  function passoCodigo(modo, erro = '') {
+    const m = MODOS_COD[modo];
+    visEd.modo = modo;
+    $('visEditor').hidden = true;
+    $('formCodigo').hidden = false;
+    $('visCodTit').textContent = m.tit;
+    $('visCodNota').textContent = m.nota(comTag(visEd.r.nick));
+    $('btnVisCodOk').textContent = m.btn;
+    $('visCod2Box').hidden = !m.dois;
+    $('btnVisCodVoltar').textContent = modo === 'trocar' ? 'Voltar' : 'Cancelar';
+    $('fVisCodigo').value = '';
+    $('fVisCodigo2').value = '';
+    trocar($('visCodAv'), avatarDe(visEd.r.nick, ptsPat(visEd.k), 'av-g'), el('span', { class: 'vis-cod-nome' }, nick(visEd.k, visEd.r.nick)));
+    erroVisCod(erro);
+    setTimeout(() => $('fVisCodigo').focus(), 30);
+  }
+  function erroVisCod(msg) { $('erroVisCod').textContent = msg || ''; $('erroVisCod').hidden = !msg; }
+
+  async function enviarCodigo(ev) {
+    ev.preventDefault();
+    if (!visEd) return;
+    const { modo, r } = visEd;
+    const c1 = $('fVisCodigo').value.trim(), c2 = $('fVisCodigo2').value.trim();
+    if (!/^\d{4}$/.test(c1)) return erroVisCod('O código tem 4 números.');
+    if (MODOS_COD[modo].dois && c1 !== c2) return erroVisCod('Os dois códigos não batem.');
+    const btn = $('btnVisCodOk');
+    btn.disabled = true;
+    try {
+      const res = modo === 'trocar'
+        ? await rpcVisual('visual_trocar_codigo', { p_player: r.id, p_codigo: visEd.codigo, p_novo: c1 })
+        : await rpcVisual('visual_entrar', { p_player: r.id, p_codigo: c1 });
+      if (res === 'travado') return erroVisCod('Muitas tentativas erradas. Espera 15 minutos.');
+      if (res === 'invalido') return erroVisCod('O código tem 4 números.');
+      if (res === 'errado' && modo !== 'trocar') return erroVisCod('Código errado.');
+      if (res === 'errado' || res === 'sem_codigo') { // trocou o código em outro aparelho, ou o admin zerou
+        guardarCodigo(r.id, null);
+        visEd.codigo = null;
+        return passoCodigo(res === 'sem_codigo' ? 'novo' : 'entrar', res === 'sem_codigo' ? 'O código foi zerado. Crie outro.' : 'O código mudou. Digite o atual.');
+      }
+      if (res !== 'ok' && res !== 'criado') throw new Error(res);
+      visEd.codigo = c1;
+      guardarCodigo(r.id, c1);
+      if (res === 'criado') {
+        const l = visuais.get(r.id);
+        visuais.set(r.id, { visual: l ? l.visual : {}, tem_codigo: true });
+        toast('Código criado. Agora esse visual é só seu!');
+      }
+      if (modo === 'trocar') toast('Código trocado.');
+      if (lerEu() !== visEd.k) { guardarEu(visEd.k); render(); } // quem tem o código é o dono do perfil
+      mostrarEditorVis();
+    } catch (e) {
+      console.error(e);
+      erroVisCod('Não deu agora. Tenta de novo. (' + (e.message || 'erro') + ')');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function mostrarEditorVis() {
+    $('formCodigo').hidden = true;
+    $('visEditor').hidden = false;
+    renderVis();
+  }
+
+  function amostraVis(aba, it) {
+    const { k, r, rascunho } = visEd;
+    const pts = ptsPat(k);
+    if (aba === 'sim') return avatarDe(r.nick, pts, 'av-m', it.emo || null);
+    if (aba === 'capa') return el('span', { class: `vis-capa capa-${it.id}`, style: `--pc:${patenteDe(pts).atual.cor}`, 'aria-hidden': 'true' });
+    if (aba === 'tit') return el('span', { class: 'vis-tit-amostra', text: it.txt || '—' });
+    return el('span', { class: 'vis-amostra-nome' }, nick(k, r.nick, { ...rascunho, [aba]: it.id }, true));
+  }
+
+  function renderVis(foco = false) {
+    const { k, r, rascunho, aba } = visEd;
+    const v = visualDe(k, rascunho);
+    const pts = ptsPat(k);
+    const pat = patenteDe(pts).atual;
+    trocar($('visPrevia'), el('div', { class: `pp-topo vis-prev-topo ${v.capa.id !== 'padrao' ? 'capa-' + v.capa.id : ''}`, style: `--pc:${pat.cor}` },
+      el('div', { class: 'pp-id' },
+        avatarDe(r.nick, pts, 'av-g', v.sim.emo || null),
+        el('div', { class: 'pp-nome-box' },
+          el('span', { class: 'pp-tag', text: `[${TAG}]` }),
+          el('div', { class: 'pp-nome vis-prev-nome' }, nick(k, r.nick, rascunho)),
+          v.tit.txt ? el('span', { class: 'pp-titulo', text: v.tit.txt }) : null,
+          el('div', { class: 'perfil-chips' }, chipPatente(pts))))));
+    trocar($('visAbas'), VIS_ABAS.map(([id, rot]) => el('button', { type: 'button', role: 'tab', class: 'aba', 'aria-selected': String(id === aba), onclick: () => { visEd.aba = id; renderVis(); $('visOpcoes').scrollTop = 0; } }, rot)));
+    const lista = VIS[aba];
+    const atual = v[aba].id;
+    const box = $('visOpcoes');
+    box.className = `vis-opcoes op-${aba}`;
+    trocar(box, lista.map((it) => {
+      const travado = !liberado(k, it);
+      const req = travado ? VIS_REQ[it.req].txt() : '';
+      return el('button', { type: 'button', role: 'radio', class: `vis-op ${travado ? 'travado' : ''}`, 'data-id': it.id, 'aria-checked': String(it.id === atual), 'aria-disabled': travado ? 'true' : null,
+        'aria-label': travado ? `${it.nome || it.id} (exclusivo: ${req})` : it.nome || it.id, title: travado ? `Exclusivo de quem já chegou em ${req}` : null,
+        onclick: () => {
+          if (travado) { toast(it.req === 'campeao' ? 'Exclusivo de campeão de temporada ou de torneio.' : `Exclusivo de quem já chegou em ${req}.`); return; }
+          if (it.id === lista[0].id) delete rascunho[aba]; else rascunho[aba] = it.id;
+          renderVis(true);
+        } },
+        amostraVis(aba, it),
+        aba === 'sim' || !it.nome ? null : el('span', { class: 'vis-op-nome', text: it.nome }),
+        travado ? el('span', { class: 'vis-cadeado', 'aria-hidden': 'true' }, svg(ICONE_CADEADO, 11), req) : null);
+    }));
+    if (foco) { const b = box.querySelector('[aria-checked="true"]'); if (b) b.focus({ preventScroll: true }); }
+  }
+
+  async function salvarVis() {
+    if (!visEd) return;
+    const { r, rascunho } = visEd;
+    const visual = {};
+    for (const [campo, lista] of Object.entries(VIS)) if (rascunho[campo] && rascunho[campo] !== lista[0].id) visual[campo] = rascunho[campo];
+    const btn = $('btnVisSalvar');
+    btn.disabled = true;
+    try {
+      const res = await rpcVisual('visual_salvar', { p_player: r.id, p_codigo: visEd.codigo, p_visual: visual });
+      if (res === 'travado') { toast('Muitas tentativas erradas. Espera 15 minutos.', true); return; }
+      if (res === 'errado' || res === 'sem_codigo') {
+        guardarCodigo(r.id, null);
+        visEd.codigo = null;
+        passoCodigo(res === 'sem_codigo' ? 'novo' : 'entrar', res === 'sem_codigo' ? 'O código foi zerado. Crie outro pra salvar.' : 'O código mudou. Digite o atual pra salvar.');
+        return;
+      }
+      if (res !== 'ok') throw new Error(res);
+      visuais.set(r.id, { visual, tem_codigo: true });
+      carregarFontes();
+      $('dlgVisual').close();
+      render();
+      toast('Visual salvo! Todo mundo já vê.');
+    } catch (e) {
+      console.error(e);
+      toast('Não deu pra salvar agora. (' + (e.message || 'erro') + ')', true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // admin: o jogador esqueceu o código (ou alguém pegou o perfil dele). O visual continua.
+  async function zerarCodigo() {
+    const r = editJog;
+    if (!r || !r.id) return;
+    try {
+      if (DEMO) demoCodigos.delete(r.id);
+      else await rpcAdmin('admin_zerar_codigo', { p_player: r.id });
+      const l = visuais.get(r.id);
+      if (l) visuais.set(r.id, { ...l, tem_codigo: false });
+      $('linhaCodigo').hidden = true;
+      toast(`Código de ${comTag(r.nick)} zerado. Ele cria outro no perfil.`);
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgJogador').close(); return; }
+      erroJogador('Não deu pra zerar agora. (' + (e.message || 'erro') + ')');
+    }
   }
 
   // ---------- medalhas ----------
@@ -1476,9 +1802,9 @@ ${frente}
       el('span', { class: 'dq-rot' }, svg('<path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 17.5L21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>', 16), 'DISPUTA PELO TOPO'),
       p2
         ? el('div', { class: 'versus' },
-            el('div', { class: 'vs-lado' }, btnPerfil(p1, 'dq-nome', p1.nome), el('span', { class: 'vs-pts laranja', text: fmt(p1.pontos) })),
+            el('div', { class: 'vs-lado' }, btnPerfil(p1, 'dq-nome', nick(p1.chave, p1.nome)), el('span', { class: 'vs-pts laranja', text: fmt(p1.pontos) })),
             el('span', { class: 'vs-x', text: '×' }),
-            el('div', { class: 'vs-lado dir' }, btnPerfil(p2, 'dq-nome', p2.nome), el('span', { class: 'vs-pts azul', text: fmt(p2.pontos) })))
+            el('div', { class: 'vs-lado dir' }, btnPerfil(p2, 'dq-nome', nick(p2.chave, p2.nome)), el('span', { class: 'vs-pts azul', text: fmt(p2.pontos) })))
         : el('div', { class: 'dq-corpo' }, el('div', null, btnPerfil(p1, 'dq-nome'), el('div', { class: 'dq-num laranja', text: ptsTxt(p1.pontos) }))),
       p2 ? el('div', { class: 'vs-barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(p1.pontos / tot * 100)}%` })) : null,
       el('div', { class: 'dq-pe', text: p2
@@ -2000,6 +2326,7 @@ ${frente}
           render(); // a tabela destaca a linha de quem é "eu"
           toast(lerEu() === k ? 'Pronto! Seu perfil fica no botão do topo.' : 'Perfil desmarcado.');
         } }, svg(ICONE_EU, 18), el('span', { class: 'btn-txt', text: lerEu() === k ? 'Este sou eu' : 'Sou eu' })),
+        r && r.id && visualOk ? el('button', { type: 'button', class: 'btn btn-sec pp-visual', onclick: () => abrirVisual(k) }, svg(ICONE_PINCEL, 18), el('span', { class: 'btn-txt', text: 'Personalizar' })) : null,
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
 
     if (!nome) {
@@ -2017,14 +2344,16 @@ ${frente}
     // cabeçalho
     const posGeral = posicao(ctx.pontos, k);
     const dia = pat.atual.diamante;
-    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''}`, style: `--pc:${pat.atual.cor}` },
+    const vis = visualDe(k);
+    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''} ${vis.capa.id !== 'padrao' ? 'capa-' + vis.capa.id : ''}`, style: `--pc:${pat.atual.cor}` },
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
         avatarDe(nome, ptsP, 'av-xg'),
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
-          el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
+          el('h1', { id: 'perfilNome', class: 'pp-nome' }, nick(k, nome)),
+          vis.tit.txt ? el('span', { class: 'pp-titulo', text: vis.tit.txt }) : null,
           el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
@@ -3849,11 +4178,12 @@ ${frente}
 
   async function carregar() {
     if (DEMO) return;
-    const [r, rj, rt, rl] = await Promise.all([
+    const [r, rj, rt, rl, rv] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
+      lerTudo(() => sb.from('player_visual').select('player_id, visual, tem_codigo').order('player_id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -3867,6 +4197,11 @@ ${frente}
     if (!torneiosOk) console.warn('torneios:', (rt.error || rl.error).message);
     torneios = (rt.data || []).map((t) => ({ ...t, participantes: t.participantes || [], premios: t.premios || [] }));
     lancamentos = rl.data || [];
+    // visual dos jogadores: sem a tabela, todo mundo fica com o visual padrão
+    visualOk = !rv.error;
+    if (rv.error) console.warn('visual:', rv.error.message);
+    visuais = new Map((rv.data || []).map((x) => [x.player_id, { visual: x.visual || {}, tem_codigo: !!x.tem_codigo }]));
+    carregarFontes();
   }
 
   function dadosDemo() {
@@ -3945,6 +4280,11 @@ ${frente}
         .on('postgres_changes', { event: '*', schema: 'public', table: 'torneio_lancamentos' }, recarregar)
         .subscribe();
     }
+    if (visualOk) {
+      sb.channel('visual-ao-vivo')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'player_visual' }, recarregar)
+        .subscribe();
+    }
     // reserva: atualiza a cada minuto mesmo sem tempo real
     setInterval(() => { if (!document.hidden) carregar().then(render).catch(() => {}); }, 60000);
   }
@@ -3999,6 +4339,15 @@ ${frente}
     $('formJogador').addEventListener('submit', salvarJogador);
     $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
     $('btnApagarJog').addEventListener('click', apagarJogador);
+    $('btnZerarCodigo').addEventListener('click', zerarCodigo);
+    // visual do jogador
+    $('formCodigo').addEventListener('submit', enviarCodigo);
+    $('btnVisCodVoltar').addEventListener('click', () => { if (visEd && visEd.modo === 'trocar') mostrarEditorVis(); else $('dlgVisual').close(); });
+    $('btnFecharVisual').addEventListener('click', () => $('dlgVisual').close());
+    $('btnVisCancelar').addEventListener('click', () => $('dlgVisual').close());
+    $('btnVisSalvar').addEventListener('click', salvarVis);
+    $('btnVisTrocar').addEventListener('click', () => passoCodigo('trocar'));
+    ['fVisCodigo', 'fVisCodigo2'].forEach((id) => $(id).addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); }));
 
     // torneios
     formLanc = $('formLanc');
@@ -4142,6 +4491,13 @@ ${frente}
       partidas = dadosDemo();
       jogadores = elencoDemo();
       indexarElenco();
+      [['dj0', { sim: 'cobra', cor: 'fogo', fonte: 'militar', enf: 'ffx', capa: 'fogo', tit: 'brabo' }],
+        ['dj1', { sim: 'diamante', cor: 'diamante', enf: 'brilho', capa: 'diamante', tit: 'diamantebruto' }],
+        ['dj2', { sim: 'lobo', cor: 'gelo', fonte: 'futuro', capa: 'noite', tit: 'silencioso' }],
+        ['dj3', { sim: 'dragao', cor: 'neon', enf: 'nai', capa: 'neon' }],
+        ['dj5', { sim: 'caveira', cor: 'toxico', fonte: 'terror', enf: 'caveiras', capa: 'escamas', tit: 'venenoso' }]]
+        .forEach(([id, visual]) => { visuais.set(id, { visual, tem_codigo: true }); demoCodigos.set(id, '1234'); });
+      carregarFontes();
       const tn = torneiosDemo();
       torneios = tn.lista;
       lancamentos = tn.lanc;

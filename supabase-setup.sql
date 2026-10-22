@@ -500,6 +500,143 @@ revoke all on function public.admin_salvar_config(text, jsonb) from anon;
 grant execute on function public.admin_salvar_config(text, jsonb) to authenticated;
 
 
+-- 5c) Visual do jogador: cada um escolhe avatar, estilo do nome, capa e título.
+--     O nick não muda, só o jeito que ele aparece. Quem protege o perfil é um
+--     código de 4 dígitos que o próprio jogador cria na primeira vez (guardado
+--     só como hash). Errou 5 vezes: trava 15 minutos. Esqueceu: o admin zera.
+create table if not exists public.player_visual (
+  player_id   uuid primary key references public.players (id) on delete cascade,
+  visual      jsonb not null default '{}',
+  tem_codigo  boolean not null default false,
+  updated_at  timestamptz not null default now()
+);
+alter table public.player_visual enable row level security;
+grant select on public.player_visual to anon, authenticated;
+revoke insert, update, delete on public.player_visual from anon, authenticated;
+drop policy if exists "todos leem visual" on public.player_visual;
+create policy "todos leem visual" on public.player_visual
+  for select to anon, authenticated using (true);
+
+create table if not exists public.player_codigo (
+  player_id   uuid primary key references public.players (id) on delete cascade,
+  hash        text not null,
+  erros       integer not null default 0,
+  trava_ate   timestamptz
+);
+alter table public.player_codigo enable row level security;
+revoke all on public.player_codigo from anon, authenticated;
+-- (sem políticas = ninguém de fora lê o código)
+
+-- confere o código: 'ok', 'errado', 'travado' ou 'sem_codigo'. Não dá raise no
+-- código errado pra não desfazer a contagem de erros.
+create or replace function public.visual_conferir(p_player uuid, p_codigo text)
+returns text
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  c player_codigo;
+begin
+  select * into c from player_codigo where player_id = p_player for update;
+  if not found then return 'sem_codigo'; end if;
+  if c.trava_ate is not null and c.trava_ate > now() then return 'travado'; end if;
+  if p_codigo is not null and p_codigo ~ '^[0-9]{4}$' and crypt(p_codigo, c.hash) = c.hash then
+    update player_codigo set erros = 0, trava_ate = null where player_id = p_player;
+    return 'ok';
+  end if;
+  if c.erros + 1 >= 5 then
+    update player_codigo set erros = 0, trava_ate = now() + interval '15 minutes' where player_id = p_player;
+    return 'travado';
+  end if;
+  update player_codigo set erros = c.erros + 1 where player_id = p_player;
+  return 'errado';
+end;
+$$;
+revoke all on function public.visual_conferir(uuid, text) from public;
+revoke all on function public.visual_conferir(uuid, text) from anon, authenticated;
+
+-- entrar no editor: cria o código se o perfil ainda não tem ('criado') ou confere
+create or replace function public.visual_entrar(p_player uuid, p_codigo text)
+returns text
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if not exists (select 1 from players where id = p_player) then return 'sem_jogador'; end if;
+  if p_codigo is null or p_codigo !~ '^[0-9]{4}$' then return 'invalido'; end if;
+  insert into player_codigo (player_id, hash) values (p_player, crypt(p_codigo, gen_salt('bf', 8)))
+  on conflict (player_id) do nothing;
+  if found then
+    insert into player_visual (player_id, tem_codigo) values (p_player, true)
+    on conflict (player_id) do update set tem_codigo = true, updated_at = now();
+    return 'criado';
+  end if;
+  return visual_conferir(p_player, p_codigo);
+end;
+$$;
+
+-- salvar o visual (só com o código certo). Só aceita ids curtos: o que cada id
+-- desenha fica no site.
+create or replace function public.visual_salvar(p_player uuid, p_codigo text, p_visual jsonb)
+returns text
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  st text;
+  k text;
+  v jsonb;
+begin
+  if p_visual is null or jsonb_typeof(p_visual) <> 'object' then raise exception 'visual inválido'; end if;
+  for k, v in select * from jsonb_each(p_visual) loop
+    if k not in ('sim', 'cor', 'fonte', 'enf', 'capa', 'tit')
+       or jsonb_typeof(v) <> 'string' or (v #>> '{}') !~ '^[a-z0-9-]{1,24}$' then
+      raise exception 'visual inválido';
+    end if;
+  end loop;
+  st := visual_conferir(p_player, p_codigo);
+  if st <> 'ok' then return st; end if;
+  insert into player_visual (player_id, visual, tem_codigo, updated_at) values (p_player, p_visual, true, now())
+  on conflict (player_id) do update set visual = excluded.visual, tem_codigo = true, updated_at = now();
+  return 'ok';
+end;
+$$;
+
+create or replace function public.visual_trocar_codigo(p_player uuid, p_codigo text, p_novo text)
+returns text
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  st text;
+begin
+  if p_novo is null or p_novo !~ '^[0-9]{4}$' then return 'invalido'; end if;
+  st := visual_conferir(p_player, p_codigo);
+  if st <> 'ok' then return st; end if;
+  update player_codigo set hash = crypt(p_novo, gen_salt('bf', 8)), erros = 0, trava_ate = null where player_id = p_player;
+  return 'ok';
+end;
+$$;
+
+-- admin: o jogador esqueceu o código (ou alguém pegou o perfil dele). O visual fica.
+create or replace function public.admin_zerar_codigo(p_player uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('zerar código do visual', jsonb_build_object('player_id', p_player));
+  delete from player_codigo where player_id = p_player;
+  update player_visual set tem_codigo = false, updated_at = now() where player_id = p_player;
+end;
+$$;
+
+revoke all on function public.visual_entrar(uuid, text) from public;
+revoke all on function public.visual_salvar(uuid, text, jsonb) from public;
+revoke all on function public.visual_trocar_codigo(uuid, text, text) from public;
+grant execute on function public.visual_entrar(uuid, text) to anon, authenticated;
+grant execute on function public.visual_salvar(uuid, text, jsonb) to anon, authenticated;
+grant execute on function public.visual_trocar_codigo(uuid, text, text) to anon, authenticated;
+revoke all on function public.admin_zerar_codigo(uuid) from public;
+revoke all on function public.admin_zerar_codigo(uuid) from anon;
+grant execute on function public.admin_zerar_codigo(uuid) to authenticated;
+
+
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin
@@ -532,6 +669,12 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'config_site'
   ) then
     alter publication supabase_realtime add table public.config_site;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'player_visual'
+  ) then
+    alter publication supabase_realtime add table public.player_visual;
   end if;
 end;
 $$;

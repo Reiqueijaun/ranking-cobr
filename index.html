@@ -419,6 +419,7 @@
     <select id="fJogCargo"></select>
     <label class="check" for="fJogAtivo"><input id="fJogAtivo" type="checkbox"> Ainda está no clã</label>
     <p class="form-nota" id="notaJogador"></p>
+    <p class="form-nota linha-codigo" id="linhaCodigo" hidden>Visual protegido por código. <button type="button" class="link-btn" id="btnZerarCodigo">Zerar código</button></p>
     <p class="erro" id="erroJogador" role="alert" hidden></p>
     <div class="linha-btns">
       <button type="button" class="btn btn-perigo-sec" id="btnApagarJog">Apagar</button>
@@ -427,6 +428,42 @@
       <button type="submit" class="btn btn-pri" id="btnSalvarJog">Salvar</button>
     </div>
   </form>
+</dialog>
+
+<!-- visual do jogador: avatar, estilo do nome, capa e título (o nick não muda) -->
+<dialog id="dlgVisual" class="dlg dlg-vis" aria-labelledby="tituloVisual">
+  <div class="tn-form-topo">
+    <h2 id="tituloVisual">MEU <span class="laranja">VISUAL</span></h2>
+    <button type="button" class="tn-x" id="btnFecharVisual" aria-label="Fechar">×</button>
+  </div>
+  <form id="formCodigo" class="form-admin vis-codigo" novalidate>
+    <div class="vis-cod-av" id="visCodAv"></div>
+    <h3 class="vis-cod-tit" id="visCodTit">CRIE SEU CÓDIGO</h3>
+    <p class="form-nota" id="visCodNota"></p>
+    <label for="fVisCodigo">CÓDIGO DE 4 NÚMEROS</label>
+    <input id="fVisCodigo" class="vis-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    <div class="vis-cod2" id="visCod2Box">
+      <label for="fVisCodigo2">REPITA O CÓDIGO</label>
+      <input id="fVisCodigo2" class="vis-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    </div>
+    <p class="erro" id="erroVisCod" role="alert" hidden></p>
+    <div class="linha-btns">
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-sec" id="btnVisCodVoltar">Cancelar</button>
+      <button type="submit" class="btn btn-pri" id="btnVisCodOk">Entrar</button>
+    </div>
+  </form>
+  <div class="vis-editor" id="visEditor" hidden>
+    <div class="vis-previa" id="visPrevia"></div>
+    <div class="abas vis-abas" id="visAbas" role="tablist" aria-label="O que personalizar"></div>
+    <div class="vis-opcoes" id="visOpcoes" role="radiogroup" aria-label="Opções"></div>
+    <div class="tn-form-pe">
+      <button type="button" class="link-btn" id="btnVisTrocar">Trocar código</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-sec" id="btnVisCancelar">Cancelar</button>
+      <button type="button" class="btn btn-pri" id="btnVisSalvar">Salvar visual</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="dlgTorneio" class="dlg dlg-tn" aria-labelledby="tituloTn">
