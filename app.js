@@ -1003,6 +1003,15 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   const geralPts = (j) => ptsPat(j.chave); // pontos que valem pra patente (a da temporada)
 
+  // no pódio: o escudo da patente (se tiver) ou a bolinha com a cor do lugar
+  function avatarPodio(j) {
+    const { atual } = patenteDe(geralPts(j));
+    const letra = j.nome.charAt(0).toUpperCase();
+    if (!atual.nivel) return el('div', { class: 'avatar', 'aria-hidden': 'true', text: letra });
+    const a = el('div', { class: `avatar avatar-esc ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
+    a.innerHTML = escudoSVG(atual, letra);
+    return a;
+  }
   function renderPodio(rank, ctx) {
     const box = $('podio');
     if (!rank.length) {
@@ -1027,7 +1036,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       // no celular os três ficam lado a lado: a tag e as partes "longas" somem pelo CSS
       return el('article', { class: `lugar l${i + 1}` },
         i === 0 ? svg(ICONE_COROA, 40, 'class="coroa"') : null,
-        el('div', { class: 'avatar', 'aria-hidden': 'true', text: j.nome.charAt(0).toUpperCase() }),
+        avatarPodio(j),
         el('div', { class: 'lugar-id' },
           el('div', { class: 'lugar-pos' }, `${i + 1}º LUGAR`, i === 0 ? el('span', { class: 'lugar-rei', text: ' · REI DO CLÃ' }) : null),
           btnPerfil(j, 'lugar-nome', [el('span', { class: 'lugar-tag', text: `[${TAG}] ` }), j.nome]),
@@ -1224,9 +1233,87 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   const ICONE_PATENTE = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/>';
   const ICONE_DIAMANTE = '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M10 3 8 9l4 12 4-12-2-6"/>';
+  // quem tem patente ganha o escudo dela no lugar da bolinha (Recruta continua com a bolinha)
   function avatarDe(nome, pontos, tam = '') {
     const { atual } = patenteDe(pontos);
-    return el('span', { class: `av ${tam} ${atual.diamante ? 'av-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: nome.charAt(0).toUpperCase() });
+    const letra = nome.charAt(0).toUpperCase();
+    if (!atual.nivel) return el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: letra });
+    const a = el('span', { class: `av av-esc ${tam} ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
+    a.innerHTML = escudoSVG(atual, letra);
+    return a;
+  }
+
+  // ---------- escudo de cada patente ----------
+  // sobe de enfeite a cada patente: divisas, filete, asas, estrela e coroa; Diamantes é de cristal
+  const tom = (hex, t) => { // t > 0 clareia, t < 0 escurece
+    const n = parseInt(hex.slice(1), 16), alvo = t > 0 ? 255 : 0, a = Math.abs(t);
+    return '#' + [16, 8, 0].map((s) => { const c = (n >> s) & 255; return Math.round(c + (alvo - c) * a).toString(16).padStart(2, '0'); }).join('');
+  };
+  function formaEscudo(w, h, t) {
+    const l = 60 - w / 2, r = 60 + w / 2, y = (f) => +(t + h * f).toFixed(1);
+    return `M60 ${t}L${r} ${y(.1)}L${r} ${y(.48)}C${r} ${y(.76)} ${60 + w * .22} ${y(.9)} 60 ${t + h}C${60 - w * .22} ${y(.9)} ${l} ${y(.76)} ${l} ${y(.48)}L${l} ${y(.1)}Z`;
+  }
+  const estrela = (cx, cy, r) => Array.from({ length: 10 }, (_, i) => {
+    const a = Math.PI / 5 * i - Math.PI / 2, d = i % 2 ? r * .45 : r;
+    return `${(cx + d * Math.cos(a)).toFixed(1)},${(cy + d * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+  // por nível: tamanho do escudo (w, h, topo t), divisas, filete, asas (escala) e enfeite em cima
+  const ESC_NIVEIS = [
+    { w: 84, h: 100, t: 10, div: 0 },
+    { w: 84, h: 100, t: 10, div: 1 },
+    { w: 84, h: 100, t: 10, div: 2, filete: true },
+    { w: 74, h: 90, t: 16, div: 2, filete: true, asa: .62 },
+    { w: 68, h: 84, t: 27, div: 2, filete: true, asa: .9, topo: 'estrela' },
+    { w: 66, h: 82, t: 31, div: 0, filete: true, asa: .9, topo: 'coroa' },
+  ];
+  const ASA = '<path d="M0 -6C-10 -18 -22 -26 -34 -30C-30 -16 -20 -4 0 6Z"/><path d="M0 4C-12 -2 -24 -6 -36 -8C-30 4 -18 12 0 14Z"/><path d="M0 12C-10 12 -20 14 -30 18C-22 26 -10 26 0 22Z"/>';
+  let numEsc = 0;
+  function escudoSVG(p, letra = '') {
+    const id = 'es' + (++numEsc);
+    const dia = p.diamante;
+    const n = ESC_NIVEIS[dia ? ESC_NIVEIS.length - 1 : Math.min(p.nivel, ESC_NIVEIS.length - 1)];
+    const { w, h, t } = n;
+    const c = p.cor;
+    const aro = dia ? ['#FFFFFF', '#7DF9FF', '#C6A8FF', '#3A6FD8'] : [tom(c, .65), c, tom(c, -.3), tom(c, -.62)];
+    const escuro = dia ? '#06202B' : tom(c, -.8);
+    const claro = dia ? '#EFFFFF' : tom(c, .72);
+    const campo = dia ? ['#2C6F8A', '#07151D'] : [tom(c, -.55), tom(c, -.86)];
+    const fora = formaEscudo(w, h, t), dentro = formaEscudo(w - 16, h - 18, t + 8);
+    const cy = t + h * (n.div ? .43 : .48);
+    const fs = w * .64 * (letra.length > 2 ? .58 : letra.length > 1 ? .76 : 1);
+    const l = 60 - w / 2;
+    const asa = n.asa ? `<g fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"><g transform="translate(${l + 6} ${t + h * .3}) scale(${n.asa})">${ASA}</g><g transform="translate(120 0) scale(-1 1)"><g transform="translate(${l + 6} ${t + h * .3}) scale(${n.asa})">${ASA}</g></g></g>` : '';
+    const topo = n.topo === 'estrela'
+      ? `<polygon points="${estrela(60, t - 11, 12)}" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"/>`
+      : n.topo === 'coroa'
+        ? `<path d="M41 ${t + 5}L37 ${t - 15}L49 ${t - 6}L60 ${t - 24}L71 ${t - 6}L83 ${t - 15}L79 ${t + 5}Z" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"/>`
+          + [[37, t - 15], [60, t - 24], [83, t - 15]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.4" fill="${aro[0]}" stroke="${escuro}" stroke-width="1.2"/>`).join('')
+          + (dia ? `<path d="M60 ${t - 9}L65 ${t - 3}L60 ${t + 3}L55 ${t - 3}Z" fill="#FF9FE0" stroke="${escuro}" stroke-width="1"/>` : '')
+        : '';
+    const divisas = Array.from({ length: n.div }, (_, i) => {
+      const y = t + h * .7 + i * 8, m = w * .18;
+      return `<path d="M${60 - m} ${y}L60 ${y + 7}L${60 + m} ${y}" fill="none" stroke="${aro[0]}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }).join('');
+    // lapidação do cristal: linhas do centro pras pontas do escudo
+    const facetas = dia ? `<path d="M60 ${t + 8}L60 ${t + h - 10}M${l + 8} ${t + h * .14}L60 ${t + h * .5}L${120 - l - 8} ${t + h * .14}M${l + 8} ${t + h * .5}L60 ${t + h * .5}L${120 - l - 8} ${t + h * .5}" stroke="#BFFBFF" stroke-opacity=".22" stroke-width="1.2" fill="none"/>` : '';
+    const meio = letra
+      ? `<text x="60" y="${cy.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${fs.toFixed(1)}" fill="${claro}" stroke="${escuro}" stroke-width="3" paint-order="stroke">${letra.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</text>`
+      : `<polygon points="${estrela(60, cy, w * .2)}" fill="${claro}" stroke="${escuro}" stroke-width="2" stroke-linejoin="round"/>`;
+    return `<svg class="esc" viewBox="0 0 120 120" aria-hidden="true">
+<defs>
+<linearGradient id="${id}a" x1="0" y1="0" x2=".7" y2="1"><stop offset="0" stop-color="${aro[0]}"/><stop offset=".35" stop-color="${aro[1]}"/><stop offset=".7" stop-color="${aro[2]}"/><stop offset="1" stop-color="${aro[3]}"/></linearGradient>
+<radialGradient id="${id}b" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="${campo[0]}"/><stop offset="1" stop-color="${campo[1]}"/></radialGradient>
+<linearGradient id="${id}c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".48" stop-color="#fff" stop-opacity=".06"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<clipPath id="${id}k"><path d="${fora}"/></clipPath>
+</defs>
+<g class="esc-cristal">${asa}${topo}<path d="${fora}" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.6" stroke-linejoin="round"/></g>
+<path d="${dentro}" fill="url(#${id}b)" stroke="${escuro}" stroke-width="1.2"/>
+${n.filete ? `<path d="${formaEscudo(w - 8, h - 9, t + 4)}" fill="none" stroke="${aro[0]}" stroke-opacity=".75" stroke-width="1.3"/>` : ''}
+${facetas}${divisas}
+<path d="${fora}" fill="url(#${id}c)"/>
+${meio}
+<g clip-path="url(#${id}k)"><g transform="skewX(-20)"><rect class="esc-reflexo" x="-40" y="0" width="20" height="130" fill="#fff" fill-opacity=".38"/></g></g>
+</svg>`;
   }
   // diamante lapidado (brilhante) com faíscas e um reflexo que passa por cima
   let numGema = 0;
@@ -1372,7 +1459,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const gente = porNivel.get(t.nivel) || [];
       return el('li', { class: `degrau ${gente.length ? '' : 'vazio-d'} ${t.diamante ? 'degrau-dia' : ''}`, style: `--pc:${t.cor}` },
         t.diamante ? el('span', { class: 'dia-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 9 }, () => el('i'))) : null,
-        t.diamante ? diamanteSVG('degrau-gema') : el('span', { class: 'degrau-ins', 'aria-hidden': 'true' }, svg(ICONE_PATENTE, 18)),
+        t.diamante ? diamanteSVG('degrau-gema') : degrauEscudo(t),
         el('div', { class: 'degrau-info' },
           el('span', { class: 'degrau-nome', text: t.nome }),
           el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' })),
@@ -1382,6 +1469,12 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
             : el('span', { class: 'ninguem', text: 'ninguém ainda' }))
       );
     }));
+  }
+
+  function degrauEscudo(t) {
+    const s = el('span', { class: 'degrau-ins', 'aria-hidden': 'true' });
+    s.innerHTML = escudoSVG(t);
+    return s;
   }
 
   // ---------- campeões das temporadas ----------
@@ -1689,8 +1782,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function insignia(x, cls = '') {
     const n = numTemp(x.ms);
     const ano = new Date(x.ms).getFullYear();
+    const escudo = el('span', { class: 'ins-escudo', 'aria-hidden': 'true' });
+    escudo.innerHTML = escudoSVG(x.pat, n >= 1 ? `T${n}` : nomeMes(x.ms).slice(0, 3).toUpperCase());
     return el('div', { class: `insignia ${x.pat.diamante ? 'ins-dia' : ''} ${x.atual ? 'ins-atual' : ''} ${cls}`, style: `--pc:${x.pat.cor}`, title: `${nomeTemp(x.ms)} (${nomeMes(x.ms)} ${ano}): ${x.atual ? 'está' : 'fechou'} como ${x.pat.nome}` },
-      el('span', { class: 'ins-escudo', 'aria-hidden': 'true' }, svg(x.pat.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 26), el('b', { text: n >= 1 ? `T${n}` : nomeMes(x.ms).slice(0, 3).toUpperCase() })),
+      escudo,
       el('span', { class: 'ins-nome', text: x.pat.nome }),
       el('span', { class: 'ins-mes', text: `${nomeMes(x.ms).slice(0, 3)} ${String(ano).slice(2)}${x.atual ? ' · agora' : ''}` }));
   }

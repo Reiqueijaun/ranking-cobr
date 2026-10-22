@@ -375,7 +375,7 @@ td .cem-chip { margin-left: 0; }
 }
 .degrau.vazio-d { background: var(--fundo-2); border-color: var(--linha); }
 .degrau.vazio-d .degrau-nome { color: var(--texto-3); }
-.degrau-ins { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--pc); background: color-mix(in srgb, var(--pc) 16%, transparent); }
+.degrau-ins { width: 48px; height: 48px; flex: 0 0 auto; display: block; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pc) 45%, transparent)); }
 .degrau-info { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
 .degrau-nome { font-weight: 700; color: var(--pc); font-size: 15px; letter-spacing: .5px; text-transform: uppercase; }
 .degrau-pts { font-size: 12px; color: var(--texto-3); }
@@ -1652,10 +1652,7 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   border: 1px solid color-mix(in srgb, var(--pc) 45%, var(--linha));
   background: radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, var(--pc) 22%, transparent), transparent 70%), var(--painel-2);
 }
-.ins-escudo { position: relative; display: grid; place-items: center; width: 52px; height: 56px; color: var(--pc); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pc) 45%, transparent)); }
-.ins-escudo svg { width: 52px; height: 56px; stroke-width: 1.4; fill: color-mix(in srgb, var(--pc) 18%, transparent); }
-.ins-escudo b { position: absolute; top: 15px; left: 0; right: 0; font-family: var(--f-titulo); font-size: 19px; line-height: 1; font-weight: 700; color: var(--texto); }
-.ins-dia .ins-escudo b { top: 12px; font-size: 16px; }
+.ins-escudo { display: block; width: 60px; height: 60px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pc) 45%, transparent)); }
 .ins-nome { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--pc); }
 .ins-mes { font-size: 11px; color: var(--texto-3); text-transform: uppercase; letter-spacing: 1px; }
 .ins-atual { border-style: dashed; }
@@ -1724,3 +1721,25 @@ h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY
 .rg-virada .patente, .rg-escada .patente, .prog-virada .patente, .ft-eu .patente, .cer-minha-vai .patente { flex: 0 0 auto; }
 .pv-item { display: inline-flex; align-items: center; gap: 6px; }
 .prog-virada { column-gap: 16px; }
+
+/* ---------- escudo da patente (avatar de quem tem patente, degraus, insígnias) ---------- */
+.av.av-esc { position: relative; border: 0; border-radius: 0; background: none; padding: 0; box-shadow: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55)); }
+.esc { display: block; width: 100%; height: 100%; overflow: visible; }
+.esc text { font-family: var(--f-titulo); font-weight: 700; }
+.av-m.av-esc, .av-g.av-esc, .av-xg.av-esc { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pc) 55%, transparent)) drop-shadow(0 2px 3px rgba(0, 0, 0, .5)); }
+.av-xg.av-esc { width: 132px; height: 132px; filter: drop-shadow(0 0 18px color-mix(in srgb, var(--pc) 60%, transparent)) drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
+.esc-reflexo { display: none; }
+.av-g .esc-reflexo, .av-xg .esc-reflexo, .esc-dia .esc-reflexo, .ins-escudo .esc-reflexo { display: block; animation: reflexoEsc 5s ease-in-out infinite; }
+@keyframes reflexoEsc { 0%, 60% { transform: translateX(0); } 100% { transform: translateX(200px); } }
+.esc-dia .esc-cristal, .ins-dia .esc-cristal { animation: prisma 6s linear infinite; }
+@keyframes prisma { to { filter: hue-rotate(360deg); } }
+.esc-dia.av-g, .esc-dia.av-xg { filter: drop-shadow(0 0 14px rgba(125, 249, 255, .75)) drop-shadow(0 0 30px rgba(198, 168, 255, .45)); }
+.av.av-esc.esc-dia::after {
+  content: ""; position: absolute; top: 2%; right: 4%; width: 26%; height: 26%; pointer-events: none; background: #fff;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  animation: cintila 1.8s ease-in-out infinite;
+}
+.degrau-gente .av-btn:has(.av-esc) { border-radius: 0; }
+@media (max-width: 760px) { .av-xg.av-esc { width: 100px; height: 100px; } }
+.avatar.avatar-esc { border: 0; border-radius: 0; background: none; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--pc) 55%, transparent)) drop-shadow(0 2px 3px rgba(0, 0, 0, .5)); }
+.avatar-esc .esc-reflexo { display: block; animation: reflexoEsc 5s ease-in-out infinite; }
