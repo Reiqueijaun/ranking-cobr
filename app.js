@@ -12,17 +12,6 @@
   const BUCKET = 'prints';
   const MASSA_MIN = 10;
   const MASSA_MAX = 1000000;
-  // prêmios em Pix: top 3 em pontos de cada temporada (a partir de outubro de 2026) e quem chega em
-  // certas patentes. O dono e os admins mudam pelo site (tabela config_site); isto é o padrão.
-  const PREMIOS_PADRAO = { temporada: [30, 15, 5], patentes: { diamantes: 100 }, porMes: {} };
-  const PREMIOS_DESDE = new Date(2026, 9, 1).getTime();
-  const temPremio = (t) => t.inicio >= PREMIOS_DESDE;
-  let premios = PREMIOS_PADRAO;
-  let configOk = true;        // false se a tabela config_site ainda não existe no banco
-  // doação pro clã: chave Pix (celular) e o mesmo código do pix-qr.svg, pra copiar e colar no banco
-  const PIX_CHAVE = '91984127730';
-  const PIX_COPIA_COLA = '00020126360014br.gov.bcb.pix0114+55919841277305204000053039865802BR5908CLA COBR6005BELEM62070503***63041B13';
-
   const $ = (id) => document.getElementById(id);
   let sb = null;
   let partidas = [];          // todas as pontuações, mais novas primeiro
@@ -383,7 +372,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     renderConquistas();
     renderPatentes();
     renderFimTemporada();
-    renderPremios();
     renderTemporadas(ctx);
     renderHall();
     renderPartidas();
@@ -516,7 +504,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // sem # (ou com um # que não existe) abre o ranking. #hall, #tabela etc. abrem a
   // página de quem eles fazem parte e rolam até lá.
   const PAG_INICIO = 'ranking';
-  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'doar']); // abrem no topo da página
+  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes']); // abrem no topo da página
   let pagAtual = null;
   function alvoDoEndereco(hash) {
     const id = decodeURIComponent(String(hash || '').slice(1));
@@ -1047,7 +1035,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
-        periodo === 'mes' && modo === 'pontos' && premiosTemporada()[i] ? el('div', { class: `premio-selo pv${i + 1}` }, el('span', { class: 'ps-vale', text: 'VALE ' }), `${reais(premiosTemporada()[i])} NO PIX`) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
         url ? el('button', { type: 'button', class: 'ver-print', text: 'Ver print do recorde', onclick: () => abrirPrint(j.melhor) }) : null
       );
@@ -1175,27 +1162,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     });
   if (PATENTES[0].pontos > 0) PATENTES[0].pontos = 0;
 
-  // ---------- prêmios em Pix ----------
   const mesChave = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
-  const valorPix = (v) => Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
-  const reais = (v) => `R$ ${fmt(v)}`;
-  // valores do top 3 numa temporada: mudar o prêmio hoje não mexe nas que já fecharam
-  function premiosTemporada(ms = Date.now()) {
-    return (premios.porMes && premios.porMes[mesChave(ms)]) || premios.temporada;
-  }
-  function premioPatente(p) { return p ? valorPix(premios.patentes && premios.patentes[p.chave]) : 0; }
-  function lerPremios(v) {
-    if (!v || typeof v !== 'object') return PREMIOS_PADRAO;
-    const tres = (a) => (Array.isArray(a) ? [0, 1, 2].map((i) => valorPix(a[i])) : null);
-    const porMes = {};
-    if (v.porMes && typeof v.porMes === 'object') {
-      for (const [k, a] of Object.entries(v.porMes)) if (/^\d{4}-\d{2}$/.test(k) && tres(a)) porMes[k] = tres(a);
-    }
-    const patentes = {};
-    if (v.patentes && typeof v.patentes === 'object') for (const [k, x] of Object.entries(v.patentes)) patentes[k] = valorPix(x);
-    return { temporada: tres(v.temporada) || PREMIOS_PADRAO.temporada, patentes, porMes };
-  }
-
   function patenteDe(pontos) {
     let atual = PATENTES[0];
     for (const t of PATENTES) if (pontos >= t.pontos) atual = t;
@@ -1207,7 +1174,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // ---------- patente por temporada (igual ao ranqueado do Free Fire) ----------
   // A patente vale só na temporada (o mês). Na virada, quem terminou cai 2 patentes e
   // começa a nova no piso dela; os pontos do mês somam em cima disso. Recruta continua Recruta.
-  // O Pix da patente é pago de novo em toda temporada em que a pessoa chega nela.
   const CAI_NA_VIRADA = 2;
   // Temporada 1 = outubro de 2026 (no modo demonstração, o mês da partida mais velha)
   function inicioTemp1() {
@@ -1252,12 +1218,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   const patTemp = (k, ms = Date.now()) => (patentesPorTemporada().get(mesChave(ms)) || new Map()).get(k) || null;
   // pontos que valem pra patente agora: o piso de onde começou + os pontos do mês
   function ptsPat(k) { const x = patTemp(k); return x ? x.pts : 0; }
-  // Pix das patentes que a pessoa alcançou numa temporada (as que já começou tendo não contam)
-  function pixAlcancado(x) {
-    let soma = 0;
-    for (let n = x.ini + 1; n <= x.fim; n++) soma += premioPatente(PATENTES[n]);
-    return soma;
-  }
   function chipPatente(pontos, extra = '') {
     const { atual } = patenteDe(pontos);
     return el('span', { class: `patente ${atual.diamante ? 'pat-dia' : ''} ${extra}`, style: `--pc:${atual.cor}` }, svg(atual.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 12), atual.nome);
@@ -1410,14 +1370,12 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     }
     $('escadaPatentes').replaceChildren(...[...PATENTES].reverse().map((t) => {
       const gente = porNivel.get(t.nivel) || [];
-      const pix = premioPatente(t);
       return el('li', { class: `degrau ${gente.length ? '' : 'vazio-d'} ${t.diamante ? 'degrau-dia' : ''}`, style: `--pc:${t.cor}` },
         t.diamante ? el('span', { class: 'dia-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 9 }, () => el('i'))) : null,
         t.diamante ? diamanteSVG('degrau-gema') : el('span', { class: 'degrau-ins', 'aria-hidden': 'true' }, svg(ICONE_PATENTE, 18)),
         el('div', { class: 'degrau-info' },
           el('span', { class: 'degrau-nome', text: t.nome }),
-          el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' }),
-          pix ? el('span', { class: 'degrau-pix', title: 'Pago pelo dono do clã em toda temporada em que você chega nessa patente' }, el('b', { text: `+${reais(pix)}` }), ' no Pix ao chegar') : null),
+          el('span', { class: 'degrau-pts', text: t.pontos ? `a partir de ${ptsTxt(t.pontos)}` : 'todo mundo começa aqui' })),
         el('div', { class: 'degrau-gente' },
           gente.length
             ? [...gente.slice(0, 4).map((j) => btnPerfil(j, 'av-btn', avatarDe(j.nome, j.pontos))), gente.length > 4 ? el('span', { class: 'mais', text: `+${gente.length - 4}` }) : null]
@@ -1459,7 +1417,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
 
   // ---------- como funciona (regras em abas, no lugar dos textos no meio do site) ----------
-  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'premios'];
+  const REGRA_ABAS = ['temporada', 'patentes', 'pontos'];
   let regraAba = 'temporada';
   // linha de regra: ícone/rótulo curto à esquerda, valor à direita (como tela de regras de jogo)
   const linhaRegra = (rot, ...val) => el('li', { class: 'rg-linha' }, el('span', { class: 'rg-rot', text: rot }), el('span', { class: 'rg-val' }, ...val));
@@ -1467,7 +1425,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function abrirRegras(aba = regraAba) {
     regraAba = REGRA_ABAS.includes(aba) ? aba : 'temporada';
     document.querySelectorAll('.aba[data-regra]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.regra === regraAba)));
-    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, premios: regrasPremios }[regraAba]();
+    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos }[regraAba]();
     trocar($('regrasCorpo'), corpo);
     const dlg = $('dlgRegras');
     if (!dlg.open) dlg.showModal();
@@ -1499,12 +1457,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     return [
       el('ul', { class: 'rg-escada' }, ...[...PATENTES].reverse().map((p) => el('li', { style: `--pc:${p.cor}` },
         chipPatente(p.pontos),
-        el('span', { class: 'rg-mini', text: p.pontos ? ptsTxt(p.pontos) : 'início' }),
-        premioPatente(p) ? el('b', { class: 'rg-pix', text: reais(premioPatente(p)) }) : null))),
+        el('span', { class: 'rg-mini', text: p.pontos ? ptsTxt(p.pontos) : 'início' })))),
       el('ul', { class: 'rg-lista' },
         linhaRegra('Conta', 'pontos da temporada'),
-        linhaRegra('Começo do mês', 'piso da patente que sobrou'),
-        linhaRegra('Pix da patente', 'toda temporada em que chegar')),
+        linhaRegra('Começo do mês', 'piso da patente que sobrou')),
     ];
   }
   function regrasPontos() {
@@ -1522,20 +1478,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         linhaRegra('Massa', 'vem do servidor, sem print')),
     ];
   }
-  function regrasPremios() {
-    const tv = premiosTemporada();
-    const pats = PATENTES.filter((p) => premioPatente(p) > 0).reverse();
-    return [
-      tituloRegra('TOP 3 DA TEMPORADA'),
-      el('ul', { class: 'rg-lista' }, ...['1º', '2º', '3º'].map((pos, i) => (tv[i] ? linhaRegra(pos, el('b', { class: `rg-reais pv${i + 1}`, text: reais(tv[i]) })) : null))),
-      pats.length ? tituloRegra('PATENTE (TODA TEMPORADA)') : null,
-      pats.length ? el('ul', { class: 'rg-lista' }, ...pats.map((p) => linhaRegra(p.nome, el('b', { class: 'rg-reais', text: reais(premioPatente(p)) })))) : null,
-      el('ul', { class: 'rg-lista' },
-        linhaRegra('Pagamento', 'Pix do dono do clã'),
-        linhaRegra('De onde vem', el('a', { href: '#doar', onclick: () => $('dlgRegras').close(), text: 'doações do clã' }))),
-    ];
-  }
-
   // sala de troféus: a taça em disputa primeiro, depois as já entregues
   function renderTemporadas(ctx) {
     const temps = ctx.temps;
@@ -1591,7 +1533,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('ol', { class: 'cer-podio' }, ...t.top.slice(0, 5).map((j, k) => el('li', { class: `tt tt${k + 1}` },
           el('span', { class: 'tt-pos', text: `${k + 1}º` }),
           el('span', { class: 'tt-nome' }, btnPerfil(j, 'link-nome', j.nome)),
-          k < 3 && temPremio(t) && premiosTemporada(t.inicio)[k] ? el('span', { class: `tt-premio pv${k + 1}`, title: t.atual ? 'prêmio em Pix se fechar assim' : 'prêmio em Pix', text: reais(premiosTemporada(t.inicio)[k]) }) : null,
           el('span', { class: 'tt-pts', text: ptsTxt(j.pontos) })))),
         t.top.length > 5 ? el('p', { class: 'cer-mais', text: `${t.top.length} jogadores pontuaram nessa temporada` }) : null,
         t.atual ? null : patentesDaCerimonia(t),
@@ -1616,14 +1557,14 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const ms = t.inicio;
     const eu = mapa.get(lerEu());
     const minha = eu && (eu.qtd || eu.fim) ? (() => {
-      const x = { ...eu, ms, atual: false, pat: PATENTES[eu.fim], pix: pixAlcancado(eu) };
+      const x = { ...eu, ms, atual: false, pat: PATENTES[eu.fim] };
       const prox = PATENTES[nivelNaVirada(eu.fim)];
       return el('div', { class: 'cer-minha', style: `--pc:${x.pat.cor}` },
         insignia(x, 'ins-g'),
         el('div', { class: 'cer-minha-txt' },
           el('span', { class: 'cer-minha-rot', text: 'SUA TEMPORADA' }),
           el('b', { text: `Fechou como ${x.pat.nome}` }),
-          el('span', { text: `${pos.get(eu.chave) ? `${pos.get(eu.chave)}º lugar · ` : ''}${ptsTxt(eu.ganho)}${x.pix ? ` · ${reais(x.pix)} de Pix` : ''}` }),
+          el('span', { text: `${pos.get(eu.chave) ? `${pos.get(eu.chave)}º lugar · ` : ''}${ptsTxt(eu.ganho)}` }),
           el('span', { class: 'cer-minha-vai' }, el('span', { class: 'ft-seta', 'aria-hidden': 'true', text: '▸' }), `T${numTemp(fimDoMes(ms))} `, chipPatente(prox.pontos, 'pat-apagada'))));
     })() : null;
     return el('div', { class: 'cer-pats' },
@@ -1639,14 +1580,13 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       null);
   }
 
-  // cerimônia de quem virou Diamantes: cacos de diamante explodindo, raios e o prêmio
+  // cerimônia de quem virou Diamantes: cacos de diamante explodindo e raios
   function abrirDiamante(k, festa = false) {
     const x = patTemp(k);
     const pat = x && PATENTES[x.fim];
     if (!pat || !pat.diamante) return false;
     // números da temporada (só chega em Diamantes jogando no mês)
     const j = montarRanking('mes', 'pontos', true).find((y) => y.chave === k) || { nome: x.nome, qtd: 0, melhor: { mass: 0 }, cem: 0 };
-    const pix = premioPatente(pat);
     const minha = lerEu() === k;
     const cacos = el('div', { class: 'dia-cacos', 'aria-hidden': 'true' },
       ...Array.from({ length: 48 }, (_, n) => el('i', { style: `--a:${Math.round(n * 7.5 + Math.random() * 6)}deg;--l:${Math.round(150 + Math.random() * 260)}px;--d:${(Math.random() * .5).toFixed(2)}s;--s:${(0.5 + Math.random()).toFixed(2)};--c:${['#7DF9FF', '#FFFFFF', '#C6A8FF', '#FF9FE0', '#5BC8FF'][n % 5]}` })));
@@ -1664,7 +1604,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('span', { class: 'cer-titulo dia-virou', text: 'VIROU' }),
         el('span', { class: 'dia-titulo', text: pat.nome.toUpperCase() }),
         el('h2', { class: 'cer-nome dia-nome', id: 'cerNome' }, el('span', { class: 'cer-tag', text: `[${TAG}] ` }), j.nome),
-        pix ? el('div', { class: 'dia-pix' }, el('small', { text: 'PRÊMIO' }), el('b', { text: `${reais(pix)} NO PIX` }), el('small', { text: 'pago pelo dono do clã' })) : null,
         el('p', { class: 'cer-sub', text: `${nomeTemp(Date.now())} · pouca gente chega aqui.` }),
         el('div', { class: 'cer-stats' },
           stat('PONTOS', fmt(x.pts)), stat('PARTIDAS', fmt(j.qtd)), stat('MAIOR MASSA', fmt(j.melhor.mass)), stat(marcoTxt, `${j.cem}×`)),
@@ -1743,7 +1682,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       if (!x || (!x.qtd && !x.fim)) continue;
       const [a, m] = mc.split('-').map(Number);
       const ms = new Date(a, m - 1, 1).getTime();
-      lista.push({ ...x, ms, atual: fimDoMes(ms) > Date.now(), pat: PATENTES[x.fim], pix: pixAlcancado(x) });
+      lista.push({ ...x, ms, atual: fimDoMes(ms) > Date.now(), pat: PATENTES[x.fim] });
     }
     return lista.reverse(); // mais nova primeiro
   }
@@ -1753,8 +1692,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     return el('div', { class: `insignia ${x.pat.diamante ? 'ins-dia' : ''} ${x.atual ? 'ins-atual' : ''} ${cls}`, style: `--pc:${x.pat.cor}`, title: `${nomeTemp(x.ms)} (${nomeMes(x.ms)} ${ano}): ${x.atual ? 'está' : 'fechou'} como ${x.pat.nome}` },
       el('span', { class: 'ins-escudo', 'aria-hidden': 'true' }, svg(x.pat.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 26), el('b', { text: n >= 1 ? `T${n}` : nomeMes(x.ms).slice(0, 3).toUpperCase() })),
       el('span', { class: 'ins-nome', text: x.pat.nome }),
-      el('span', { class: 'ins-mes', text: `${nomeMes(x.ms).slice(0, 3)} ${String(ano).slice(2)}${x.atual ? ' · agora' : ''}` }),
-      x.pix ? el('span', { class: 'ins-pix', text: `+${reais(x.pix)}` }) : null);
+      el('span', { class: 'ins-mes', text: `${nomeMes(x.ms).slice(0, 3)} ${String(ano).slice(2)}${x.atual ? ' · agora' : ''}` }));
   }
   function secaoInsigniasPerfil(k) {
     const lista = insigniasDe(k);
@@ -1998,8 +1936,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       el('div', { class: 'barra barra-pat', role: 'progressbar', 'aria-label': 'Progresso da patente', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pat.progresso * 100)) },
         el('span', { style: `width:${Math.round(pat.progresso * 100)}%` })),
       el('div', { class: 'prog-sub', text: pat.prox
-        ? `Faltam ${ptsTxt(pat.prox.pontos - ptsP)} pra virar ${pat.prox.nome}${premioPatente(pat.prox) ? ` e ganhar ${reais(premioPatente(pat.prox))} no Pix` : ''}${partidasPara(pat.prox.pontos - ptsP)}`
-        : premioPatente(pat.atual) ? `Chegou no topo e virou ${pat.atual.nome}: ${reais(premioPatente(pat.atual))} no Pix do dono do clã. Agora é defender o trono.` : 'Chegou no topo. Agora é defender o trono.' }),
+        ? `Faltam ${ptsTxt(pat.prox.pontos - ptsP)} pra virar ${pat.prox.nome}${partidasPara(pat.prox.pontos - ptsP)}`
+        : 'Chegou no topo. Agora é defender o trono.' }),
       // começo do mês ▸ agora ▸ dia 1, em chips (sem frase)
       el('div', { class: 'prog-virada' },
         xt && xt.ini ? el('span', { class: 'pv-item', title: `Começou a temporada como ${PATENTES[xt.ini].nome}` }, el('span', { class: 'ft-dia1', text: 'INÍCIO' }), chipPatente(PATENTES[xt.ini].pontos, 'pat-apagada')) : null,
@@ -2405,28 +2343,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     return linhas.join('\n');
   }
   const linkZap = (texto) => `https://wa.me/?text=${encodeURIComponent(texto)}`;
-
-  // card pra pedir doação no WhatsApp: explica pra onde vai o dinheiro e como fazer o Pix
-  function textoPedirApoio() {
-    const med = ['🥇', '🥈', '🥉'];
-    return [
-      `🏆 *APOIE O CLÃ ${TAG}* 🏆`,
-      '',
-      `Opa! O clã ${TAG} do slither.io tem um ranking com prêmio em dinheiro todo mês, e quem banca esse prêmio são as doações.`,
-      '',
-      '💰 *Pra onde vai a doação:* direto pros prêmios em Pix. Todo mês é uma temporada nova e os 3 jogadores com mais pontos ganham:',
-      ...premiosTemporada().map((v, i) => (v ? `${med[i]} ${i + 1}º lugar: ${reais(v)}` : null)).filter(Boolean),
-      '',
-      'Qualquer valor ajuda, até R$ 1. A doação é opcional e não mexe em nada no ranking.',
-      '',
-      `🔑 *Chave Pix (celular):* ${PIX_CHAVE}`,
-      `📲 QR code e ranking ao vivo: ${location.origin}${location.pathname}#doar`,
-      '',
-      'Valeu demais pela força! 🙏',
-    ].join('\n');
-  }
-  // mostra o texto como o WhatsApp mostra: *assim* vira negrito
-  const previaZap = (texto) => texto.split(/(\*[^*\n]+\*)/).map((p) => (/^\*.+\*$/.test(p) ? el('b', { text: p.slice(1, -1) }) : p));
 
   // ---------- contagem regressiva (atualiza a cada segundo) ----------
   function contagem(alvo, rotulo) {
@@ -3634,8 +3550,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const ptsDepois = ptsPat(chave(nome));
       const patAntes = patenteDe(ptsAntes).atual, patDepois = patenteDe(ptsDepois).atual;
       if (patDepois.nivel > patAntes.nivel) {
-        const pix = premioPatente(patDepois);
-        toast(`${patDepois.diamante ? '💎' : '⬆'} ${comTag(nome)} subiu pra ${patDepois.nome.toUpperCase()}!${ganhou}${pix ? ` Paga ${reais(pix)} no Pix pra ele.` : ''}`);
+        toast(`${patDepois.diamante ? '💎' : '⬆'} ${comTag(nome)} subiu pra ${patDepois.nome.toUpperCase()}!${ganhou}`);
         if (patDepois.diamante) abrirDiamante(chave(nome), true);
       } else if (reiAgora && chave(reiAgora.nome) === chave(nome) && (!reiAntes || chave(reiAntes.nome) !== chave(nome))) {
         toast(`👑 ${comTag(nome)} agora é o REI DO CLÃ!${ganhou}`);
@@ -3657,74 +3572,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     } finally {
       btn.disabled = false;
       btn.textContent = 'COLOCAR NO RANKING';
-    }
-  }
-
-  // ---------- prêmios na tela (faixa do topo, sala de troféus, doação) ----------
-  function renderPremios() {
-    const tv = premiosTemporada();
-    const pos = ['campeão', 'vice', 'terceiro'];
-    const comValor = tv.map((v, i) => [v, i]).filter(([v]) => v > 0);
-    $('faixaTemporada').hidden = !comValor.length;
-    $('faixaTemporadaVals').replaceChildren(...comValor.map(([v, i]) => el('b', { class: `pv${i + 1}`, text: `${i + 1}º ${reais(v)}` })));
-    $('premiosBox').hidden = !comValor.length && !admin;
-    $('premiosLista').replaceChildren(...comValor.map(([v, i]) => el('li', { class: `pr pr${i + 1}` },
-      el('span', { class: 'pr-pos', text: `${i + 1}º` }), el('b', { text: reais(v) }), el('small', { text: pos[i] }))));
-    $('doarDestino').hidden = !comValor.length;
-    $('doarDestinoLista').replaceChildren(...comValor.map(([v, i]) => el('li', { class: `pv${i + 1}` }, el('b', { text: reais(v) }), ` pro ${i + 1}º`)));
-    // patentes que pagam Pix (Diamantes ganha a faixa brilhante)
-    const pats = PATENTES.filter((p) => premioPatente(p) > 0).reverse();
-    $('faixaPatentes').hidden = !pats.length;
-    $('faixaPatentesVals').replaceChildren(...pats.map((p) => el('b', { class: p.diamante ? 'fp-dia' : '', style: `--pc:${p.cor}` }, svg(p.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 16), `${p.nome} ${reais(premioPatente(p))}`)));
-  }
-
-  // ---------- editar prêmios (dono e admins) ----------
-  function abrirPremios() {
-    const tv = premiosTemporada();
-    [1, 2, 3].forEach((i) => { $('pe' + i).value = String(tv[i - 1] || 0); });
-    $('pePatentes').replaceChildren(...[...PATENTES].reverse().map((p) => el('label', { class: `pe ${p.diamante ? 'pe-dia' : ''}`, style: `--pc:${p.cor}` },
-      el('span', { class: 'pe-nome' }, svg(p.diamante ? ICONE_DIAMANTE : ICONE_PATENTE, 14), p.nome, el('small', { text: p.pontos ? ptsTxt(p.pontos) : 'início' })),
-      el('span', { class: 'pe-rs', text: 'R$' }),
-      el('input', { id: 'pePat' + p.nivel, type: 'text', inputmode: 'numeric', maxlength: '6', autocomplete: 'off', value: String(premioPatente(p)), 'aria-label': `Prêmio em reais ao chegar em ${p.nome}` }))));
-    erroPremios('');
-    $('dlgPremios').showModal();
-  }
-  function erroPremios(msg) { $('erroPremios').textContent = msg || ''; $('erroPremios').hidden = !msg; }
-  async function salvarPremios(ev) {
-    ev.preventDefault();
-    const ler = (id) => {
-      const t = $(id).value.replace(/r\$|\s/gi, '');
-      if (!t) return 0;
-      return /^\d{1,6}$/.test(t) && Number(t) <= 100000 ? Number(t) : NaN;
-    };
-    const temporada = [1, 2, 3].map((i) => ler('pe' + i));
-    const patentes = { ...premios.patentes };
-    for (const p of PATENTES) patentes[p.chave] = ler('pePat' + p.nivel);
-    if ([...temporada, ...Object.values(patentes)].some(Number.isNaN)) return erroPremios('Use só números inteiros, de 0 a 100.000 (0 = sem prêmio).');
-    // guarda o valor de cada temporada que já passou, pra mudança não mexer no passado
-    const porMes = { ...premios.porMes };
-    const agora = mesChave(Date.now());
-    for (let d = new Date(PREMIOS_DESDE); mesChave(d) < agora; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
-      if (!porMes[mesChave(d)]) porMes[mesChave(d)] = premiosTemporada(d.getTime());
-    }
-    porMes[agora] = temporada;
-    const novo = { temporada, patentes, porMes };
-    const btn = $('btnSalvarPremios');
-    btn.disabled = true;
-    try {
-      if (!DEMO) await rpcAdmin('admin_salvar_config', { p_chave: 'premios', p_valor: novo });
-      premios = lerPremios(novo);
-      $('dlgPremios').close();
-      render();
-      toast('Prêmios atualizados pra todo mundo.');
-    } catch (e) {
-      console.error(e);
-      if (erroSessao(e)) { $('dlgPremios').close(); return; }
-      erroPremios(/config_site|admin_salvar_config|does not exist|schema cache/i.test(e.message || '')
-        ? 'O banco ainda não tem a tabela de prêmios. Rode o supabase-setup.sql de novo.'
-        : 'Não deu pra salvar agora. (' + (e.message || 'erro') + ')');
-    } finally {
-      btn.disabled = false;
     }
   }
 
@@ -3864,12 +3711,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 
   async function carregar() {
     if (DEMO) return;
-    const [r, rj, rt, rl, rc] = await Promise.all([
+    const [r, rj, rt, rl] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      sb.from('config_site').select('chave, valor'),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -3883,11 +3729,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     if (!torneiosOk) console.warn('torneios:', (rt.error || rl.error).message);
     torneios = (rt.data || []).map((t) => ({ ...t, participantes: t.participantes || [], premios: t.premios || [] }));
     lancamentos = rl.data || [];
-    // prêmios: sem a tabela (SQL novo ainda não rodado) fica o valor padrão
-    configOk = !rc.error;
-    if (rc.error) console.warn('prêmios:', rc.error.message);
-    const cp = (rc.data || []).find((x) => x.chave === 'premios');
-    premios = cp ? lerPremios(cp.valor) : PREMIOS_PADRAO;
   }
 
   function dadosDemo() {
@@ -3966,11 +3807,6 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         .on('postgres_changes', { event: '*', schema: 'public', table: 'torneio_lancamentos' }, recarregar)
         .subscribe();
     }
-    if (configOk) {
-      sb.channel('premios-ao-vivo')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'config_site' }, recarregar)
-        .subscribe();
-    }
     // reserva: atualiza a cada minuto mesmo sem tempo real
     setInterval(() => { if (!document.hidden) carregar().then(render).catch(() => {}); }, 60000);
   }
@@ -4020,20 +3856,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       baixarCsv(planilha.nome, planilha.linhas);
     });
     $('btnCsvPartidas').addEventListener('click', baixarPartidas);
-    // doação
-    $('btnPixChave').addEventListener('click', () => copiarTexto(PIX_CHAVE, 'Chave Pix copiada. Valeu pelo apoio!'));
-    $('btnPixCola').addEventListener('click', () => copiarTexto(PIX_COPIA_COLA, 'Pix copia e cola copiado. Cola no app do banco.'));
-    const pedido = textoPedirApoio();
-    $('btnPedirZap').href = linkZap(pedido);
-    $('btnPedirCopiar').addEventListener('click', () => copiarTexto(pedido, 'Mensagem copiada. Cola no WhatsApp de quem você quiser.'));
-    $('pedirPrevia').append(...previaZap(pedido));
     $('formCadastro').addEventListener('submit', cadastrar);
     $('fNicks').addEventListener('input', previaCadastro);
     $('formJogador').addEventListener('submit', salvarJogador);
     $('btnCancelarJog').addEventListener('click', () => $('dlgJogador').close());
-    document.querySelectorAll('.btn-editar-premios').forEach((b) => b.addEventListener('click', abrirPremios));
-    $('formPremios').addEventListener('submit', salvarPremios);
-    $('btnCancelarPremios').addEventListener('click', () => $('dlgPremios').close());
     $('btnApagarJog').addEventListener('click', apagarJogador);
 
     // torneios
@@ -4105,7 +3931,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('btnPartidasMais').addEventListener('click', () => { partidasQtd += PARTIDAS_PASSO; renderPartidas(); });
     $('btnHallMais').addEventListener('click', () => { hallQtd += 12; renderHall(); });
     $('btnFecharMais').addEventListener('click', () => $('dlgMais').close());
-    // botões ⓘ (data-info="temporada" | "patentes" | "pontos" | "premios") abrem as regras
+    // botões ⓘ (data-info="temporada" | "patentes" | "pontos") abrem as regras
     document.addEventListener('click', (e) => {
       const bt = e.target.closest('[data-info]');
       if (!bt) return;

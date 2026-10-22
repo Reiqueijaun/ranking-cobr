@@ -50,10 +50,6 @@
       <a href="#partidas">Partidas</a>
       <a href="#patentes">Patentes</a>
     </nav>
-    <a class="btn-apoie" href="#doar" title="Apoie o clã com um Pix">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.1 5.3 3 1.7-1.9 3.2-3 5.3-3 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>
-      <span>Apoie<span class="btn-apoie-mais"> o clã</span></span>
-    </a>
     <button type="button" class="btn-eu" id="btnEu" hidden></button>
     <button type="button" class="btn-busca" id="btnBusca" aria-label="Buscar jogador" title="Buscar jogador (atalho: /)">
       <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -79,16 +75,6 @@
       <span class="selo" id="seloPeriodo">TEMPORADA</span>
       <h1>QUEM É O MELHOR<br><span class="laranja">JOGADOR DO CLÃ?</span></h1>
       <p class="hero-lema">Jogue com a tag <b>[<span data-tag>COBR</span>]</b>. Suba de patente. Leve a taça.</p>
-      <div class="faixas-premio">
-        <a class="premio-faixa" href="#temporadas" id="faixaTemporada">
-          <span class="premio-faixa-rot">PRÊMIO DA TEMPORADA</span>
-          <span class="premio-faixa-vals" id="faixaTemporadaVals"><b class="pv1">1º R$ 30</b><b class="pv2">2º R$ 15</b><b class="pv3">3º R$ 5</b></span>
-        </a>
-        <a class="premio-faixa faixa-pat" href="#patentes" id="faixaPatentes">
-          <span class="premio-faixa-rot">PRÊMIO DE PATENTE</span>
-          <span class="premio-faixa-vals" id="faixaPatentesVals"></span>
-        </a>
-      </div>
       <div class="stats">
         <div class="stat"><span class="stat-rot">RECORDE DO CLÃ</span><span class="stat-num laranja" id="stRecorde">—</span><span class="stat-sub" id="stRecordeDono">ninguém ainda</span></div>
         <div class="stat"><span class="stat-rot">LÍDER EM PONTOS</span><span class="stat-num" id="stLider">—</span><span class="stat-sub" id="stLiderDono">ninguém ainda</span></div>
@@ -227,7 +213,6 @@
         <h2>PATENTES <span class="laranja">E PONTOS</span> <button type="button" class="info-btn" data-info="patentes" aria-label="Como funcionam as patentes">i</button></h2>
         <p class="bloco-sub">Suba até <b class="txt-dia">DIAMANTES</b> antes da temporada virar.</p>
       </div>
-      <button type="button" class="btn btn-sec btn-editar-premios so-dono">Editar prêmios</button>
     </div>
     <div class="fim-temp" id="fimTemporadaPat" aria-label="Fim da temporada"></div>
     <div class="pat-grade">
@@ -249,18 +234,6 @@
         <p class="bloco-sub">Uma taça por temporada, com o nome do campeão na placa. <button type="button" class="info-btn" data-info="temporada" aria-label="Como funcionam as temporadas">i</button></p>
       </div>
       <span class="hall-qtd" id="tempQtd"></span>
-    </div>
-    <div class="premios" id="premiosBox" aria-label="Prêmios da temporada">
-      <div class="premios-txt">
-        <h3>PRÊMIO NO <span class="laranja">PIX</span> <button type="button" class="info-btn" data-info="premios" aria-label="Como funcionam os prêmios">i</button></h3>
-        <p>Top 3 da temporada. <a href="#doar">Apoie o clã</a></p>
-        <button type="button" class="btn btn-sec btn-editar-premios so-dono">Editar prêmios</button>
-      </div>
-      <ol class="premios-lista" id="premiosLista">
-        <li class="pr pr1"><span class="pr-pos">1º</span><b>R$ 30</b><small>campeão</small></li>
-        <li class="pr pr2"><span class="pr-pos">2º</span><b>R$ 15</b><small>vice</small></li>
-        <li class="pr pr3"><span class="pr-pos">3º</span><b>R$ 5</b><small>terceiro</small></li>
-      </ol>
     </div>
     <ol class="trofeus" id="listaTemporadas"></ol>
   </section>
@@ -349,50 +322,6 @@
     <ul class="partidas" id="listaPartidas"></ul>
     <div class="ver-mais-box solto" id="partidasMaisBox" hidden><button type="button" class="btn btn-sec ver-mais" id="btnPartidasMais"></button></div>
   </section>
-
-  <section class="wrap bloco" id="doar" data-pag="apoie">
-    <div class="painel doar">
-      <div class="doar-qr">
-        <img src="pix-qr.svg" alt="QR code Pix para doar ao clã" width="205" height="205">
-      </div>
-      <div class="doar-txt">
-        <h2>APOIE O <span class="laranja">CLÃ</span></h2>
-        <p class="doar-lead">Toda doação vira <b>prêmio no Pix</b>.</p>
-        <div class="doar-destino" id="doarDestino">
-          <span class="doar-destino-rot">PRA ONDE VAI A SUA DOAÇÃO</span>
-          <ol class="doar-destino-lista" id="doarDestinoLista">
-            <li class="pv1"><b>R$ 30</b> pro 1º</li>
-            <li class="pv2"><b>R$ 15</b> pro 2º</li>
-            <li class="pv3"><b>R$ 5</b> pro 3º</li>
-          </ol>
-          <small>top 3 de cada temporada</small>
-        </div>
-        <div class="doar-chave">
-          <span class="doar-chave-rot">CHAVE PIX (CELULAR)</span>
-          <b id="pixChave">91984127730</b>
-        </div>
-        <div class="doar-btns">
-          <button type="button" class="btn btn-pri" id="btnPixChave">Copiar chave</button>
-          <button type="button" class="btn btn-sec" id="btnPixCola">Copiar Pix copia e cola</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="painel pedir">
-      <div class="pedir-txt">
-        <h3>PEÇA APOIO NO <span class="laranja">ZAP</span></h3>
-        <p>Manda o card pronto pra quem pode dar uma força.</p>
-        <div class="doar-btns">
-          <a class="btn btn-zap" id="btnPedirZap" href="https://wa.me/" target="_blank" rel="noopener">Mandar no WhatsApp</a>
-          <button type="button" class="btn btn-sec" id="btnPedirCopiar">Copiar mensagem</button>
-        </div>
-      </div>
-      <figure class="zap-previa">
-        <figcaption>ASSIM A MENSAGEM CHEGA</figcaption>
-        <div class="zap-balao" id="pedirPrevia"></div>
-      </figure>
-    </div>
-  </section>
 </main>
 
 <main id="perfilPagina" class="perfil-pagina" hidden>
@@ -437,7 +366,6 @@
   <div class="wrap rodape-in">
     <span>Clã <span data-tag>COBR</span> · Ranking de massa do slither.io</span>
     <button type="button" class="link-btn" data-info="temporada">Como funciona</button>
-    <a href="#doar" id="linkDoar">Doar pro clã</a>
     <button type="button" class="link-btn" id="btnAdmin">Área do admin</button>
   </div>
 </footer>
@@ -497,28 +425,6 @@
       <span class="espaco"></span>
       <button type="button" class="btn btn-sec" id="btnCancelarJog">Cancelar</button>
       <button type="submit" class="btn btn-pri" id="btnSalvarJog">Salvar</button>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="dlgPremios" class="dlg dlg-premios" aria-labelledby="tituloPremios">
-  <form id="formPremios" class="form-admin" novalidate>
-    <h2 class="laranja" id="tituloPremios">PRÊMIOS NO PIX</h2>
-    <p>Quanto vale cada prêmio, em reais. Coloque 0 pra não ter prêmio. Muda na hora pra todo mundo.</p>
-    <h3 class="painel-h3">TOP 3 DA TEMPORADA</h3>
-    <div class="pe-temporada">
-      <label class="pe pv1"><span class="pe-pos">1º</span><span class="pe-rs">R$</span><input id="pe1" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 1º lugar em reais"></label>
-      <label class="pe pv2"><span class="pe-pos">2º</span><span class="pe-rs">R$</span><input id="pe2" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 2º lugar em reais"></label>
-      <label class="pe pv3"><span class="pe-pos">3º</span><span class="pe-rs">R$</span><input id="pe3" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Prêmio do 3º lugar em reais"></label>
-    </div>
-    <p class="form-nota">Vale pra temporada de agora em diante. As que já fecharam ficam com o valor da época.</p>
-    <h3 class="painel-h3">AO CHEGAR NA PATENTE</h3>
-    <div class="pe-patentes" id="pePatentes"></div>
-    <p class="form-nota">Quem chega na patente ganha, pago pelo dono do clã, em toda temporada que chegar (as patentes caem 2 níveis na virada do mês). Prêmio de torneio se muda no próprio torneio.</p>
-    <p class="erro" id="erroPremios" role="alert" hidden></p>
-    <div class="linha-btns">
-      <button type="button" class="btn btn-sec" id="btnCancelarPremios">Cancelar</button>
-      <button type="submit" class="btn btn-pri" id="btnSalvarPremios">Salvar prêmios</button>
     </div>
   </form>
 </dialog>
@@ -655,7 +561,7 @@
     <button type="button" class="link-btn" id="btnFecharBusca">Fechar</button>
   </div>
   <div class="busca-atalhos" id="buscaAtalhos">
-    <a href="#ranking">Ranking</a><a href="#torneios">Torneios</a><a href="#temporadas">Troféus</a><a href="#jogadores">Jogadores</a><a href="#partidas">Partidas</a><a href="#hall">Hall da fama</a><a href="#patentes">Patentes</a><a href="#doar">Apoie o clã</a>
+    <a href="#ranking">Ranking</a><a href="#torneios">Torneios</a><a href="#temporadas">Troféus</a><a href="#jogadores">Jogadores</a><a href="#partidas">Partidas</a><a href="#hall">Hall da fama</a><a href="#patentes">Patentes</a>
   </div>
   <ul class="busca-lista" id="listaBusca"></ul>
 </dialog>
@@ -702,8 +608,7 @@
     <a href="#hall" id="maisHall"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/></svg><b>Hall da fama</b><small>As maiores partidas do clã</small></a>
     <a href="#partidas"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><b>Partidas</b><small>O que entrou por último</small></a>
     <a href="#patentes"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/></svg><b>Patentes</b><small>A escada até Diamantes</small></a>
-    <button type="button" class="mais-regras" data-info="temporada"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg><b>Como funciona</b><small>Regras, pontos e prêmios</small></button>
-    <a href="#doar" class="mais-apoie"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.1 5.3 3 1.7-1.9 3.2-3 5.3-3 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg><b>Apoie o clã</b><small>Doação vira prêmio</small></a>
+    <button type="button" class="mais-regras" data-info="temporada"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg><b>Como funciona</b><small>Regras, patentes e pontos</small></button>
   </nav>
 </dialog>
 
@@ -717,7 +622,6 @@
     <button type="button" role="tab" class="aba" data-regra="temporada">Temporada</button>
     <button type="button" role="tab" class="aba" data-regra="patentes">Patentes</button>
     <button type="button" role="tab" class="aba" data-regra="pontos">Pontos</button>
-    <button type="button" role="tab" class="aba" data-regra="premios">Prêmios</button>
   </div>
   <div class="regras-corpo" id="regrasCorpo" role="tabpanel"></div>
 </dialog>
