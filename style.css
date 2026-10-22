@@ -1743,3 +1743,14 @@ h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY
 @media (max-width: 760px) { .av-xg.av-esc { width: 100px; height: 100px; } }
 .avatar.avatar-esc { border: 0; border-radius: 0; background: none; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--pc) 55%, transparent)) drop-shadow(0 2px 3px rgba(0, 0, 0, .5)); }
 .avatar-esc .esc-reflexo { display: block; animation: reflexoEsc 5s ease-in-out infinite; }
+/* Lendário e Diamantes: raios girando, halo, brasas subindo e faíscas (só nos escudos grandes) */
+.av-esc .esc-fx { display: none; }
+.av-m .esc-fx, .av-g .esc-fx, .av-xg .esc-fx { display: inline; }
+.esc-raios { animation: girar 18s linear infinite; }
+.esc-halo { transform-box: fill-box; transform-origin: center; animation: haloEsc 2.6s ease-in-out infinite; }
+@keyframes haloEsc { 0%, 100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.06); } }
+.esc-brasa { animation: brasaEsc 2.8s ease-out infinite; }
+@keyframes brasaEsc { 0% { opacity: 0; transform: translateY(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-70px); } }
+.esc-faisca { transform-box: fill-box; transform-origin: center; animation: cintila 2.2s ease-in-out infinite; }
+.esc-dia .esc-raios, .ins-dia .esc-raios { animation-duration: 9s; }
+.pp-topo.pp-len { border-color: rgba(255, 216, 77, .55); box-shadow: 0 0 40px rgba(255, 216, 77, .16), inset 0 0 70px rgba(255, 122, 26, .1); }

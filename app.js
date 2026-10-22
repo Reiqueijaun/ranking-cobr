@@ -1257,16 +1257,22 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const a = Math.PI / 5 * i - Math.PI / 2, d = i % 2 ? r * .45 : r;
     return `${(cx + d * Math.cos(a)).toFixed(1)},${(cy + d * Math.sin(a)).toFixed(1)}`;
   }).join(' ');
-  // por nível: tamanho do escudo (w, h, topo t), divisas, filete, asas (escala) e enfeite em cima
+  // por nível: tamanho do escudo (w, h, topo t), divisas, filete, asas (escala) e enfeite em cima.
+  // O último é o Lendário (o Diamantes usa ele em cristal): espadas, asas grandes, coroa, raios
   const ESC_NIVEIS = [
     { w: 84, h: 100, t: 10, div: 0 },
     { w: 84, h: 100, t: 10, div: 1 },
     { w: 84, h: 100, t: 10, div: 2, filete: true },
     { w: 74, h: 90, t: 16, div: 2, filete: true, asa: .62 },
     { w: 68, h: 84, t: 27, div: 2, filete: true, asa: .9, topo: 'estrela' },
-    { w: 66, h: 82, t: 31, div: 0, filete: true, asa: .9, topo: 'coroa' },
+    { w: 64, h: 80, t: 34, div: 0, filete: true, lenda: true },
   ];
   const ASA = '<path d="M0 -6C-10 -18 -22 -26 -34 -30C-30 -16 -20 -4 0 6Z"/><path d="M0 4C-12 -2 -24 -6 -36 -8C-30 4 -18 12 0 14Z"/><path d="M0 12C-10 12 -20 14 -30 18C-22 26 -10 26 0 22Z"/>';
+  const ASA_G = '<path d="M0 -10C-8 -24 -20 -34 -38 -40C-34 -24 -22 -12 0 0Z"/><path d="M0 -2C-12 -12 -26 -20 -42 -22C-36 -8 -22 2 0 6Z"/><path d="M0 6C-14 2 -28 -2 -42 -2C-34 10 -20 14 0 14Z"/><path d="M0 13C-12 12 -24 12 -36 16C-28 24 -14 24 0 20Z"/><path d="M0 19C-10 21 -18 24 -26 30C-16 34 -6 30 0 25Z"/>';
+  // as duas asas: a esquerda e a mesma espelhada
+  const parAsas = (desenho, x, y, s, extra = '') => `<g transform="translate(${x} ${y}) scale(${s})${extra}">${desenho}</g><g transform="translate(120 0) scale(-1 1)"><g transform="translate(${x} ${y}) scale(${s})${extra}">${desenho}</g></g>`;
+  const faisca = (x, y, r) => `M${x} ${y - r}L${x + r * .28} ${y - r * .28}L${x + r} ${y}L${x + r * .28} ${y + r * .28}L${x} ${y + r}L${x - r * .28} ${y + r * .28}L${x - r} ${y}L${x - r * .28} ${y - r * .28}Z`;
+  const gema = (x, y, r) => `M${x} ${y - r}L${x + r * .8} ${y}L${x} ${y + r}L${x - r * .8} ${y}Z`;
   let numEsc = 0;
   function escudoSVG(p, letra = '') {
     const id = 'es' + (++numEsc);
@@ -1277,19 +1283,55 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const aro = dia ? ['#FFFFFF', '#7DF9FF', '#C6A8FF', '#3A6FD8'] : [tom(c, .65), c, tom(c, -.3), tom(c, -.62)];
     const escuro = dia ? '#06202B' : tom(c, -.8);
     const claro = dia ? '#EFFFFF' : tom(c, .72);
-    const campo = dia ? ['#2C6F8A', '#07151D'] : [tom(c, -.55), tom(c, -.86)];
+    const campo = dia ? ['#2C6F8A', '#07151D'] : n.lenda ? ['#6A1426', '#16030A'] : [tom(c, -.55), tom(c, -.86)];
+    const pedra = dia ? '#FF9FE0' : '#FF3B4A'; // joias da coroa, das espadas e do escudo
     const fora = formaEscudo(w, h, t), dentro = formaEscudo(w - 16, h - 18, t + 8);
-    const cy = t + h * (n.div ? .43 : .48);
+    const cy = t + h * (n.div || n.lenda ? .43 : .48);
     const fs = w * .64 * (letra.length > 2 ? .58 : letra.length > 1 ? .76 : 1);
     const l = 60 - w / 2;
-    const asa = n.asa ? `<g fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"><g transform="translate(${l + 6} ${t + h * .3}) scale(${n.asa})">${ASA}</g><g transform="translate(120 0) scale(-1 1)"><g transform="translate(${l + 6} ${t + h * .3}) scale(${n.asa})">${ASA}</g></g></g>` : '';
-    const topo = n.topo === 'estrela'
-      ? `<polygon points="${estrela(60, t - 11, 12)}" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"/>`
-      : n.topo === 'coroa'
-        ? `<path d="M41 ${t + 5}L37 ${t - 15}L49 ${t - 6}L60 ${t - 24}L71 ${t - 6}L83 ${t - 15}L79 ${t + 5}Z" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.4" stroke-linejoin="round"/>`
-          + [[37, t - 15], [60, t - 24], [83, t - 15]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.4" fill="${aro[0]}" stroke="${escuro}" stroke-width="1.2"/>`).join('')
-          + (dia ? `<path d="M60 ${t - 9}L65 ${t - 3}L60 ${t + 3}L55 ${t - 3}Z" fill="#FF9FE0" stroke="${escuro}" stroke-width="1"/>` : '')
-        : '';
+    const traco = `stroke="${escuro}" stroke-linejoin="round"`;
+    let defs = '', fx = '', atras = '', frente = '';
+    let asa = n.asa ? `<g fill="url(#${id}a)" ${traco} stroke-width="1.4">${parAsas(ASA, l + 6, t + h * .3, n.asa)}</g>` : '';
+    let topo = n.topo === 'estrela' ? `<polygon points="${estrela(60, t - 11, 12)}" fill="url(#${id}a)" ${traco} stroke-width="1.4"/>` : '';
+    if (n.lenda) {
+      const meio = t + h * .45;
+      // raios de luz girando atrás (dourados no Lendário, arco-íris no Diamantes) e um halo pulsando
+      const cores = dia ? ['#7DF9FF', '#FF9FE0', '#C6A8FF', '#FFFFFF'] : ['#FFE58A', '#FFB347'];
+      const raios = Array.from({ length: 16 }, (_, i) => {
+        const a = Math.PI * 2 * i / 16, pt = (b) => `${(60 + 60 * Math.cos(b)).toFixed(1)},${(meio + 60 * Math.sin(b)).toFixed(1)}`;
+        return `<polygon points="60,${meio} ${pt(a - .09)} ${pt(a + .09)}" fill="${cores[i % cores.length]}"/>`;
+      }).join('');
+      defs += `<radialGradient id="${id}m" gradientUnits="userSpaceOnUse" cx="60" cy="${meio}" r="60"><stop offset=".2" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>`
+        + `<mask id="${id}r"><rect x="-20" y="-20" width="160" height="160" fill="url(#${id}m)"/></mask>`
+        + `<radialGradient id="${id}h"><stop offset="0" stop-color="${dia ? '#7DF9FF' : '#FFD84D'}" stop-opacity=".75"/><stop offset="1" stop-color="${dia ? '#C6A8FF' : '#FF7A1A'}" stop-opacity="0"/></radialGradient>`
+        + `<linearGradient id="${id}s" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${dia ? '#9FF6FF' : '#E9EEF3'}"/><stop offset=".5" stop-color="#FFFFFF"/><stop offset="1" stop-color="${dia ? '#3A8FD8' : '#7D8A99'}"/></linearGradient>`
+        + `<linearGradient id="${id}v" x1="0" y1="0" x2=".7" y2="1"><stop offset="0" stop-color="${dia ? '#FFFFFF' : '#FF7B6B'}"/><stop offset=".5" stop-color="${dia ? '#C6A8FF' : '#C21A30'}"/><stop offset="1" stop-color="${dia ? '#4B3BC8' : '#4A0610'}"/></linearGradient>`;
+      fx = `<g class="esc-fx"><circle class="esc-halo" cx="60" cy="${meio}" r="${dia ? 58 : 50}" fill="url(#${id}h)"/>`
+        + `<g mask="url(#${id}r)" opacity="${dia ? .8 : .6}"><g class="esc-raios" style="transform-origin:60px ${meio}px">${raios}</g></g></g>`;
+      // duas espadas cruzadas por cima das asas, atrás do escudo
+      const espada = (ang) => `<g transform="translate(60 ${meio}) rotate(${ang})">`
+        + `<path d="M0 -66L5 -54L5 32L-5 32L-5 -54Z" fill="url(#${id}s)" ${traco} stroke-width="1.2"/><path d="M0 -53V28" stroke="#fff" stroke-opacity=".6" stroke-width="1"/>`
+        + `<rect x="-14" y="30" width="28" height="5.5" rx="2.7" fill="url(#${id}a)" ${traco} stroke-width="1.2"/>`
+        + `<rect x="-2.6" y="35.5" width="5.2" height="11" fill="${escuro}"/><circle cy="50" r="4" fill="${pedra}" ${traco} stroke-width="1.2"/></g>`;
+      atras = espada(54) + espada(-54);
+      // asas grandes: uma camada de trás (carmesim / lilás) e as penas da frente
+      asa = `<g fill="url(#${id}v)" ${traco} stroke-width="1.2">${parAsas(ASA_G, l + 4, t + h * .36, 1.02, ' rotate(-10)')}</g>`
+        + `<g fill="url(#${id}a)" ${traco} stroke-width="1.3">${parAsas(ASA_G, l + 5, t + h * .32, .86)}</g>`;
+      // coroa de 5 pontas com pedras
+      const pontas = [[34, t - 14], [49, t - 20], [60, t - 27], [71, t - 20], [86, t - 14]];
+      topo = `<path d="M40 ${t + 5}L34 ${t - 14}L45 ${t - 4}L49 ${t - 20}L56 ${t - 7}L60 ${t - 27}L64 ${t - 7}L71 ${t - 20}L75 ${t - 4}L86 ${t - 14}L80 ${t + 5}Z" fill="url(#${id}a)" ${traco} stroke-width="1.4"/>`
+        + pontas.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i === 2 ? 4 : 3.2}" fill="${i % 2 ? (dia ? '#7DF9FF' : '#FFF3B0') : pedra}" ${traco} stroke-width="1.1"/>`).join('')
+        + `<path d="${gema(60, t - 6, 6)}" fill="${pedra}" ${traco} stroke-width="1.1"/><path d="${gema(58.6, t - 8, 1.8)}" fill="#fff" fill-opacity=".8"/>`;
+      // pedra no pé do escudo
+      frente = `<path d="${gema(60, t + h * .8, 5.5)}" fill="${pedra}" ${traco} stroke-width="1.1"/><path d="${gema(58.8, t + h * .8 - 1.8, 1.6)}" fill="#fff" fill-opacity=".8"/>`;
+      // Lendário: brasas subindo · Diamantes: faíscas piscando em volta
+      const pts = dia
+        ? [[14, 30, 6], [106, 26, 5], [110, 86, 6], [10, 94, 5], [94, 112, 4], [28, 8, 4]]
+        : [[30, 104], [42, 110], [55, 106], [66, 111], [78, 105], [90, 109]];
+      frente += `<g class="esc-fx">${pts.map(([x, y, r], i) => (dia
+        ? `<path class="esc-faisca" style="animation-delay:-${(i * .37).toFixed(2)}s" d="${faisca(x, y, r)}" fill="#fff"/>`
+        : `<circle class="esc-brasa" style="animation-delay:-${(i * .47).toFixed(2)}s" cx="${x}" cy="${y}" r="1.7" fill="${i % 2 ? '#FFD84D' : '#FF7A1A'}"/>`)).join('')}</g>`;
+    }
     const divisas = Array.from({ length: n.div }, (_, i) => {
       const y = t + h * .7 + i * 8, m = w * .18;
       return `<path d="M${60 - m} ${y}L60 ${y + 7}L${60 + m} ${y}" fill="none" stroke="${aro[0]}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -1304,15 +1346,16 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
 <linearGradient id="${id}a" x1="0" y1="0" x2=".7" y2="1"><stop offset="0" stop-color="${aro[0]}"/><stop offset=".35" stop-color="${aro[1]}"/><stop offset=".7" stop-color="${aro[2]}"/><stop offset="1" stop-color="${aro[3]}"/></linearGradient>
 <radialGradient id="${id}b" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="${campo[0]}"/><stop offset="1" stop-color="${campo[1]}"/></radialGradient>
 <linearGradient id="${id}c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".48" stop-color="#fff" stop-opacity=".06"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
-<clipPath id="${id}k"><path d="${fora}"/></clipPath>
+<clipPath id="${id}k"><path d="${fora}"/></clipPath>${defs}
 </defs>
-<g class="esc-cristal">${asa}${topo}<path d="${fora}" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.6" stroke-linejoin="round"/></g>
+${fx}<g class="esc-cristal">${asa}${atras}${topo}<path d="${fora}" fill="url(#${id}a)" stroke="${escuro}" stroke-width="1.6" stroke-linejoin="round"/></g>
 <path d="${dentro}" fill="url(#${id}b)" stroke="${escuro}" stroke-width="1.2"/>
 ${n.filete ? `<path d="${formaEscudo(w - 8, h - 9, t + 4)}" fill="none" stroke="${aro[0]}" stroke-opacity=".75" stroke-width="1.3"/>` : ''}
 ${facetas}${divisas}
 <path d="${fora}" fill="url(#${id}c)"/>
 ${meio}
 <g clip-path="url(#${id}k)"><g transform="skewX(-20)"><rect class="esc-reflexo" x="-40" y="0" width="20" height="130" fill="#fff" fill-opacity=".38"/></g></g>
+${frente}
 </svg>`;
   }
   // diamante lapidado (brilhante) com faíscas e um reflexo que passa por cima
@@ -1974,7 +2017,7 @@ ${meio}
     // cabeçalho
     const posGeral = posicao(ctx.pontos, k);
     const dia = pat.atual.diamante;
-    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : ''}`, style: `--pc:${pat.atual.cor}` },
+    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''}`, style: `--pc:${pat.atual.cor}` },
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
