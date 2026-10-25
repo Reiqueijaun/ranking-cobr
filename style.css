@@ -1754,3 +1754,92 @@ h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY
 .esc-faisca { transform-box: fill-box; transform-origin: center; animation: cintila 2.2s ease-in-out infinite; }
 .esc-dia .esc-raios, .ins-dia .esc-raios { animation-duration: 9s; }
 .pp-topo.pp-len { border-color: rgba(255, 216, 77, .55); box-shadow: 0 0 40px rgba(255, 216, 77, .16), inset 0 0 70px rgba(255, 122, 26, .1); }
+
+/* ---------- coroa do rei (campeão da temporada passada) ---------- */
+.av-rei { position: relative; overflow: visible; }
+.coroa-rei {
+  position: absolute; left: 50%; bottom: 80%; width: 92%; aspect-ratio: 116 / 84; z-index: 2; pointer-events: none;
+  transform: translateX(-46%) rotate(-12deg); transform-origin: 50% 100%;
+  filter: drop-shadow(0 0 3px rgba(255, 216, 77, .9)) drop-shadow(0 1px 1px rgba(0, 0, 0, .6));
+  animation: coroaBrilho 2.4s ease-in-out infinite;
+}
+.coroa-rei svg, .coroa-vaga svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.av-esc .coroa-rei, .avatar-esc .coroa-rei { bottom: 76%; }
+.av-p .coroa-rei { width: 100%; bottom: 74%; }
+@keyframes coroaBrilho { 50% { filter: drop-shadow(0 0 9px rgba(255, 216, 77, 1)) drop-shadow(0 0 2px rgba(255, 247, 194, .9)) drop-shadow(0 1px 1px rgba(0, 0, 0, .6)); } }
+.cr-reflexo { animation: reflexoCoroa 3.2s ease-in-out infinite; }
+@keyframes reflexoCoroa { 0%, 55% { transform: translateX(0); } 100% { transform: translateX(200px); } }
+.cr-faisca { transform-box: fill-box; transform-origin: center; animation: cintila 1.9s ease-in-out infinite; }
+.av-p .cr-faisca { display: none; }
+/* a bolinha / o escudo do rei também brilha em dourado */
+.av.av-rei:not(.av-esc), .avatar.av-rei:not(.avatar-esc) { border-color: #FFD84D; box-shadow: 0 0 0 2px rgba(255, 216, 77, .25), 0 0 16px rgba(255, 216, 77, .55); }
+.av-esc.av-rei, .avatar-esc.av-rei { filter: drop-shadow(0 0 6px rgba(255, 216, 77, .8)) drop-shadow(0 1px 2px rgba(0, 0, 0, .55)); }
+/* espaço pra coroa caber em cima do avatar grande */
+.av-g.av-rei, .av-xg.av-rei, .avatar.av-rei { margin-top: 30px; }
+.av-xg.av-rei { margin-top: 44px; }
+.rei-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; border-radius: 999px; white-space: nowrap;
+  font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #3A1C00;
+  background: linear-gradient(100deg, #FFB800, #FFF2A8 40%, #FFD84D 60%, #F29A00); background-size: 220% 100%;
+  box-shadow: 0 0 12px rgba(255, 216, 77, .55); animation: ouroCorre 3s linear infinite;
+}
+.rei-tag svg { fill: currentColor; stroke: none; }
+#tabela tr.linha-rei { background: linear-gradient(90deg, rgba(255, 216, 77, .16), rgba(255, 122, 26, .05) 45%, transparent 75%); box-shadow: inset 3px 0 0 #FFD84D; }
+#tabela tr.linha-rei .link-nome.forte { color: #FFE58A; text-shadow: 0 0 12px rgba(255, 216, 77, .45); }
+#tabela tr.linha-rei td { padding-top: 18px; }
+.pp-topo.pp-rei { border-color: rgba(255, 216, 77, .7); box-shadow: 0 0 46px rgba(255, 216, 77, .22), inset 0 0 80px rgba(255, 184, 0, .12); }
+.pp-rei .pp-nome { background: linear-gradient(100deg, #FFB800, #FFF7C2 40%, #FFD84D 60%, #F29A00); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: ouroCorre 4s linear infinite; filter: drop-shadow(0 0 14px rgba(255, 216, 77, .35)); }
+
+/* banner do rei no ranking */
+.rei-temp:empty { display: none; }
+#reiTemporada { padding-block: 12px 0; }
+.rei-box {
+  position: relative; overflow: hidden; display: flex; align-items: center; flex-wrap: wrap; gap: 14px 22px; padding: 18px 22px; border-radius: 18px;
+  border: 1px solid rgba(255, 216, 77, .6);
+  background: radial-gradient(70% 180% at 0% 50%, rgba(255, 216, 77, .26), transparent 60%), radial-gradient(60% 160% at 100% 0%, rgba(255, 122, 26, .18), transparent 60%), linear-gradient(180deg, #241A08, var(--painel-2));
+  box-shadow: 0 0 40px rgba(255, 216, 77, .16), inset 0 0 0 1px rgba(255, 247, 194, .06);
+}
+.rei-raios {
+  position: absolute; left: 70px; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; pointer-events: none; opacity: .35;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 216, 77, .55) 0 6deg, transparent 6deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 0, transparent 65%); mask: radial-gradient(circle, #000 0, transparent 65%);
+  animation: girar 30s linear infinite;
+}
+.rei-faiscas i { background: #FFE58A !important; }
+.rei-box > :not(.rei-raios):not(.rei-faiscas) { position: relative; z-index: 1; }
+.rei-av { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 96px; padding: 0; border: 0; background: none; cursor: pointer; }
+.rei-av .av-g.av-rei { margin-top: 26px; }
+span.rei-av { cursor: default; }
+.coroa-vaga { display: block; width: 92px; filter: grayscale(.2) drop-shadow(0 0 12px rgba(255, 216, 77, .7)); animation: coroaFlutua 3s ease-in-out infinite; }
+@keyframes coroaFlutua { 50% { transform: translateY(-6px) rotate(-4deg); } }
+.rei-txt { display: flex; flex-direction: column; gap: 6px; flex: 1 1 240px; min-width: 0; }
+.rei-rot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #FFD84D; }
+.rei-rot svg { fill: currentColor; stroke: none; flex: 0 0 auto; }
+.rei-nome {
+  align-self: flex-start; padding: 0; border: 0; background: linear-gradient(100deg, #FFB800, #FFF7C2 40%, #FFD84D 60%, #F29A00); background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: ouroCorre 4s linear infinite;
+  font-family: var(--f-titulo); font-size: clamp(32px, 8vw, 46px); font-weight: 700; line-height: .9; letter-spacing: 1px; overflow-wrap: anywhere; text-align: left; cursor: pointer;
+  filter: drop-shadow(0 0 14px rgba(255, 216, 77, .35));
+}
+b.rei-nome { cursor: default; }
+.rei-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rei-chip { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; white-space: nowrap; }
+.rei-ok { color: #3A1C00; background: #FFD84D; }
+.rei-risco { color: #FFB4B4; background: rgba(232, 23, 79, .18); border: 1px solid rgba(232, 23, 79, .55); animation: chamar 1.6s ease-in-out infinite; }
+.rei-lider { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rei-lider-rot { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.rei-lider-nome { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--texto); font-weight: 700; cursor: pointer; min-width: 0; }
+.rei-lider-nome .av-rei { margin-top: 0; }
+.rei-cta {
+  font-family: var(--f-titulo); font-size: clamp(22px, 5vw, 30px); font-weight: 700; letter-spacing: 2px; line-height: 1; white-space: nowrap;
+  color: #FFF2A8; text-shadow: 0 0 18px rgba(255, 216, 77, .7), 0 2px 0 #7A3A00;
+  animation: ctaRei 2.2s ease-in-out infinite;
+}
+@keyframes ctaRei { 50% { transform: scale(1.06); text-shadow: 0 0 28px rgba(255, 216, 77, 1), 0 2px 0 #7A3A00; } }
+.rei-eu { border-color: #FFD84D; box-shadow: 0 0 60px rgba(255, 216, 77, .3); }
+@media (max-width: 520px) {
+  .rei-box { padding: 16px; }
+  .rei-av { width: 76px; }
+  .rei-cta { width: 100%; text-align: center; }
+}
+@keyframes ouroCorre { to { background-position: -220% 0; } }

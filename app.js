@@ -349,6 +349,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function render() {
     cachePat = null;
     cacheTrofeus = null;
+    cacheRei = undefined;
     const geralMassa = montarRanking('geral', 'massa');
     const geralPontos = montarRanking('geral', 'pontos');
     const rank = montarRanking(periodo, modo);
@@ -372,6 +373,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     renderConquistas();
     renderPatentes();
     renderFimTemporada();
+    renderRei();
     renderTemporadas(ctx);
     renderHall();
     renderPartidas();
@@ -1007,10 +1009,10 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function avatarPodio(j) {
     const { atual } = patenteDe(geralPts(j));
     const letra = j.nome.charAt(0).toUpperCase();
-    if (!atual.nivel) return el('div', { class: 'avatar', 'aria-hidden': 'true', text: letra });
+    if (!atual.nivel) return coroar(el('div', { class: 'avatar', 'aria-hidden': 'true', text: letra }), j.chave);
     const a = el('div', { class: `avatar avatar-esc ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
     a.innerHTML = escudoSVG(atual, letra);
-    return a;
+    return coroar(a, j.chave);
   }
   function renderPodio(rank, ctx) {
     const box = $('podio');
@@ -1080,9 +1082,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       const pulo = cortar && i === iEu && i > TABELA_TOPO
         ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
-      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : ''].join(' ').trim() || null },
+      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : '', ehRei(j.chave) ? 'linha-rei' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipRei(j.chave), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
         el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
         el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
@@ -1237,10 +1239,100 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function avatarDe(nome, pontos, tam = '') {
     const { atual } = patenteDe(pontos);
     const letra = nome.charAt(0).toUpperCase();
-    if (!atual.nivel) return el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: letra });
+    if (!atual.nivel) return coroar(el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: letra }), chave(nome));
     const a = el('span', { class: `av av-esc ${tam} ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
     a.innerHTML = escudoSVG(atual, letra);
+    return coroar(a, chave(nome));
+  }
+
+  // ---------- coroa do rei ----------
+  // o campeão da temporada que acabou de fechar usa a coroa a temporada seguinte inteira;
+  // na virada ela vai pro novo campeão (se ele ganhar de novo, continua com ela)
+  let cacheRei;
+  function reiAtual() {
+    if (cacheRei !== undefined) return cacheRei;
+    const ini = new Date(fimDoMes() - 1);
+    const atual = new Date(ini.getFullYear(), ini.getMonth(), 1).getTime();
+    const ant = new Date(ini.getFullYear(), ini.getMonth() - 1, 1).getTime();
+    const top = montarRanking(ant, 'pontos', true, atual).find((j) => j.pontos > 0);
+    cacheRei = top && !exMembro(top.chave) ? { chave: top.chave, nome: top.nome, ms: ant } : null;
+    return cacheRei;
+  }
+  const ehRei = (k) => { const r = reiAtual(); return !!r && r.chave === k; };
+  let numCoroa = 0;
+  function coroaSVG(cls = 'coroa-rei') {
+    const id = 'cr' + (++numCoroa);
+    const w = el('span', { class: cls, 'aria-hidden': 'true' });
+    const corpo = 'M12 54L4 16L18 38L27 7L38 33L50 1L62 33L73 7L82 38L96 16L88 54Z';
+    const faixa = 'M9 51Q50 44 91 51L91 66Q50 59 9 66Z';
+    const tr = 'stroke="#4A2600" stroke-width="1.8" stroke-linejoin="round"';
+    w.innerHTML = `<svg viewBox="-8 -12 116 84">
+<defs>
+<linearGradient id="${id}o" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#FFF7C2"/><stop offset=".3" stop-color="#FFD84D"/><stop offset=".7" stop-color="#F29A00"/><stop offset="1" stop-color="#8A4300"/></linearGradient>
+<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE98A"/><stop offset=".5" stop-color="#E08A00"/><stop offset="1" stop-color="#7A3A00"/></linearGradient>
+<radialGradient id="${id}p" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF1C9"/><stop offset="1" stop-color="#D9B26A"/></radialGradient>
+<linearGradient id="${id}e" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<clipPath id="${id}k"><path d="${corpo}"/><path d="${faixa}"/></clipPath>
+</defs>
+<path d="${corpo}" fill="url(#${id}o)" ${tr}/>
+<path d="M14 50L8 24M27 13L30 46M50 8V46M73 13L70 46M86 24L92 50" stroke="#FFF7C2" stroke-opacity=".55" stroke-width="1.4" fill="none"/>
+<path d="${faixa}" fill="url(#${id}f)" ${tr}/>
+<path d="M11 54Q50 47 89 54" stroke="#FFF7C2" stroke-opacity=".7" stroke-width="1.3" fill="none"/>
+${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${id}p)" ${tr}/>`).join('')}
+<path d="M50 49L57 56.5L50 64L43 56.5Z" fill="#E8174F" ${tr}/><path d="M48 52L50 50L52 52L50 55Z" fill="#fff" fill-opacity=".85"/>
+<ellipse cx="29" cy="58" rx="5.2" ry="4" fill="#2F63E0" ${tr}/><ellipse cx="71" cy="58" rx="5.2" ry="4" fill="#2F63E0" ${tr}/>
+<circle cx="15" cy="59.5" r="3" fill="#14C36B" ${tr}/><circle cx="85" cy="59.5" r="3" fill="#14C36B" ${tr}/>
+<path d="M50 20L55 28L50 36L45 28Z" fill="#E8174F" ${tr}/>
+<g clip-path="url(#${id}k)"><g class="cr-reflexo"><rect x="-70" y="-20" width="26" height="110" fill="url(#${id}e)" transform="skewX(-22)"/></g></g>
+<path class="cr-faisca" d="${faisca(-2, 2, 7)}" fill="#FFF7C2"/>
+<path class="cr-faisca" style="animation-delay:-.6s" d="${faisca(103, -2, 6)}" fill="#fff"/>
+<path class="cr-faisca" style="animation-delay:-1.2s" d="${faisca(64, -8, 4.5)}" fill="#FFE98A"/>
+</svg>`;
+    return w;
+  }
+  // põe a coroa na "cabeça" do avatar de quem é o rei
+  function coroar(a, k) {
+    if (!ehRei(k)) return a;
+    a.classList.add('av-rei');
+    a.append(coroaSVG());
+    a.title = `Dono da coroa · campeão da ${nomeTemp(reiAtual().ms)}`;
     return a;
+  }
+  // banner do rei (ou da coroa vaga) no ranking: quem tem a coroa e quem tá tomando ela
+  function renderRei() {
+    const box = $('reiTemporada');
+    const rei = reiAtual();
+    const mes = montarRanking('mes', 'pontos').filter((j) => j.pontos > 0);
+    const lider = mes[0];
+    if (!rei && !lider) { box.replaceChildren(); return; }
+    const eu = lerEu();
+    const pos = rei ? mes.findIndex((j) => j.chave === rei.chave) + 1 : 0;
+    const defende = rei && pos === 1;
+    const cta = !rei ? 'VALENDO A COROA'
+      : eu === rei.chave ? 'DEFENDA A COROA'
+        : lider && eu === lider.chave && !defende ? 'TOMANDO A COROA'
+          : 'DESTRONE O REI';
+    const status = rei
+      ? [el('span', { class: `rei-chip ${defende ? 'rei-ok' : 'rei-risco'}`, text: defende ? 'DEFENDENDO · #1' : pos ? `AMEAÇADO · #${pos}` : 'AMEAÇADO · SEM PONTOS' }),
+        lider && !defende ? el('span', { class: 'rei-lider' }, el('span', { class: 'rei-lider-rot', text: '1º AGORA' }), btnPerfil(lider, 'rei-lider-nome', [avatarDe(lider.nome, ptsPat(lider.chave), 'av-p'), comTag(lider.nome)])) : null]
+      : [el('span', { class: 'rei-lider' }, el('span', { class: 'rei-lider-rot', text: '1º AGORA' }), btnPerfil(lider, 'rei-lider-nome', [avatarDe(lider.nome, ptsPat(lider.chave), 'av-p'), comTag(lider.nome)]))];
+    trocar(box, el('div', { class: `rei-box ${rei ? '' : 'rei-vago'} ${eu && rei && eu === rei.chave ? 'rei-eu' : ''}` },
+      el('span', { class: 'rei-raios', 'aria-hidden': 'true' }),
+      el('span', { class: 'dia-faiscas rei-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 10 }, () => el('i'))),
+      rei
+        ? btnPerfil(rei, 'rei-av', avatarDe(rei.nome, ptsPat(rei.chave), 'av-g'))
+        : el('span', { class: 'rei-av' }, coroaSVG('coroa-vaga')),
+      el('div', { class: 'rei-txt' },
+        el('span', { class: 'rei-rot' }, svg(ICONE_COROA, 14), rei ? `DONO DA COROA · CAMPEÃO DA ${nomeTemp(rei.ms).toUpperCase()}` : `COROA EM JOGO · ${nomeTemp(Date.now()).toUpperCase()}`,
+          el('button', { type: 'button', class: 'info-btn', 'data-info': 'temporada', 'aria-label': 'Como funciona a coroa', text: 'i' })),
+        rei ? btnPerfil(rei, 'rei-nome', comTag(rei.nome)) : el('b', { class: 'rei-nome', text: 'SEM DONO' }),
+        el('div', { class: 'rei-status' }, ...status)),
+      el('b', { class: 'rei-cta', text: cta })));
+  }
+  function chipRei(k) {
+    if (!ehRei(k)) return null;
+    const n = numTemp(reiAtual().ms);
+    return el('span', { class: 'rei-tag', title: `Dono da coroa · campeão da ${nomeTemp(reiAtual().ms)}` }, svg(ICONE_COROA, 12), n >= 1 ? `REI T${n}` : 'REI');
   }
 
   // ---------- escudo de cada patente ----------
@@ -1577,6 +1669,8 @@ ${frente}
       el('ul', { class: 'rg-lista' },
         linhaRegra('Duração', '1 mês'),
         linhaRegra('Campeão', 'mais pontos no mês leva a taça'),
+        linhaRegra('Coroa', 'o campeão usa a temporada seguinte inteira'),
+        linhaRegra('Perde a coroa', 'se não ganhar de novo'),
         linhaRegra('Pontos do mês', 'zeram no dia 1'),
         linhaRegra('Patente', `cai ${CAI_NA_VIRADA} no dia 1`),
         linhaRegra('Insígnia', 'a patente final fica no perfil'),
@@ -2017,7 +2111,7 @@ ${frente}
     // cabeçalho
     const posGeral = posicao(ctx.pontos, k);
     const dia = pat.atual.diamante;
-    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''}`, style: `--pc:${pat.atual.cor}` },
+    const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''} ${ehRei(k) ? 'pp-rei' : ''}`, style: `--pc:${pat.atual.cor}` },
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
@@ -2025,7 +2119,7 @@ ${frente}
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
-          el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
+          el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipRei(k), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
