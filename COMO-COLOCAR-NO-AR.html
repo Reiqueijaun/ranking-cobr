@@ -97,14 +97,15 @@ code{background:var(--painel);border:1px solid var(--linha);padding:1px 6px;bord
       </ol>
       <p style="margin-top:14px"><b>Agora crie a conta de admin.</b> Cada admin (dono, vice…) tem o próprio e-mail e senha. Ninguém mais consegue registrar ou apagar.</p>
       <ol>
-        <li>No menu da esquerda, vá em <b>Authentication → Sign In / Providers</b> e <b>desligue</b> <b>Allow new users to sign up</b>. Clique em <span class="btn-nome">Save changes</span>. Assim ninguém cria conta sozinho.</li>
+        <li>No menu da esquerda, vá em <b>Authentication → Sign In / Providers</b> e deixe <b>ligados</b> <b>Allow new users to sign up</b> e <b>Confirm email</b>. Clique em <span class="btn-nome">Save changes</span>. Os jogadores criam a conta deles pelo site (só serve pro "Meu perfil": admin é só quem está na tabela <b>admins</b>).</li>
+        <li>Vá em <b>Authentication → URL Configuration</b> e coloque o endereço do site em <b>Site URL</b>. É pra lá que o link de confirmação do e-mail leva.</li>
         <li>Vá em <b>Authentication → Users</b>, clique em <span class="btn-nome">Add user</span> → <b>Create new user</b>. Coloque o e-mail e uma senha forte, deixe marcado <b>Auto Confirm User</b> e clique em <span class="btn-nome">Create user</span>.</li>
         <li>Volte no <b>SQL Editor</b>, apague tudo, cole a linha abaixo trocando o nome e o e-mail, e clique em <span class="btn-nome">Run</span>:</li>
       </ol>
       <div class="codigo"><button class="copiar" type="button" data-copiar="admin">Copiar</button><pre id="admin">insert into public.admins (user_id, nome)
 select id, 'Seu nome' from auth.users where email = 'seu@email.com'
 on conflict (user_id) do update set nome = excluded.nome;</pre></div>
-      <div class="dica">Tem que aparecer <b>Success. 1 rows affected</b>. Se aparecer <b>0 rows</b>, o e-mail não bate com o do usuário criado.<br>Pra ter mais de um admin, repita os passos 2 e 3 pra cada pessoa. Cada um usa a própria senha: <b>não compartilhe a sua</b>.</div>
+      <div class="dica">Tem que aparecer <b>Success. 1 rows affected</b>. Se aparecer <b>0 rows</b>, o e-mail não bate com o do usuário criado.<br>Pra ter mais de um admin, repita os passos 3 e 4 pra cada pessoa. Cada um usa a própria senha: <b>não compartilhe a sua</b>.</div>
       <p style="margin-top:14px"><b>Por último, pegue os dois códigos do seu banco.</b> Clique em <span class="btn-nome">Connect</span> no topo da página (ou vá em <b>Project Settings → API Keys</b>) e deixe aberto. Você vai precisar de:</p>
       <ul>
         <li><b>Project URL</b>: algo como <code>https://abcdxyz.supabase.co</code></li>
@@ -189,7 +190,7 @@ Torneios 🏆: na Área do admin aparece "Criar torneio" (seção Torneios do cl
 Com pontos ou massa, as partidas que você registra no ranking já entram sozinhas. Com kills, você lança o resultado dentro do torneio. No mata-mata, toca em "Montar a chave", depois toca em cada duelo pra lançar quem venceu: o vencedor avança sozinho.
 O botão "Mandar no grupo" manda a classificação pronta pro WhatsApp. Todo mundo acompanha ao vivo, com contagem regressiva.
 
-Perfil: cada membro toca no próprio nome, vê posições, medalhas e partidas, e toca em "Sou eu" pra ter o atalho "Meu perfil" no topo. O botão "Compartilhar" copia o link do perfil.
+Perfil: cada membro toca no próprio nome, vê posições, medalhas e partidas, e quem cria a conta (botão "Entrar" no topo, com o próprio e-mail) tem o atalho "Meu perfil" em qualquer aparelho. O botão "Compartilhar" copia o link do perfil.
 
 Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira um app no celular.</pre></div>
 

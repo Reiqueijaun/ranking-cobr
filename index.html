@@ -382,20 +382,28 @@
   <div id="trofeuCorpo"></div>
 </dialog>
 
-<dialog id="dlgAdmin" class="dlg" aria-labelledby="tituloAdmin">
-  <form id="formAdmin" class="form-admin" novalidate>
-    <h2 class="laranja" id="tituloAdmin">ÁREA DO ADMIN</h2>
-    <p>Entre com a sua conta de administrador do clã.</p>
-    <label for="fEmail">E-MAIL</label>
-    <input id="fEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required>
-    <label for="fSenha">SENHA</label>
-    <input id="fSenha" type="password" autocomplete="current-password" required>
-    <p class="erro" id="erroAdmin" role="alert" hidden></p>
-    <div class="linha-btns">
-      <button type="button" class="btn btn-sec" id="btnCancelarAdmin">Cancelar</button>
-      <button type="submit" class="btn btn-pri" id="btnEntrar">Entrar</button>
+<dialog id="dlgEntrar" class="dlg" aria-labelledby="tituloEntrar">
+  <form id="formEntrar" class="form-admin" novalidate>
+    <h2 class="laranja" id="tituloEntrar">ENTRAR</h2>
+    <div class="abas" role="tablist" aria-label="Entrar ou criar conta" id="abasEntrar">
+      <button type="button" role="tab" class="aba" data-entrar="entrar" aria-selected="true">Entrar</button>
+      <button type="button" role="tab" class="aba" data-entrar="criar" aria-selected="false">Criar conta</button>
     </div>
-    <p class="form-nota">Esqueceu a senha? Peça pro dono do site trocar no painel do Supabase.</p>
+    <p id="txtEntrar" hidden></p>
+    <label for="fEntNick" data-campo="nick">SEU NICK NO CLÃ</label>
+    <input id="fEntNick" type="text" maxlength="40" list="listaNicks" autocomplete="off" autocapitalize="off" spellcheck="false" data-campo="nick">
+    <datalist id="listaNicks"></datalist>
+    <label for="fEntEmail" data-campo="email">E-MAIL</label>
+    <input id="fEntEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" data-campo="email">
+    <label for="fEntSenha" id="rotEntSenha" data-campo="senha">SENHA</label>
+    <input id="fEntSenha" type="password" autocomplete="current-password" data-campo="senha">
+    <p class="erro" id="erroEntrar" role="alert" hidden></p>
+    <div class="linha-btns">
+      <button type="button" class="link-btn" id="btnEsqueci">Esqueci a senha</button>
+      <span class="espaco"></span>
+      <button type="button" class="btn btn-sec" id="btnCancelarEntrar">Cancelar</button>
+      <button type="submit" class="btn btn-pri" id="btnEntrarJog">Entrar</button>
+    </div>
   </form>
 </dialog>
 
@@ -420,6 +428,14 @@
     <select id="fJogCargo"></select>
     <label class="check" for="fJogAtivo"><input id="fJogAtivo" type="checkbox"> Ainda está no clã</label>
     <p class="form-nota" id="notaJogador"></p>
+    <div class="jog-login" id="jogLogin">
+      <span class="jog-login-rot">LOGIN</span>
+      <p class="form-nota" id="jogLoginTxt"></p>
+      <div class="jog-login-btns">
+        <button type="button" class="btn btn-perigo-sec" id="btnTirarLogin">Tirar login</button>
+        <button type="button" class="btn btn-sec" id="btnSouEuAdmin">Sou eu</button>
+      </div>
+    </div>
     <p class="erro" id="erroJogador" role="alert" hidden></p>
     <div class="linha-btns">
       <button type="button" class="btn btn-perigo-sec" id="btnApagarJog">Apagar</button>

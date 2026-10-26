@@ -500,6 +500,111 @@ revoke all on function public.admin_salvar_config(text, jsonb) from anon;
 grant execute on function public.admin_salvar_config(text, jsonb) to authenticated;
 
 
+-- 5c) Login dos jogadores: cada um cria a conta com o próprio e-mail e senha,
+--     confirma pelo link que chega no e-mail e escolhe o nick dele no clã.
+--     Login de jogador não dá poder nenhum: só deixa o site saber quem ele é
+--     ("Meu perfil" em qualquer aparelho). Admin continua sendo só quem está em "admins".
+--     Precisa ligar no painel: Authentication > Sign In / Providers > "Allow new users to sign up"
+--     e "Confirm email" ligados; Authentication > URL Configuration > Site URL = endereço do site.
+create table if not exists public.player_contas (
+  player_id   uuid primary key references public.players (id) on delete cascade,
+  user_id     uuid not null unique references auth.users (id) on delete cascade,
+  created_at  timestamptz not null default now()
+);
+alter table public.player_contas enable row level security;
+revoke all on public.player_contas from anon, authenticated;
+
+-- (versão de teste com código do admin: nunca foi usada, sai)
+drop function if exists public.admin_gerar_codigo(uuid);
+drop function if exists public.jogador_ativar(uuid, text, text);
+drop function if exists public.email_jogador(uuid);
+drop function if exists public.admin_vincular_eu(uuid);
+drop function if exists public.admin_logins();
+drop table if exists public.player_codigos;
+
+-- Qual jogador é a conta logada (null se não for de nenhum)
+create or replace function public.jogador_eu()
+returns uuid
+language sql stable security definer set search_path = public
+as $$
+  select player_id from player_contas where user_id = auth.uid();
+$$;
+
+-- Antes de cadastrar: esse nick ainda está livre?
+create or replace function public.nick_livre(p_player uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from players where id = p_player)
+     and not exists(select 1 from player_contas where player_id = p_player);
+$$;
+
+-- A conta logada (com e-mail confirmado) fica com esse jogador.
+-- Quem já tinha um jogador troca (ex.: escolheu o nick errado).
+-- Devolve: ok | tem_login | nao_existe | sem_confirmar
+create or replace function public.jogador_vincular(p_player uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  if not exists(select 1 from auth.users where id = auth.uid() and email_confirmed_at is not null) then
+    return 'sem_confirmar';
+  end if;
+  if not exists(select 1 from players where id = p_player) then return 'nao_existe'; end if;
+  if exists(select 1 from player_contas where player_id = p_player and user_id <> auth.uid()) then
+    return 'tem_login';
+  end if;
+  delete from player_contas where user_id = auth.uid() and player_id <> p_player;
+  insert into player_contas (player_id, user_id) values (p_player, auth.uid()) on conflict (player_id) do nothing;
+  return 'ok';
+end;
+$$;
+
+-- Pra tela do admin: quem já tem login (e-mail e último acesso)
+create or replace function public.admin_logins()
+returns table (player_id uuid, email text, admin boolean, ultimo_acesso timestamptz)
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  return query
+    select c.player_id, u.email::text, a.user_id is not null, u.last_sign_in_at
+    from player_contas c
+    join auth.users u on u.id = c.user_id
+    left join admins a on a.user_id = c.user_id;
+end;
+$$;
+
+-- Admin tira o login de um jogador (alguém pegou o nick errado). A conta continua existindo,
+-- só fica sem jogador; se for de outra pessoa, ela escolhe o nick certo ao entrar de novo.
+create or replace function public.admin_tirar_login(p_player uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('tirar login', jsonb_build_object('jogador', p_player, 'nick', (select nick from players where id = p_player),
+    'email', (select u.email from player_contas c join auth.users u on u.id = c.user_id where c.player_id = p_player)));
+  delete from player_contas where player_id = p_player;
+end;
+$$;
+
+revoke all on function public.jogador_eu() from public, anon;
+revoke all on function public.nick_livre(uuid) from public;
+revoke all on function public.jogador_vincular(uuid) from public, anon;
+revoke all on function public.admin_logins() from public, anon;
+revoke all on function public.admin_tirar_login(uuid) from public, anon;
+grant execute on function public.jogador_eu() to authenticated;
+grant execute on function public.nick_livre(uuid) to anon, authenticated;
+grant execute on function public.jogador_vincular(uuid) to authenticated;
+grant execute on function public.admin_logins() to authenticated;
+grant execute on function public.admin_tirar_login(uuid) to authenticated;
+
+
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin

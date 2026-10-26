@@ -918,6 +918,13 @@ input[type="number"], input[type="datetime-local"] {
 input[type="number"]:focus, input[type="datetime-local"]:focus, input[type="search"]:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px rgba(255, 122, 26, .2); }
 .check span { min-width: 0; }
 
+/* login do jogador (tela do admin: Editar jogador) */
+.jog-login { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--linha); border-radius: 12px; background: var(--fundo, transparent); }
+.jog-login-rot { font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--texto-2); }
+.jog-login-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.jog-login-btns:not(:has(> :not([hidden]))) { display: none; }
+#jogLoginTxt b { color: var(--texto); word-break: break-all; }
+
 /* cartões na página inicial */
 .tn-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; }
 .tn-card {

@@ -18,6 +18,8 @@
   let periodo = 'mes';        // abre na temporada (mês atual)
   let modo = CFG.RANKING_POR === 'massa' ? 'massa' : 'pontos';
   let admin = null;           // { nome } quando quem está usando é admin (login do Supabase)
+  let euId = null;            // id no elenco do jogador logado (login de jogador ou admin ligado ao jogador)
+  let logins = new Map();     // só pro admin: id do jogador -> { email, admin, ultimo_acesso }
   let arquivoPrint = null;
   let jogadores = [];         // elenco do clã (tabela players)
   let elenco = new Map();     // chave do nick -> jogador do elenco
@@ -939,6 +941,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('notaJogador').textContent = qtd
       ? `Tem ${qtd} ${qtd === 1 ? 'partida' : 'partidas'}. Se saiu do clã, desmarque "Ainda está no clã": ele some do ranking e o histórico fica guardado.`
       : 'Ainda não tem partida. Se foi cadastro errado, pode apagar.';
+    renderLoginJog(r);
     $('dlgJogador').showModal();
   }
   function erroJogador(msg) { $('erroJogador').textContent = msg || ''; $('erroJogador').hidden = !msg; }
@@ -2000,16 +2003,22 @@ ${frente}
   const ICONE_VOLTAR = '<path d="M15 5l-7 7 7 7"/>';
   const ICONE_LINK = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
   const ICONE_EU = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>';
+  const ICONE_SAIR = '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>';
 
-  // "este sou eu": cada um marca o próprio perfil no aparelho e acha ele no topo
-  function lerEu() { try { return localStorage.getItem('ranking_eu') || null; } catch (e) { return null; } }
-  function guardarEu(k) { try { if (k) localStorage.setItem('ranking_eu', k); else localStorage.removeItem('ranking_eu'); } catch (e) {} }
+  // "eu": quem entrou com o login de jogador (vale em qualquer aparelho); pelo id, então trocar o nick não perde
+  function lerEu() { const r = euId && jogPorId.get(euId); return r ? chave(r.nick) : null; }
   function renderEu() {
     const k = lerEu();
-    const r = k && listaElenco().find((x) => x.chave === k);
     const btn = $('btnEu');
-    btn.hidden = !r;
-    if (!r) return;
+    // admin sem jogador ligado não precisa do botão (liga em "Editar jogador" > Sou eu)
+    btn.hidden = !elencoOk || (!k && !!admin);
+    if (!k) {
+      const txt = contaSemJogador ? 'Escolher nick' : 'Entrar';
+      btn.replaceChildren(svg(ICONE_EU, 20), el('span', { class: 'btn-txt', text: txt }));
+      btn.setAttribute('aria-label', contaSemJogador ? 'Escolher o seu nick' : 'Entrar ou criar conta');
+      return;
+    }
+    const r = elenco.get(k);
     btn.replaceChildren(avatarDe(r.nick, ptsPat(k), 'av-p'), el('span', { class: 'btn-txt', text: 'Meu perfil' }));
     btn.setAttribute('aria-label', `Meu perfil: ${comTag(r.nick)}`);
   }
@@ -2089,11 +2098,7 @@ ${frente}
     const barra = el('div', { class: 'pp-barra' },
       el('button', { type: 'button', class: 'btn btn-sec pp-voltar', onclick: fecharPerfil }, svg(ICONE_VOLTAR, 18), 'Ranking'),
       nome ? el('div', { class: 'pp-acoes' },
-        el('button', { type: 'button', class: `btn btn-sec ${lerEu() === k ? 'pp-eu-on' : ''}`, 'aria-pressed': String(lerEu() === k), onclick: () => {
-          guardarEu(lerEu() === k ? null : k);
-          render(); // a tabela destaca a linha de quem é "eu"
-          toast(lerEu() === k ? 'Pronto! Seu perfil fica no botão do topo.' : 'Perfil desmarcado.');
-        } }, svg(ICONE_EU, 18), el('span', { class: 'btn-txt', text: lerEu() === k ? 'Este sou eu' : 'Sou eu' })),
+        lerEu() === k ? el('button', { type: 'button', class: 'btn btn-sec', 'aria-label': 'Sair da conta', onclick: () => sairConta() }, svg(ICONE_SAIR, 18), el('span', { class: 'btn-txt', text: 'Sair' })) : null,
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
 
     if (!nome) {
@@ -3810,17 +3815,12 @@ ${frente}
   // ---------- admin (login com e-mail e senha, pelo Supabase Auth) ----------
   // Quem decide se a conta é admin é o banco (tabela admins): cada função de
   // registrar/apagar confere de novo lá. O site só mostra ou esconde os botões.
-  async function lerAdmin() {
-    if (DEMO) return admin;
-    const { data } = await sb.auth.getSession();
-    if (!data.session) return null;
-    const r = await sb.rpc('admin_eu');
-    return !r.error && r.data ? { nome: r.data } : null;
-  }
   function aplicarAdmin(novo) {
     admin = novo;
+    if (!admin) logins = new Map();
     $('btnAdmin').textContent = admin ? `Sair da área do admin (${admin.nome})` : 'Área do admin';
     render();
+    if (admin) carregarLogins();
   }
 
   // chama uma função de admin no banco; se a sessão caiu, sai do modo admin
@@ -3839,47 +3839,6 @@ ${frente}
     if (!e || !e.sessao) return false;
     toast('Sua sessão de admin acabou. Entre de novo.', true);
     return true;
-  }
-
-  function msgLogin(error) {
-    if (error.status === 429 || /rate limit|too many/i.test(error.message)) return 'Muitas tentativas. Espera alguns minutos e tenta de novo.';
-    if (/invalid login credentials/i.test(error.message)) return 'E-mail ou senha errados.';
-    if (/email not confirmed/i.test(error.message)) return 'Esse e-mail ainda não foi confirmado.';
-    return 'Não consegui entrar agora. Tenta de novo.';
-  }
-
-  async function entrarAdmin(ev) {
-    ev.preventDefault();
-    const email = $('fEmail').value.trim();
-    const senha = $('fSenha').value;
-    const erro = $('erroAdmin');
-    const btn = $('btnEntrar');
-    const falhar = (msg) => { erro.textContent = msg; erro.hidden = false; };
-    erro.hidden = true;
-    if (!email || !senha) return falhar('Preencha o e-mail e a senha.');
-    btn.disabled = true;
-    try {
-      let novo;
-      if (DEMO) {
-        if (senha !== '1234') return falhar('E-mail ou senha errados. (Na demonstração, a senha é 1234.)');
-        novo = { nome: email.split('@')[0] };
-      } else {
-        const { error } = await sb.auth.signInWithPassword({ email, password: senha });
-        if (error) return falhar(msgLogin(error));
-        novo = await lerAdmin();
-        if (!novo) { await sb.auth.signOut(); return falhar('Essa conta não tem acesso de admin.'); }
-      }
-      $('fSenha').value = '';
-      $('dlgAdmin').close();
-      aplicarAdmin(novo);
-      toast(`Bem-vindo, ${novo.nome}. Área do admin liberada.`);
-      if (!perfilAtual && !torneioAtual && pagAtual === 'ranking') $('registrar').scrollIntoView({ behavior: 'smooth' });
-    } catch (e) {
-      console.error(e);
-      falhar('Não consegui entrar agora. Confere a internet e tenta de novo.');
-    } finally {
-      btn.disabled = false;
-    }
   }
 
   // janela de "tem certeza?" (apagar partida, apagar resultado, encerrar torneio...)
@@ -3924,8 +3883,297 @@ ${frente}
     const era = admin;
     admin = null;
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
+    euId = null; // é a mesma sessão: sair do admin sai do jogador ligado a ele também
+    contaSemJogador = false;
     aplicarAdmin(null);
     if (era && !silencioso) toast('Você saiu da área do admin.');
+  }
+
+  // ---------- entrar (jogador e admin usam a mesma conta: e-mail + senha) ----------
+  // O jogador cria a conta com o e-mail dele, confirma pelo link e fica com o nick escolhido
+  // (jogador_vincular, no banco). Admin é quem está na tabela admins: o banco confere em cada ação.
+  let modoEntrar = 'entrar';
+  let contaSemJogador = false; // logou, mas a conta ainda não tem nick (o nick escolhido já tinha dono)
+  let linkEmail = null;        // { tipo: 'signup' | 'recovery' } quando a pessoa chegou pelo link do e-mail
+  // demonstração: VENO já tem conta (veno@demo.com, senha 1234); outro e-mail com 1234 entra como admin
+  const demoContas = new Map([['veno@demo.com', { senha: '1234', player: 'dj0' }]]);
+  const TEXTO_ENTRAR = {
+    entrar: { titulo: 'ENTRAR', botao: 'Entrar', campos: ['email', 'senha'] },
+    criar: { titulo: 'CRIAR CONTA', botao: 'Criar conta', campos: ['nick', 'email', 'senha'] },
+    esqueci: { titulo: 'ESQUECI A SENHA', botao: 'Mandar link', campos: ['email'], txt: 'Mandamos um link pro seu e-mail pra você criar uma senha nova.' },
+    nova: { titulo: 'SENHA NOVA', botao: 'Salvar senha', campos: ['senha'] },
+    nick: { titulo: 'QUAL É O SEU NICK?', botao: 'Pronto', campos: ['nick'], txt: 'Escolha o seu nick no clã. Ele fica ligado à sua conta.' },
+    enviado: { titulo: 'OLHA O SEU E-MAIL', botao: null, campos: [] },
+  };
+
+  // lê quem está logado: admin, jogador e, se a conta ainda não tem nick, liga o que ela escolheu no cadastro
+  async function lerConta() {
+    if (DEMO) return;
+    const { data } = await sb.auth.getSession();
+    const s = data.session;
+    if (!s) { admin = null; euId = null; contaSemJogador = false; return; }
+    const [ra, rj] = await Promise.all([sb.rpc('admin_eu'), sb.rpc('jogador_eu')]);
+    admin = !ra.error && ra.data ? { nome: ra.data } : null;
+    euId = !rj.error && rj.data ? rj.data : null;
+    const pedido = s.user && s.user.user_metadata && s.user.user_metadata.player_id;
+    if (!euId && pedido && !admin) {
+      const rv = await sb.rpc('jogador_vincular', { p_player: pedido });
+      if (!rv.error && rv.data === 'ok') euId = pedido;
+    }
+    contaSemJogador = !euId && !admin;
+  }
+
+  function trocarModoEntrar(m) {
+    modoEntrar = m;
+    const t = TEXTO_ENTRAR[m];
+    $('tituloEntrar').textContent = t.titulo;
+    $('abasEntrar').hidden = m !== 'entrar' && m !== 'criar';
+    document.querySelectorAll('[data-entrar]').forEach((a) => a.setAttribute('aria-selected', String(a.dataset.entrar === m)));
+    document.querySelectorAll('#formEntrar [data-campo]').forEach((n) => { n.hidden = !t.campos.includes(n.dataset.campo); });
+    const nova = m === 'criar' || m === 'nova';
+    $('rotEntSenha').textContent = m === 'nova' ? 'SENHA NOVA' : nova ? 'CRIE UMA SENHA' : 'SENHA';
+    $('fEntSenha').autocomplete = nova ? 'new-password' : 'current-password';
+    $('fEntSenha').placeholder = nova ? 'mínimo 6 caracteres' : '';
+    $('txtEntrar').hidden = !t.txt;
+    if (t.txt) $('txtEntrar').textContent = t.txt;
+    $('btnEntrarJog').hidden = !t.botao;
+    if (t.botao) $('btnEntrarJog').textContent = t.botao;
+    $('btnCancelarEntrar').textContent = t.botao ? 'Cancelar' : 'Fechar';
+    $('btnEsqueci').hidden = m !== 'entrar';
+    $('erroEntrar').hidden = true;
+  }
+  function focoEntrar() {
+    const campo = TEXTO_ENTRAR[modoEntrar].campos.map((c) => $({ nick: 'fEntNick', email: 'fEntEmail', senha: 'fEntSenha' }[c])).find((n) => !n.value);
+    (campo || $('btnEntrarJog')).focus();
+  }
+  function abrirEntrar(m = 'entrar') {
+    if (document.querySelector('dialog[open]')) document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+    $('listaNicks').replaceChildren(...jogadores.filter((r) => r.ativo).map((r) => el('option', { value: r.nick })));
+    // quem tinha marcado "Sou eu" no aparelho (sistema antigo) já vem com o nick preenchido
+    if (!$('fEntNick').value) { const r = elenco.get(lerEuAntigo()); if (r) $('fEntNick').value = r.nick; }
+    $('fEntSenha').value = '';
+    trocarModoEntrar(m);
+    $('dlgEntrar').showModal();
+    focoEntrar();
+  }
+  function lerEuAntigo() { try { return localStorage.getItem('ranking_eu'); } catch (e) { return null; } }
+
+  function msgLogin(error) {
+    if (error.status === 429 || /rate limit|too many/i.test(error.message)) return 'Muitas tentativas agora. Espera um pouco e tenta de novo.';
+    if (/invalid login credentials/i.test(error.message)) return 'E-mail ou senha errados.';
+    if (/email not confirmed/i.test(error.message)) return 'Falta confirmar o e-mail: abra o link que mandamos (olhe no spam também).';
+    if (/password/i.test(error.message) && /(least|short|weak)/i.test(error.message)) return 'A senha precisa ter pelo menos 6 caracteres.';
+    if (/invalid.*email|email.*invalid/i.test(error.message)) return 'Esse e-mail não parece certo. Confere.';
+    return 'Não deu certo agora. Tenta de novo.';
+  }
+
+  async function enviarEntrar(ev) {
+    ev.preventDefault();
+    const erro = $('erroEntrar');
+    const falhar = (msg) => { erro.textContent = msg; erro.hidden = false; };
+    erro.hidden = true;
+    const m = modoEntrar;
+    const campos = TEXTO_ENTRAR[m].campos;
+    const email = $('fEntEmail').value.trim().toLowerCase();
+    const senha = $('fEntSenha').value;
+    const r = elenco.get(chave($('fEntNick').value));
+    if (campos.includes('nick')) {
+      if (!chave($('fEntNick').value)) return falhar('Escreve o seu nick.');
+      if (!r) return falhar('Não achei esse nick no clã. Escreve igual está no ranking.');
+    }
+    if (campos.includes('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return falhar('Escreve o seu e-mail.');
+    if (campos.includes('senha')) {
+      if (!senha) return falhar('Escreve a senha.');
+      if ((m === 'criar' || m === 'nova') && senha.length < 6) return falhar('A senha precisa ter pelo menos 6 caracteres.');
+    }
+    const btn = $('btnEntrarJog');
+    btn.disabled = true;
+    try {
+      if (m === 'entrar') await fazerLogin(email, senha, falhar);
+      else if (m === 'criar') await criarConta(r, email, senha, falhar);
+      else if (m === 'esqueci') await esqueciSenha(email, falhar);
+      else if (m === 'nova') await salvarSenhaNova(senha, falhar);
+      else if (m === 'nick') await escolherNick(r, falhar);
+    } catch (e) {
+      console.error(e);
+      falhar('Não consegui agora. Confere a internet e tenta de novo.');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function fazerLogin(email, senha, falhar) {
+    if (DEMO) {
+      const c = demoContas.get(email);
+      if (c ? c.senha !== senha : senha !== '1234') return falhar('E-mail ou senha errados. (Na demonstração, a senha é 1234.)');
+      admin = c ? null : { nome: email.split('@')[0] };
+      euId = c ? c.player : null;
+      contaSemJogador = false;
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+      if (error) return falhar(msgLogin(error));
+      await lerConta();
+    }
+    $('fEntSenha').value = '';
+    $('dlgEntrar').close();
+    boasVindas();
+  }
+  // depois de entrar (senha ou link do e-mail): avisa quem é e, se faltar o nick, pergunta
+  function boasVindas(confirmou = false) {
+    try { if (euId) localStorage.removeItem('ranking_eu'); } catch (e) {}
+    aplicarAdmin(admin);
+    const r = euId && jogPorId.get(euId);
+    if (contaSemJogador) { abrirEntrar('nick'); return; }
+    if (admin) {
+      toast(`Bem-vindo, ${admin.nome}. Área do admin liberada.`);
+      if (!perfilAtual && !torneioAtual && pagAtual === 'ranking') $('registrar').scrollIntoView({ behavior: 'smooth' });
+    } else if (r) {
+      toast(confirmou ? `E-mail confirmado! Bem-vindo, ${comTag(r.nick)}.` : `Bem-vindo, ${comTag(r.nick)}!`);
+    }
+  }
+
+  async function criarConta(r, email, senha, falhar) {
+    if (DEMO) {
+      if ([...demoContas.values()].some((c) => c.player === r.id)) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      if (demoContas.has(email)) return falhar('Esse e-mail já tem conta. Toque em "Entrar".');
+      demoContas.set(email, { senha, player: r.id });
+    } else {
+      const livre = await sb.rpc('nick_livre', { p_player: r.id });
+      if (livre.error) throw new Error(livre.error.message);
+      if (!livre.data) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      const { data, error } = await sb.auth.signUp({
+        email, password: senha,
+        options: { emailRedirectTo: location.origin + location.pathname, data: { player_id: r.id } },
+      });
+      if (error) {
+        // o e-mail grátis do Supabase manda poucos por hora
+        if (error.status === 429 || /rate limit/i.test(error.message)) return falhar('Muita gente se cadastrando agora e o e-mail de confirmação não saiu. Tenta de novo daqui a uma hora.');
+        return falhar(msgLogin(error));
+      }
+      // e-mail que já tinha conta: o Supabase finge que deu certo, mas não manda nada
+      if (data.user && Array.isArray(data.user.identities) && !data.user.identities.length) return falhar('Esse e-mail já tem conta. Toque em "Entrar".');
+    }
+    $('fEntSenha').value = '';
+    trocarModoEntrar('enviado');
+    $('txtEntrar').hidden = false;
+    $('txtEntrar').replaceChildren('Mandamos um link pra ', el('b', { text: email }), '. Abra e toque nele pra confirmar. Não chegou? Olhe no spam.');
+  }
+
+  async function esqueciSenha(email, falhar) {
+    if (!DEMO) {
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      if (error) return falhar(error.status === 429 || /rate limit/i.test(error.message) ? 'O e-mail não saiu agora (limite por hora). Tenta de novo mais tarde.' : msgLogin(error));
+    }
+    trocarModoEntrar('enviado');
+    $('txtEntrar').hidden = false;
+    $('txtEntrar').replaceChildren('Se ', el('b', { text: email }), ' tem conta, o link pra criar a senha nova chegou lá. Olhe no spam também.');
+  }
+
+  async function salvarSenhaNova(senha, falhar) {
+    if (!DEMO) {
+      const { error } = await sb.auth.updateUser({ password: senha });
+      if (error) return falhar(/different from the old/i.test(error.message) ? 'Essa é a senha antiga. Escolha outra.' : msgLogin(error));
+      await lerConta();
+    }
+    $('fEntSenha').value = '';
+    $('dlgEntrar').close();
+    aplicarAdmin(admin);
+    toast('Senha nova salva!');
+    if (contaSemJogador) abrirEntrar('nick');
+  }
+
+  async function escolherNick(r, falhar) {
+    if (DEMO) {
+      euId = r.id;
+    } else {
+      const res = await sb.rpc('jogador_vincular', { p_player: r.id });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      if (res.data !== 'ok') return falhar('Não deu certo. Tenta de novo.');
+      euId = r.id;
+    }
+    contaSemJogador = false;
+    $('dlgEntrar').close();
+    try { localStorage.removeItem('ranking_eu'); } catch (e) {}
+    aplicarAdmin(admin);
+    toast(`Pronto! Você é ${comTag(r.nick)}.`);
+  }
+
+  async function sairConta() {
+    if (admin) { await sairAdmin(true); toast('Você saiu.'); return; }
+    euId = null;
+    contaSemJogador = false;
+    if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
+    render();
+    toast('Você saiu.');
+  }
+
+  // ---------- admin: quem já tem login ----------
+  async function carregarLogins() {
+    if (DEMO || !admin) return;
+    const r = await sb.rpc('admin_logins');
+    if (r.error) { console.warn('logins:', r.error.message); return; }
+    logins = new Map((r.data || []).map((x) => [x.player_id, x]));
+    if ($('dlgJogador').open && editJog) renderLoginJog(editJog);
+  }
+  function loginDe(id) {
+    if (!DEMO) return logins.get(id) || null;
+    const e = [...demoContas.entries()].find(([, c]) => c.player === id);
+    return e ? { email: e[0], admin: false, ultimo_acesso: null } : null;
+  }
+  function renderLoginJog(r) {
+    const l = loginDe(r.id);
+    $('jogLogin').hidden = !r.id;
+    $('jogLoginTxt').replaceChildren(...(l
+      ? [el('b', { text: l.email }), l.admin ? ' · conta de admin' : '', l.ultimo_acesso ? ` · entrou ${haQuanto(l.ultimo_acesso)}` : '']
+      : ['Ainda não criou a conta.']));
+    $('btnTirarLogin').hidden = !l;
+    $('btnTirarLogin').textContent = 'Tirar login';
+    confirmarTirar = false;
+    // admin que também joga: liga a própria conta ao jogador dele
+    $('btnSouEuAdmin').hidden = DEMO || !!l || !!euId;
+  }
+
+  let confirmarTirar = false;
+  async function tirarLogin() {
+    const r = editJog;
+    if (!r) return;
+    if (!confirmarTirar) { confirmarTirar = true; $('btnTirarLogin').textContent = 'Toque de novo pra tirar'; return; }
+    try {
+      if (DEMO) {
+        for (const [e, c] of demoContas) if (c.player === r.id) demoContas.delete(e);
+      } else {
+        await rpcAdmin('admin_tirar_login', { p_player: r.id });
+        await carregarLogins();
+      }
+      if (euId === r.id) euId = null;
+      renderLoginJog(r);
+      render();
+      toast(`${comTag(r.nick)} ficou sem login. Quem tinha a conta escolhe outro nick ao entrar.`);
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgJogador').close(); return; }
+      erroJogador('Não deu agora. (' + (e.message || 'erro') + ')');
+    }
+  }
+
+  async function souEuAdmin() {
+    const r = editJog;
+    if (!r) return;
+    try {
+      const res = await rpcAdmin('jogador_vincular', { p_player: r.id });
+      if (res === 'tem_login') return erroJogador('Esse jogador já tem conta própria.');
+      if (res !== 'ok') throw new Error(res);
+      euId = r.id;
+      await carregarLogins();
+      renderLoginJog(r);
+      render();
+      toast(`Sua conta agora é a de ${comTag(r.nick)}. "Meu perfil" fica no topo.`);
+    } catch (e) {
+      console.error(e);
+      if (erroSessao(e)) { $('dlgJogador').close(); return; }
+      erroJogador('Não deu agora. (' + (e.message || 'erro') + ')');
+    }
   }
 
   // ---------- dados ----------
@@ -4045,6 +4293,15 @@ ${frente}
 
   // ---------- início ----------
   function iniciar() {
+    // volta do link do e-mail (confirmar conta / senha nova): o Supabase manda tudo depois do #
+    const h = new URLSearchParams(location.hash.slice(1));
+    linkEmail = h.has('access_token') ? { tipo: h.get('type') } : null;
+    if (h.has('error_code') || h.has('error_description')) {
+      history.replaceState(null, '', location.pathname + location.search);
+      setTimeout(() => toast(h.get('error_code') === 'otp_expired'
+        ? 'Esse link venceu ou já foi usado. Entre com e-mail e senha, ou peça outro.'
+        : 'Não deu pra abrir esse link. Tenta entrar de novo.', true), 600);
+    }
     document.querySelectorAll('[data-tag]').forEach((n) => { n.textContent = TAG; });
     document.title = `Ranking Clã ${TAG}`;
     const mes = new Date().toLocaleDateString('pt-BR', { month: 'long' });
@@ -4196,22 +4453,21 @@ ${frente}
     });
 
     // admin
-    $('btnAdmin').addEventListener('click', () => {
-      if (admin) { sairAdmin(); return; }
-      $('fSenha').value = '';
-      $('erroAdmin').hidden = true;
-      $('dlgAdmin').showModal();
-      ($('fEmail').value ? $('fSenha') : $('fEmail')).focus();
-    });
-    $('btnCancelarAdmin').addEventListener('click', () => $('dlgAdmin').close());
-    $('formAdmin').addEventListener('submit', entrarAdmin);
+    $('btnAdmin').addEventListener('click', () => { if (admin) sairAdmin(); else abrirEntrar('entrar'); });
     $('btnNaoApagar').addEventListener('click', () => $('dlgConfirma').close());
     $('btnSimApagar').addEventListener('click', confirmou);
     // o PIN antigo ficava salvo no aparelho; não serve mais pra nada
     try { localStorage.removeItem('ranking_pin'); sessionStorage.removeItem('ranking_pin'); } catch (e) {}
 
     // perfil: página com link próprio, botão voltar do celular/navegador funciona
-    $('btnEu').addEventListener('click', () => { const k = lerEu(); if (k) abrirPerfil(k); });
+    $('btnEu').addEventListener('click', () => { const k = lerEu(); if (k) abrirPerfil(k); else abrirEntrar(contaSemJogador ? 'nick' : 'entrar'); });
+    // entrar / criar conta
+    $('formEntrar').addEventListener('submit', enviarEntrar);
+    $('btnCancelarEntrar').addEventListener('click', () => $('dlgEntrar').close());
+    $('btnEsqueci').addEventListener('click', () => { trocarModoEntrar('esqueci'); focoEntrar(); });
+    document.querySelectorAll('[data-entrar]').forEach((a) => a.addEventListener('click', () => { trocarModoEntrar(a.dataset.entrar); focoEntrar(); }));
+    $('btnTirarLogin').addEventListener('click', tirarLogin);
+    $('btnSouEuAdmin').addEventListener('click', souEuAdmin);
     addEventListener('popstate', () => mostrarRota());
     // links do menu (#ranking, #jogadores...): o site troca de página sozinho, de qualquer lugar
     document.addEventListener('click', (e) => {
@@ -4251,13 +4507,20 @@ ${frente}
       return;
     }
     sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
-    // sessão expirou ou saiu em outra aba: some o modo admin
-    sb.auth.onAuthStateChange((evento) => { if (evento === 'SIGNED_OUT' && admin) setTimeout(() => aplicarAdmin(null), 0); });
+    // sessão expirou ou saiu em outra aba: some o modo admin e o "Meu perfil"
+    // link de senha nova do e-mail: abre a janela pra criar a senha
+    sb.auth.onAuthStateChange((evento) => {
+      if (evento === 'SIGNED_OUT' && (admin || euId || contaSemJogador)) setTimeout(() => { euId = null; contaSemJogador = false; aplicarAdmin(null); }, 0);
+      if (evento === 'PASSWORD_RECOVERY') setTimeout(() => { if (!($('dlgEntrar').open && modoEntrar === 'nova')) abrirEntrar('nova'); }, 0);
+    });
     carregar()
       .then(async () => {
-        admin = await lerAdmin().catch(() => null);
-        aplicarAdmin(admin);
+        await lerConta().catch(() => { admin = null; euId = null; contaSemJogador = false; });
+        if (/access_token=/.test(location.hash)) history.replaceState(history.state, '', location.pathname + location.search);
         mostrarRota();
+        if (linkEmail && linkEmail.tipo === 'recovery') { aplicarAdmin(admin); if (!$('dlgEntrar').open) abrirEntrar('nova'); }
+        else if (linkEmail && linkEmail.tipo === 'signup') boasVindas(true);
+        else { aplicarAdmin(admin); if (contaSemJogador) abrirEntrar('nick'); }
         cerimoniaAutomatica();
         ligarTempoReal();
       })
