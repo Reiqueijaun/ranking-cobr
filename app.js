@@ -380,6 +380,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     renderHall();
     renderPartidas();
     renderJogadores();
+    if (chat.eu && chatVisivel()) desenharMembrosChat();
 
     // só admin vê os formulários (e o banco confere de novo em cada ação)
     $('registrar').hidden = !admin;
@@ -508,7 +509,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // sem # (ou com um # que não existe) abre o ranking. #hall, #tabela etc. abrem a
   // página de quem eles fazem parte e rolam até lá.
   const PAG_INICIO = 'ranking';
-  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes']); // abrem no topo da página
+  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'chat']); // abrem no topo da página
   let pagAtual = null;
   function alvoDoEndereco(hash) {
     const id = decodeURIComponent(String(hash || '').slice(1));
@@ -533,6 +534,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     document.querySelectorAll('#principal [data-pag]').forEach((s) => s.classList.toggle('fora', s.dataset.pag !== pag));
     document.body.dataset.pag = pag;
     marcarMenu();
+    if (pag === 'chat') abrirChatPagina();
     if (mudou) {
       const m = $('principal');
       m.classList.remove('pag-entra');
@@ -1648,7 +1650,7 @@ ${frente}
   }
 
   // ---------- como funciona (regras em abas, no lugar dos textos no meio do site) ----------
-  const REGRA_ABAS = ['temporada', 'patentes', 'pontos'];
+  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'chat'];
   let regraAba = 'temporada';
   // linha de regra: ícone/rótulo curto à esquerda, valor à direita (como tela de regras de jogo)
   const linhaRegra = (rot, ...val) => el('li', { class: 'rg-linha' }, el('span', { class: 'rg-rot', text: rot }), el('span', { class: 'rg-val' }, ...val));
@@ -1656,7 +1658,7 @@ ${frente}
   function abrirRegras(aba = regraAba) {
     regraAba = REGRA_ABAS.includes(aba) ? aba : 'temporada';
     document.querySelectorAll('.aba[data-regra]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.regra === regraAba)));
-    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos }[regraAba]();
+    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, chat: regrasChat }[regraAba]();
     trocar($('regrasCorpo'), corpo);
     const dlg = $('dlgRegras');
     if (!dlg.open) dlg.showModal();
@@ -4066,6 +4068,7 @@ ${frente}
     destrancar();
     aplicarAdmin(admin);
     mostrarRota();
+    ligarChat();
     if (!siteAberto) {
       siteAberto = true;
       cerimoniaAutomatica();
@@ -4080,6 +4083,7 @@ ${frente}
     contaSemJogador = false;
     logins = new Map();
     pedidos = [];
+    desligarChat();
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
     if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
     document.querySelectorAll('dialog[open]').forEach((d) => d.close());
@@ -4595,6 +4599,973 @@ ${frente}
     }, 60000);
   }
 
+  // ---------- chat do clã ----------
+  // Só membro lê e fala (o banco confere, passo 7 do SQL). Mensagens, reações, bonde e "tô jogando"
+  // chegam ao vivo; quem está com o site aberto aparece online (presença do Supabase).
+  // A moderação é do ADM: apaga, fixa, silencia, tira do chat e resolve as denúncias.
+  const ICONE_HASH = '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/>';
+  const ICONE_BONDE = '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.7 6.5A2.7 2.7 0 0 0 6.6 17l2.1-2h6.6l2.1 2a2.7 2.7 0 0 0 4.6-1.9l-.7-6.5A4 4 0 0 0 17.3 5z"/>';
+  const ICONE_CHAMA = '<path d="M12 22c4 0 7-3 7-7 0-5-4-6-5-11-3 2-4 5-4 8-1-1-2-2-2-4-2 2-3 4-3 7 0 4 3 7 7 7z"/>';
+  const ICONE_MEGAFONE = '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/>';
+  const ICONE_TRAVA = '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+  const ICONE_ENVIAR = '<path d="M4 12 20 4l-4 16-4-7z"/><path d="M12 13 20 4"/>';
+  const ICONE_SORRISO = '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4 4 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>';
+  const ICONE_RESPONDER = '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/>';
+  const ICONE_FIXAR = '<path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4z"/>';
+  const ICONE_GENTE = '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-5-6.7"/>';
+  const ICONE_CITA = '<path d="M4 4v7a4 4 0 0 0 4 4h12"/><path d="M16 11l4 4-4 4"/>';
+  const ICONE_MUDO = '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/>';
+  const ICONE_MODERAR = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>';
+  const ICONE_SETA = '<path d="M5 12h14M13 6l6 6-6 6"/>';
+  const ICONE_DESCE = '<path d="M12 5v14M6 13l6 6 6-6"/>';
+  const CANAIS_CHAT = [
+    { id: 'geral', nome: 'geral', ico: ICONE_HASH, vazio: 'Manda o primeiro oi pro clã.' },
+    { id: 'bonde', nome: 'bonde', ico: ICONE_BONDE, vazio: 'Toque no controle pra chamar o bonde.' },
+    { id: 'recordes', nome: 'recordes', ico: ICONE_CHAMA, soSite: true, vazio: 'Cada massa registrada aparece aqui.' },
+    { id: 'avisos', nome: 'avisos', ico: ICONE_MEGAFONE, soAdm: true, vazio: 'Nenhum aviso ainda.' },
+  ];
+  const REACOES_CHAT = ['🔥', '😂', '💀', '👑', '🐍', '💯', '👍', 'GG'];
+  const POR_CANAL = 80;               // mensagens que carrega de cada canal
+  const BONDE_DURA = 3 * 3600000;     // depois disso o bonde fecha
+  const chat = {
+    ligado: false, eu: null, canal: 'geral', resp: null, rt: null, presenca: null, conectou: false,
+    msgs: Object.fromEntries(CANAIS_CHAT.map((c) => [c.id, []])),
+    porId: new Map(),                 // id -> mensagem
+    reac: new Map(),                  // id -> Map(emoji -> Set(user_id))
+    bonde: new Map(),                 // id -> [{ user_id, player_id, nome }]
+    status: new Map(),                // user_id -> { player_id, nome, jogando_ate }
+    online: new Map(),                // user_id -> { player_id, nome, adm }
+    digitando: new Map(), lido: {}, novas: 0, denuncias: 0,
+  };
+  const euChat = () => (chat.eu && chat.eu.user_id) || null;
+  const admChat = () => !!(chat.eu && chat.eu.adm);
+  const canalChat = (id) => CANAIS_CHAT.find((c) => c.id === id);
+  const horaChat = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nickDoPlayer = (pid, nome) => (pid && jogPorId.get(pid) ? jogPorId.get(pid).nick : nome || 'Membro');
+  const nickMsg = (m) => (m.tipo === 'massa' ? 'COBR' : nickDoPlayer(m.player_id, m.nome));
+  const meuNick = () => (chat.eu ? nickDoPlayer(chat.eu.player_id, chat.eu.nome) : '');
+  const jogandoAte = (s) => (s && s.jogando_ate && Date.parse(s.jogando_ate) > Date.now() ? s.jogando_ate : null);
+  function punicaoAtiva() {
+    const p = chat.eu && chat.eu.punicao;
+    return p && (!p.ate || Date.parse(p.ate) > Date.now()) ? p : null;
+  }
+  const foraDoChat = () => { const p = punicaoAtiva(); return !!p && p.tipo === 'ban'; };
+  function ateTxt(iso) {
+    if (!iso) return 'até o ADM liberar';
+    const d = new Date(iso);
+    return d.toDateString() === new Date().toDateString() ? `até ${horaChat(iso)}` : `até ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${horaChat(iso)}`;
+  }
+  function rotDia(iso) {
+    const d = new Date(iso).toDateString(), ontem = new Date(Date.now() - 86400000).toDateString();
+    return d === new Date().toDateString() ? 'HOJE' : d === ontem ? 'ONTEM' : dataCurta(iso).toUpperCase();
+  }
+  const meMarcou = (m) => !!m.txt && !!meuNick() && new RegExp('@' + escRe(meuNick()) + '(?![\\p{L}\\p{N}_])', 'iu').test(m.txt);
+  const chatVisivel = () => pagAtual === 'chat' && !perfilAtual && !torneioAtual && !document.hidden && !document.body.classList.contains('trancado');
+  const podeFalar = (c) => !!chat.eu && !punicaoAtiva() && !canalChat(c).soSite && (!canalChat(c).soAdm || admChat());
+
+  // ---------- falar com o banco (na demonstração tudo fica só nesta tela) ----------
+  async function chatRpc(nome, args) {
+    if (DEMO) return demoChatRpc(nome, args);
+    const r = await sb.rpc(nome, args);
+    if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+    return r.data;
+  }
+  function erroChat(e) {
+    const t = String((e && e.message) || '');
+    if (/silenciado/.test(t)) { toast('Você está silenciado no chat.', true); recarregarEuChat(); }
+    else if (/devagar/.test(t)) toast('Calma! Espera uns segundos pra mandar de novo.', true);
+    else if ((e && e.code === '42501') || /acesso negado/.test(t)) toast('Sem permissão pra isso.', true);
+    else toast('Não deu agora. Tenta de novo.', true);
+  }
+
+  // ---------- carregar ----------
+  function limparChat() {
+    for (const c of CANAIS_CHAT) chat.msgs[c.id] = [];
+    chat.porId.clear(); chat.reac.clear(); chat.bonde.clear(); chat.status.clear(); chat.digitando.clear();
+    chat.resp = null; chat.novas = 0; chat.denuncias = 0;
+  }
+  function guardarMsg(m) {
+    chat.porId.set(m.id, m);
+    const l = chat.msgs[m.canal];
+    let i = l.length;
+    while (i > 0 && l[i - 1].id > m.id) i--;
+    l.splice(i, 0, m);
+    return i;
+  }
+  async function carregarChat() {
+    if (DEMO) { demoChatSemear(); return depoisDeCarregarChat(); }
+    const re = await sb.rpc('chat_eu');
+    if (re.error) throw new Error(re.error.message);
+    chat.eu = re.data;
+    limparChat();
+    if (!foraDoChat()) {
+      const rs = await Promise.all(CANAIS_CHAT.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
+      for (const r of rs) {
+        if (r.error) throw new Error(r.error.message);
+        for (const m of r.data) guardarMsg(m);
+      }
+      const ids = [...chat.porId.keys()], bondes = ids.filter((id) => chat.porId.get(id).tipo === 'bonde');
+      const [rr, rb, rst] = await Promise.all([
+        ids.length ? sb.from('chat_reacoes').select('msg_id, user_id, emoji').in('msg_id', ids) : { data: [] },
+        bondes.length ? sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').in('msg_id', bondes).order('created_at') : { data: [] },
+        sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
+      ]);
+      for (const r of rr.data || []) mexerReac(r.msg_id, r.emoji, r.user_id, true, false);
+      for (const b of rb.data || []) mexerBonde(b, true, false);
+      for (const s of rst.data || []) chat.status.set(s.user_id, s);
+      if (admChat()) await contarDenuncias(false);
+    }
+    depoisDeCarregarChat();
+  }
+  function depoisDeCarregarChat() {
+    lerLidosChat();
+    atualizarBadgesChat();
+    if (chatVisivel()) desenharChat();
+  }
+  async function recarregarEuChat() {
+    if (DEMO) return;
+    const antes = foraDoChat();
+    const re = await sb.rpc('chat_eu');
+    if (re.error) return;
+    chat.eu = re.data;
+    if (antes !== foraDoChat()) { carregarChat().catch(() => {}); return; }
+    if (chatVisivel()) { desenharComporChat(); desenharTopoChat(); desenharMsgsChat(); }
+  }
+  async function contarDenuncias(redesenhar = true) {
+    if (DEMO) { chat.denuncias = new Set(demoChat.denuncias.map((d) => d.msg_id)).size; }
+    else {
+      const r = await sb.from('chat_denuncias').select('msg_id');
+      chat.denuncias = r.error ? 0 : new Set(r.data.map((d) => d.msg_id)).size;
+    }
+    if (redesenhar && chatVisivel()) desenharTopoChat();
+  }
+
+  // ---------- ao vivo ----------
+  function ligarChat() {
+    if (chat.ligado) return;
+    chat.ligado = true;
+    carregarChat()
+      .then(() => { if (!DEMO) ligarChatAoVivo(); })
+      .catch((e) => { console.warn('chat:', e.message); chat.ligado = false; });
+  }
+  function ligarChatAoVivo() {
+    const tabela = (t, fn) => ['postgres_changes', { event: '*', schema: 'public', table: t }, fn];
+    chat.rt = sb.channel('chat-ao-vivo')
+      .on(...tabela('chat_mensagens', (p) => { if (p.eventType === 'DELETE') sumiuMsg(p.old.id); else chegouMsg(p.new); }))
+      .on(...tabela('chat_reacoes', (p) => { const r = p.eventType === 'DELETE' ? p.old : p.new; mexerReac(r.msg_id, r.emoji, r.user_id, p.eventType !== 'DELETE'); }))
+      .on(...tabela('chat_bonde', (p) => mexerBonde(p.eventType === 'DELETE' ? p.old : p.new, p.eventType !== 'DELETE')))
+      .on(...tabela('chat_status', (p) => { if (p.new && p.new.user_id) { chat.status.set(p.new.user_id, p.new); if (chatVisivel()) { desenharMembrosChat(); desenharTopoChat(); } } }))
+      .on(...tabela('chat_punicoes', () => { recarregarEuChat(); if (admChat() && $('dlgModeracao').open) abrirModeracao(); }))
+      .on(...tabela('chat_denuncias', (p) => {
+        if (!admChat()) return;
+        contarDenuncias();
+        if (p.eventType === 'INSERT') toast('Nova denúncia no chat. Veja em Moderação.');
+        if ($('dlgModeracao').open) abrirModeracao();
+      }))
+      .subscribe((st) => {
+        if (st !== 'SUBSCRIBED') return;
+        // voltou depois de cair (celular em segundo plano): pega o que chegou nesse meio tempo
+        if (chat.conectou) carregarChat().catch(() => {});
+        chat.conectou = true;
+      });
+    const pr = sb.channel('chat-online', { config: { presence: { key: euChat() } } });
+    pr.on('presence', { event: 'sync' }, () => {
+      chat.online = new Map(Object.entries(pr.presenceState()).map(([k, l]) => [k, l[0] || {}]));
+      if (chatVisivel()) desenharMembrosChat();
+    })
+      .on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
+      .subscribe((st) => { if (st === 'SUBSCRIBED') pr.track({ player_id: chat.eu.player_id, nome: meuNick(), adm: chat.eu.adm }); });
+    chat.presenca = pr;
+  }
+  function desligarChat() {
+    if (sb && chat.rt) sb.removeChannel(chat.rt);
+    if (sb && chat.presenca) sb.removeChannel(chat.presenca);
+    chat.rt = null; chat.presenca = null; chat.conectou = false; chat.ligado = false; chat.eu = null;
+    chat.online.clear();
+    limparChat();
+    atualizarBadgesChat();
+  }
+
+  function chegouMsg(m) {
+    if (chat.porId.has(m.id)) { atualizarMsg(m); return; }
+    if (!chat.msgs[m.canal]) return;
+    if (m.fixada) for (const x of chat.msgs[m.canal]) x.fixada = false;
+    chat.digitando.delete(m.user_id);
+    const i = guardarMsg(m), l = chat.msgs[m.canal];
+    const meu = !!m.user_id && m.user_id === euChat();
+    if (chatVisivel() && chat.canal === m.canal) {
+      if (i !== l.length - 1) { desenharMsgsChat(); return; }
+      const box = $('chatMsgs'), fim = pertoDoFimChat() || meu;
+      const ant = l[i - 1];
+      if (!ant) box.replaceChildren();
+      if (!ant || new Date(ant.created_at).toDateString() !== new Date(m.created_at).toDateString()) box.append(el('div', { class: 'ch-dia', text: rotDia(m.created_at) }));
+      if (m.tipo === 'massa') m._conta = true;
+      const n = linhaChat(m, ant && new Date(ant.created_at).toDateString() === new Date(m.created_at).toDateString() ? ant : null);
+      n.classList.add('entra');
+      box.append(n);
+      if (fim) { descerChat(true); marcarLidoChat(); } else mostrarNovasChat();
+      desenharDigitando();
+      if (m.fixada) desenharFixadaChat();
+    } else if (!meu && meMarcou(m)) {
+      toast(`${nickMsg(m)} te marcou no #${m.canal}`);
+    }
+    atualizarBadgesChat();
+  }
+  function atualizarMsg(novo) {
+    const m = chat.porId.get(novo.id);
+    if (!m) return;
+    if (novo.fixada && !m.fixada) for (const x of chat.msgs[m.canal]) x.fixada = false;
+    Object.assign(m, novo);
+    if (m.apagada) chat.reac.delete(m.id);
+    trocarLinhaChat(m);
+    if (chatVisivel() && chat.canal === m.canal) desenharFixadaChat();
+    atualizarBadgesChat();
+  }
+  function sumiuMsg(id) {
+    const m = chat.porId.get(id);
+    if (!m) return;
+    chat.porId.delete(id);
+    chat.msgs[m.canal] = chat.msgs[m.canal].filter((x) => x.id !== id);
+    if (chatVisivel() && chat.canal === m.canal) desenharMsgsChat();
+    atualizarBadgesChat();
+  }
+  function mexerReac(id, emoji, user, liga, redesenhar = true) {
+    let r = chat.reac.get(id);
+    if (!r) chat.reac.set(id, (r = new Map()));
+    let s = r.get(emoji);
+    if (!s) { s = new Set(); r.set(emoji, s); }
+    const tinha = s.has(user);
+    if (liga) s.add(user); else s.delete(user);
+    if (redesenhar && tinha !== liga && chat.porId.has(id)) trocarLinhaChat(chat.porId.get(id), liga ? emoji : null);
+  }
+  function mexerBonde(b, entra, redesenhar = true) {
+    const l = (chat.bonde.get(b.msg_id) || []).filter((x) => x.user_id !== b.user_id);
+    if (entra) l.push({ user_id: b.user_id, player_id: b.player_id, nome: b.nome });
+    chat.bonde.set(b.msg_id, l);
+    if (redesenhar && chat.porId.has(b.msg_id)) trocarLinhaChat(chat.porId.get(b.msg_id));
+  }
+
+  // ---------- não lidas (guardado neste aparelho) ----------
+  function lerLidosChat() {
+    let salvo = null;
+    try { salvo = JSON.parse(localStorage.getItem('chat_lido_' + euChat()) || 'null'); } catch (e) {}
+    chat.lido = salvo || {};
+    // primeira vez neste aparelho: começa sem nada pendente
+    for (const c of CANAIS_CHAT) if (!(c.id in chat.lido)) { const l = chat.msgs[c.id]; chat.lido[c.id] = l.length ? l[l.length - 1].id : 0; }
+    salvarLidosChat();
+  }
+  function salvarLidosChat() { try { localStorage.setItem('chat_lido_' + euChat(), JSON.stringify(chat.lido)); } catch (e) {} }
+  const naoLidasChat = (c) => chat.msgs[c].filter((m) => m.id > (chat.lido[c] || 0) && m.user_id !== euChat() && !m.apagada).length;
+  function marcarLidoChat() {
+    if (!chatVisivel()) return;
+    const l = chat.msgs[chat.canal];
+    const ult = l.length ? l[l.length - 1].id : 0;
+    if ((chat.lido[chat.canal] || 0) >= ult) return;
+    chat.lido[chat.canal] = ult;
+    salvarLidosChat();
+    atualizarBadgesChat();
+  }
+  function atualizarBadgesChat() {
+    const total = chat.eu ? CANAIS_CHAT.reduce((s, c) => s + naoLidasChat(c.id), 0) : 0;
+    document.querySelectorAll('[data-badge-chat]').forEach((b) => { b.hidden = !total; b.textContent = total > 99 ? '99+' : String(total); });
+    if (chatVisivel()) desenharCanaisChat();
+  }
+
+  // ---------- desenho ----------
+  function avatarChat(nick, tam = '') {
+    if (nick === 'COBR') { const a = el('span', { class: `av av-bot ${tam}`, 'aria-hidden': 'true' }); a.append(el('img', { src: 'logo-cobr.webp', alt: '' })); return a; }
+    return avatarDe(nick, ptsPat(chave(nick)), tam);
+  }
+  function escudoDe(p, letra, tam = 'av-m') {
+    if (!p.nivel) return el('span', { class: `av ${tam}`, style: `--pc:${p.cor}`, 'aria-hidden': 'true', text: letra });
+    const a = el('span', { class: `av av-esc ${tam} ${p.diamante ? 'esc-dia' : ''}`, style: `--pc:${p.cor}`, 'aria-hidden': 'true' });
+    a.innerHTML = escudoSVG(p, letra);
+    return a;
+  }
+  function tagsChat(m, nick) {
+    if (nick === 'COBR') return [el('span', { class: 'ch-tag ch-tag-bot', text: 'AUTOMÁTICO' })];
+    const k = chave(nick), r = m.player_id && jogPorId.get(m.player_id);
+    const lider = r && /l[ií]der/i.test(r.cargo || '') ? r.cargo : null;
+    return [chipPatente(ptsPat(k)), chipRei(k),
+      lider ? el('span', { class: 'ch-tag ch-tag-lider', text: lider.toUpperCase() }) : null,
+      m.adm ? el('span', { class: 'ch-tag ch-tag-adm', text: 'ADM' }) : null];
+  }
+  function textoChat(txt) {
+    const s = el('div', { class: 'ch-txt' });
+    const eu = chave(meuNick());
+    for (const parte of String(txt || '').split(/(@[\p{L}\p{N}_.-]+)/u)) {
+      const k = parte.startsWith('@') ? chave(parte.slice(1)) : null;
+      if (k && elenco.has(k)) s.append(el('span', { class: `ch-mencao ${k === eu ? 'eu' : ''}`, text: parte }));
+      else if (parte) s.append(parte);
+    }
+    return s;
+  }
+  function resumoChat(m) {
+    if (m.apagada) return 'mensagem apagada';
+    if (m.tipo === 'massa') return `${nomeDe(chave(m.dados.player || ''), m.dados.player || '')} fez ${fmt(m.dados.mass || 0)} de massa`;
+    if (m.tipo === 'bonde') return `bonde · ${(m.dados && m.dados.srv) || 'Servidor BR'}`;
+    return m.txt;
+  }
+  // a partida dessa massa fez o jogador subir de patente na temporada?
+  function subidaDe(id) {
+    const p = partidas.find((x) => x.id === id);
+    if (!p) return null;
+    const k = chave(p.player), t = Date.parse(p.created_at), d = new Date(t);
+    const x = patTemp(k, t), desde = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    let antes = PATENTES[x ? x.ini : 0].pontos;
+    for (const q of partidas) {
+      const tq = Date.parse(q.created_at);
+      if (q !== p && chave(q.player) === k && tq >= desde && tq <= t && (tq < t || q.id < p.id)) antes += pontosDe(q.mass);
+    }
+    const de = patenteDe(antes).atual, para = patenteDe(antes + pontosDe(p.mass)).atual;
+    return para.nivel > de.nivel ? { de, para } : null;
+  }
+  function recordeDoMes(id) {
+    const p = partidas.find((x) => x.id === id);
+    if (!p) return false;
+    const mk = mesChave(Date.parse(p.created_at));
+    return !partidas.some((q) => q !== p && q.mass > p.mass && mesChave(Date.parse(q.created_at)) === mk);
+  }
+  function contarAte(span, alvo) {
+    const ini = performance.now(), dur = 1200;
+    const passo = (t) => {
+      const k = Math.min(1, (t - ini) / dur);
+      span.textContent = fmt(Math.round(alvo * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(passo);
+    };
+    requestAnimationFrame(passo);
+  }
+  function cartaoMassa(m) {
+    const d = m.dados || {}, k = chave(d.player || ''), nick = nomeDe(k, d.player || '');
+    const num = el('span', { text: fmt(d.mass || 0) });
+    if (m._conta) { m._conta = false; contarAte(num, d.mass || 0); }
+    const sobe = subidaDe(d.score_id);
+    return el('div', { class: 'ch-cv ch-cv-massa' },
+      el('div', { class: 'ch-cv-rot' }, svg(ICONE_CHAMA, 14), 'NOVA MASSA NO RANKING'),
+      el('button', { type: 'button', class: 'ch-cv-quem', onclick: () => abrirPerfil(k) }, avatarChat(nick, 'av-p'), el('b', { text: nick })),
+      el('div', { class: 'ch-cv-num' }, num, el('small', { text: 'MASSA' })),
+      el('div', { class: 'ch-cv-linha' },
+        el('span', { class: 'ch-cv-pts', text: `+${ptsTxt(pontosDe(d.mass || 0))}` }),
+        d.mass >= META ? el('span', { text: `passou de ${fmtK(Math.floor(d.mass / META) * META)}` }) : null,
+        recordeDoMes(d.score_id) ? el('span', { class: 'ch-selo', text: 'RECORDE DO MÊS' }) : null),
+      sobe ? el('div', { class: 'ch-sobe', style: `--pc:${sobe.para.cor}` },
+        escudoDe(sobe.de, nick.charAt(0).toUpperCase(), 'av-m ch-sobe-de'),
+        el('span', { class: 'ch-sobe-seta' }, svg(ICONE_SETA, 22)),
+        escudoDe(sobe.para, nick.charAt(0).toUpperCase(), 'av-m ch-sobe-para'),
+        el('span', { class: 'ch-sobe-txt' }, 'SUBIU PRA', chipPatente(sobe.para.pontos))) : null);
+  }
+  function cartaoBonde(m) {
+    const d = m.dados || {}, max = d.max || 6, gente = chat.bonde.get(m.id) || [];
+    const dentro = gente.some((g) => g.user_id === euChat());
+    const fechado = Date.now() - Date.parse(m.created_at) > BONDE_DURA;
+    const cheio = gente.length >= max;
+    const pode = !fechado && !punicaoAtiva() && (dentro || !cheio);
+    return el('div', { class: `ch-cv ch-cv-bonde ${fechado ? 'fechado' : ''}` },
+      el('div', { class: 'ch-cv-rot' }, svg(ICONE_BONDE, 14), m.user_id === euChat() ? 'SEU BONDE' : `BONDE DO ${nickMsg(m).toUpperCase()}`),
+      el('div', { class: 'ch-cv-tit', text: d.srv || 'Servidor BR' }),
+      m.txt ? el('div', { class: 'ch-cv-nota', text: m.txt }) : null,
+      el('div', { class: 'ch-bonde-gente' },
+        ...gente.map((g) => { const n = nickDoPlayer(g.player_id, g.nome); return el('span', { class: 'ch-bonde-av', title: n }, avatarChat(n, 'av-p')); }),
+        ...Array.from({ length: Math.max(0, max - gente.length) }, () => el('span', { class: 'ch-vaga' }))),
+      el('div', { class: 'ch-bonde-pe' },
+        el('span', { class: 'ch-bonde-cont' }, `${gente.length}/${max}`, el('small', { text: fechado ? 'ENCERRADO' : cheio ? 'LOTADO' : 'NO BONDE' })),
+        pode ? el('button', { type: 'button', class: `btn ${dentro ? 'btn-sec' : 'btn-bonde'}`, onclick: () => entrarNoBonde(m, !dentro), text: dentro ? 'Sair' : 'Tô dentro' }) : null));
+  }
+  function acoesChat(m, nick, meu) {
+    const b = (ico, rot, fn, cls = '') => el('button', { type: 'button', class: cls, title: rot, 'aria-label': rot, onclick: fn }, svg(ico, 17));
+    const voz = !!chat.eu && !punicaoAtiva();
+    return el('div', { class: 'ch-acoes' },
+      voz ? b(ICONE_SORRISO, 'Reagir', (e) => abrirEmojisChat(e.currentTarget, (x) => reagirChat(m, x))) : null,
+      podeFalar(m.canal) ? b(ICONE_RESPONDER, 'Responder', () => responderChat(m)) : null,
+      admChat() && m.tipo !== 'massa' ? b(ICONE_FIXAR, m.fixada ? 'Desafixar' : 'Fixar no topo', () => fixarChat(m, !m.fixada), m.fixada ? 'on' : '') : null,
+      admChat() && m.user_id && !meu && !m.adm ? b(ICONE_MUDO, `Punir ${nick}`, () => abrirPunir({ user_id: m.user_id, nick })) : null,
+      !admChat() && !meu && m.user_id ? b(ICONE_BANDEIRA, 'Denunciar pro ADM', () => denunciarChat(m, nick)) : null,
+      (meu || admChat()) && m.tipo !== 'massa' ? b(ICONE_LIXO, 'Apagar', () => apagarChat(m, nick, meu), 'perigo') : null);
+  }
+  function linhaChat(m, ant, pop = null) {
+    const nick = nickMsg(m), meu = !!m.user_id && m.user_id === euChat();
+    const cont = !!ant && !!m.user_id && ant.user_id === m.user_id && m.tipo === 'msg' && ant.tipo === 'msg' && m.canal !== 'avisos'
+      && !m.resp && Date.parse(m.created_at) - Date.parse(ant.created_at) < 4 * 60000;
+    const n = el('div', { class: `ch-m ${cont ? 'cont' : ''} ${!m.apagada && !meu && meMarcou(m) ? 'mencao' : ''}`, 'data-id': m.id });
+    n.append(el('div', { class: 'ch-m-av' }, cont ? el('span', { class: 'ch-hora-lado', text: horaChat(m.created_at) }) : avatarChat(nick)));
+    const corpo = el('div', { class: 'ch-m-corpo' });
+    if (!cont) {
+      const temPerfil = nick !== 'COBR' && elenco.has(chave(nick));
+      corpo.append(el('div', { class: 'ch-m-cab' },
+        el('button', { type: 'button', class: 'ch-nick', disabled: !temPerfil, style: `--pc:${nick === 'COBR' ? 'var(--laranja-claro)' : patenteDe(ptsPat(chave(nick))).atual.cor}`, onclick: () => abrirPerfil(chave(nick)), text: nick }),
+        ...tagsChat(m, nick), el('span', { class: 'ch-hora', text: horaChat(m.created_at) })));
+    }
+    if (m.resp) {
+      const r = chat.porId.get(m.resp);
+      corpo.append(el('button', { type: 'button', class: 'ch-cita', onclick: () => r && irParaMsg(r.id) },
+        svg(ICONE_CITA, 13), r ? el('b', { text: nickMsg(r) }) : null, el('span', { text: r ? resumoChat(r) : 'mensagem antiga' })));
+    }
+    if (m.apagada) corpo.append(el('div', { class: 'ch-txt apagada', text: 'mensagem apagada' }));
+    else if (m.tipo === 'massa') corpo.append(cartaoMassa(m));
+    else if (m.tipo === 'bonde') corpo.append(cartaoBonde(m));
+    else if (m.canal === 'avisos') corpo.append(el('div', { class: 'ch-cv ch-cv-aviso' }, el('div', { class: 'ch-cv-rot' }, svg(ICONE_MEGAFONE, 14), 'AVISO'), textoChat(m.txt)));
+    else corpo.append(textoChat(m.txt));
+    const reacs = [...(chat.reac.get(m.id) || new Map())].filter(([, s]) => s.size);
+    if (reacs.length && !m.apagada) corpo.append(el('div', { class: 'ch-reacoes' }, ...reacs.map(([e, s]) =>
+      el('button', { type: 'button', class: `ch-reac ${s.has(euChat()) ? 'minha' : ''} ${pop === e ? 'pop' : ''}`, 'aria-label': `${e} ${s.size}`, onclick: () => reagirChat(m, e) },
+        el('span', { class: e === 'GG' ? 'ch-gg' : '', text: e }), String(s.size)))));
+    n.append(corpo);
+    if (!m.apagada) n.append(acoesChat(m, nick, meu));
+    return n;
+  }
+  function anteriorNoDia(m) {
+    const l = chat.msgs[m.canal], i = l.indexOf(m), a = l[i - 1];
+    return a && new Date(a.created_at).toDateString() === new Date(m.created_at).toDateString() ? a : null;
+  }
+  function trocarLinhaChat(m, pop = null) {
+    if (!chatVisivel() || chat.canal !== m.canal) return;
+    const velho = $('chatMsgs').querySelector(`.ch-m[data-id="${m.id}"]`);
+    if (!velho) return;
+    const novo = linhaChat(m, anteriorNoDia(m), pop);
+    if (velho.classList.contains('ativa')) novo.classList.add('ativa');
+    velho.replaceWith(novo);
+  }
+  const pertoDoFimChat = () => { const b = $('chatMsgs'); return b.scrollHeight - b.scrollTop - b.clientHeight < 140; };
+  const descerChat = (suave) => { const b = $('chatMsgs'); b.scrollTo({ top: b.scrollHeight, behavior: suave ? 'smooth' : 'auto' }); };
+  function mostrarNovasChat() {
+    chat.novas++;
+    const b = $('chatNovas');
+    trocar(b, svg(ICONE_DESCE, 14), `${chat.novas} ${chat.novas > 1 ? 'NOVAS' : 'NOVA'}`);
+    b.hidden = false;
+  }
+  function irParaMsg(id) {
+    const n = $('chatMsgs').querySelector(`.ch-m[data-id="${id}"]`);
+    if (!n) return;
+    n.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    n.classList.remove('brilha'); void n.offsetWidth; n.classList.add('brilha');
+  }
+
+  function desenharChat() {
+    if (!chat.eu) { trocar($('chatMsgs'), el('div', { class: 'ch-vazio', text: 'Carregando o chat…' })); return; }
+    desenharCanaisChat(); desenharTopoChat(); desenharMsgsChat(); desenharComporChat(); desenharMembrosChat(); desenharDigitando();
+  }
+  function desenharCanaisChat() {
+    trocar($('chatCanais'), el('div', { class: 'ch-lado-rot', text: 'CANAIS' }), ...CANAIS_CHAT.map((c) => {
+      const n = chat.eu ? naoLidasChat(c.id) : 0;
+      return el('button', { type: 'button', class: `ch-canal ${n ? 'tem' : ''}`, 'aria-current': String(c.id === chat.canal), onclick: () => abrirCanalChat(c.id) },
+        svg(c.ico, 17), el('span', { class: 'ch-canal-nome', text: c.nome }),
+        c.soAdm ? svg(ICONE_TRAVA, 13, 'class="ch-trava"') : null,
+        n ? el('span', { class: 'ch-badge', text: n > 99 ? '99+' : String(n) }) : null);
+    }));
+  }
+  function desenharTopoChat() {
+    trocar($('chatTitulo'), el('span', { class: 'laranja', text: '#' }), canalChat(chat.canal).nome);
+    const ate = jogandoAte(chat.status.get(euChat()));
+    const b = $('chatJogando');
+    b.hidden = !chat.eu || foraDoChat();
+    b.classList.toggle('on', !!ate);
+    b.setAttribute('aria-pressed', String(!!ate));
+    trocar(b, el('i', { class: 'ch-bola' }), ate ? `JOGANDO · até ${horaChat(ate)}` : 'TÔ JOGANDO');
+    const mod = $('chatModBtn');
+    mod.hidden = !admChat();
+    trocar(mod, svg(ICONE_MODERAR, 18), el('span', { class: 'ch-mod-rot', text: 'Moderação' }), chat.denuncias ? el('span', { class: 'ch-badge', text: String(chat.denuncias) }) : null);
+  }
+  function desenharMsgsChat() {
+    const box = $('chatMsgs');
+    chat.novas = 0; $('chatNovas').hidden = true;
+    if (foraDoChat()) {
+      const p = punicaoAtiva();
+      trocar(box, el('div', { class: 'ch-fora' }, svg(ICONE_TRAVA, 34), el('b', { text: 'VOCÊ ESTÁ FORA DO CHAT' }), el('span', { text: ateTxt(p.ate) + (p.motivo ? ` · ${p.motivo}` : '') })));
+      $('chatFixada').hidden = true;
+      return;
+    }
+    const lista = chat.msgs[chat.canal], filhos = [];
+    let ant = null, dia = null;
+    if (!lista.length) filhos.push(el('div', { class: 'ch-vazio' }, svg(canalChat(chat.canal).ico, 30), el('span', { text: canalChat(chat.canal).vazio })));
+    for (const m of lista) {
+      const d = new Date(m.created_at).toDateString();
+      if (d !== dia) { dia = d; ant = null; filhos.push(el('div', { class: 'ch-dia', text: rotDia(m.created_at) })); }
+      filhos.push(linhaChat(m, ant));
+      ant = m;
+    }
+    trocar(box, filhos);
+    box.scrollTop = box.scrollHeight;
+    desenharFixadaChat();
+    marcarLidoChat();
+  }
+  function desenharFixadaChat() {
+    const f = $('chatFixada'), m = foraDoChat() ? null : chat.msgs[chat.canal].find((x) => x.fixada && !x.apagada);
+    f.hidden = !m;
+    if (m) trocar(f, svg(ICONE_FIXAR, 15), el('b', { text: 'FIXADA' }), el('span', { text: `${nickMsg(m)}: ${resumoChat(m).replace(/\n/g, ' ')}` }));
+    f.onclick = () => m && irParaMsg(m.id);
+  }
+  function desenharComporChat() {
+    const c = canalChat(chat.canal), p = punicaoAtiva();
+    const trava = !chat.eu ? 'Carregando…'
+      : p ? (p.tipo === 'ban' ? 'Você está fora do chat' : `Você está silenciado ${ateTxt(p.ate)}`)
+      : c.soSite ? 'O site posta aqui quando alguém registra massa'
+      : c.soAdm && !admChat() ? 'Só ADM escreve em #avisos' : null;
+    $('chatCaixa').hidden = !!trava;
+    $('chatTrancado').hidden = !trava;
+    if (trava) trocar($('chatTrancado'), svg(p ? ICONE_MUDO : ICONE_TRAVA, 15), trava);
+    $('chatTxt').placeholder = c.id === 'avisos' ? 'Escreva um aviso pro clã' : `Mensagem em #${c.nome}`;
+    $('chatBondeBtn').hidden = c.id === 'avisos';
+  }
+  function desenharDigitando() {
+    const agora = Date.now();
+    const l = [...chat.digitando.values()].filter((d) => d.ate > agora && d.canal === chat.canal);
+    if (!l.length) { $('chatDigitando').replaceChildren(); return; }
+    const nomes = l.slice(0, 2).map((d) => d.nome).join(' e ');
+    trocar($('chatDigitando'), el('span', { class: 'ch-pontinhos' }, el('i'), el('i'), el('i')), el('b', { text: nomes }), l.length > 1 ? ' estão digitando…' : ' está digitando…');
+  }
+
+  // quem está jogando, online e offline (online = com o site aberto agora)
+  function membrosChat() {
+    const jogP = new Map(), jogU = new Map(), onP = new Set(), semPerfil = [];
+    for (const s of chat.status.values()) { const ate = jogandoAte(s); if (!ate) continue; if (s.player_id) jogP.set(s.player_id, ate); jogU.set(s.user_id, ate); }
+    for (const [u, o] of chat.online) { if (o.player_id) onP.add(o.player_id); else semPerfil.push({ user_id: u, nome: o.nome || 'ADM' }); }
+    const lista = jogadores.filter((r) => r.ativo).map((r) => ({ nick: r.nick, k: chave(r.nick), st: jogP.has(r.id) ? 'jogo' : onP.has(r.id) ? 'on' : 'off', ate: jogP.get(r.id) }));
+    for (const o of semPerfil) lista.push({ nick: o.nome, k: chave(o.nome), st: jogU.has(o.user_id) ? 'jogo' : 'on', ate: jogU.get(o.user_id), semPerfil: true });
+    return lista.sort((a, b) => ptsPat(b.k) - ptsPat(a.k) || a.nick.localeCompare(b.nick, 'pt-BR'));
+  }
+  function desenharMembrosChat() {
+    const lista = membrosChat();
+    const grupo = (st, rot) => {
+      const l = lista.filter((x) => x.st === st);
+      return l.length ? [el('div', { class: 'ch-lado-rot', text: `${rot} — ${l.length}` }), ...l.map(membroChat)] : [];
+    };
+    trocar($('chatMembros'),
+      el('div', { class: 'ch-membros-topo' }, el('b', { text: 'MEMBROS' }), el('button', { type: 'button', class: 'tn-x', 'aria-label': 'Fechar', onclick: () => $('chatMembros').classList.remove('aberto'), text: '×' })),
+      ...grupo('jogo', 'JOGANDO'), ...grupo('on', 'ONLINE'), ...grupo('off', 'OFFLINE'));
+    trocar($('chatMembrosBtn'), svg(ICONE_GENTE, 18), el('span', { text: String(lista.filter((x) => x.st !== 'off').length) }));
+  }
+  function membroChat(x) {
+    const p = patenteDe(ptsPat(x.k)).atual;
+    return el('button', { type: 'button', class: `ch-membro ${x.st}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
+      el('span', { class: 'ch-membro-av' }, avatarChat(x.nick), el('span', { class: `ch-st ${x.st}` })),
+      el('span', { class: 'ch-membro-txt' }, el('b', { style: `--pc:${p.cor}`, text: x.nick }),
+        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : p.nome })));
+  }
+
+  // ---------- página ----------
+  function abrirChatPagina() {
+    $('chatMembros').classList.remove('aberto');
+    desenharChat();
+    ajustarChat();
+  }
+  function abrirCanalChat(id) {
+    chat.canal = id;
+    cancelarRespChat();
+    $('chatMencoes').hidden = true;
+    desenharChat();
+  }
+  // o chat ocupa a tela toda entre o topo e a barra de baixo
+  function ajustarChat() {
+    if (pagAtual !== 'chat') return;
+    const app = $('chatApp'), bb = $('barraBaixo');
+    const alto = window.visualViewport ? visualViewport.height : innerHeight;
+    const topo = app.getBoundingClientRect().top + (window.visualViewport ? visualViewport.offsetTop : 0);
+    const baixo = getComputedStyle(bb).display === 'none' ? 16 : bb.offsetHeight + 8;
+    app.style.height = Math.max(340, Math.round(alto - Math.max(0, topo) - baixo)) + 'px';
+    if (pertoDoFimChat()) descerChat();
+  }
+
+  // ---------- ações ----------
+  async function enviarChat() {
+    const campo = $('chatTxt'), txt = campo.value.trim();
+    if (!txt || !podeFalar(chat.canal)) return;
+    const resp = chat.resp;
+    campo.value = '';
+    $('chatEnviar').disabled = true;
+    $('chatMencoes').hidden = true;
+    cancelarRespChat();
+    try {
+      const id = await chatRpc('chat_enviar', { p_canal: chat.canal, p_txt: txt, p_resp: resp ? resp.id : null });
+      await buscarMsgChat(id);
+    } catch (e) {
+      if (!campo.value) campo.value = txt;
+      $('chatEnviar').disabled = !campo.value.trim();
+      erroChat(e);
+    }
+  }
+  // não espera o tempo real pra mostrar o que a própria pessoa mandou
+  async function buscarMsgChat(id) {
+    if (DEMO || !id || chat.porId.has(id)) return;
+    const { data } = await sb.from('chat_mensagens').select('*').eq('id', id).maybeSingle();
+    if (data) chegouMsg(data);
+  }
+  async function reagirChat(m, e) {
+    try {
+      const ficou = await chatRpc('chat_reagir', { p_msg: m.id, p_emoji: e });
+      mexerReac(m.id, e, euChat(), !!ficou);
+    } catch (err) { erroChat(err); }
+  }
+  function responderChat(m) {
+    chat.resp = m;
+    trocar($('chatResp'), svg(ICONE_RESPONDER, 14), el('span', null, 'Respondendo ', el('b', { text: nickMsg(m) }), ` · ${resumoChat(m)}`),
+      el('button', { type: 'button', 'aria-label': 'Cancelar resposta', onclick: cancelarRespChat }, '×'));
+    $('chatResp').hidden = false;
+    $('chatTxt').focus();
+  }
+  function cancelarRespChat() { chat.resp = null; $('chatResp').hidden = true; }
+  async function entrarNoBonde(m, entra) {
+    try {
+      const r = await chatRpc('chat_bonde_entrar', { p_msg: m.id, p_entrar: entra });
+      if (r === 'lotado') { toast('Esse bonde lotou.', true); return; }
+      if (r === 'fechado') { toast('Esse bonde já acabou.', true); trocarLinhaChat(m); return; }
+      mexerBonde({ msg_id: m.id, user_id: euChat(), player_id: chat.eu.player_id, nome: meuNick() }, entra);
+      meuStatusChat(entra ? new Date(Date.now() + 90 * 60000).toISOString() : null);
+      if (entra) toast('Você entrou no bonde. Bom jogo!');
+    } catch (e) { erroChat(e); }
+  }
+  function meuStatusChat(ate) {
+    chat.status.set(euChat(), { user_id: euChat(), player_id: chat.eu.player_id, nome: meuNick(), jogando_ate: ate });
+    if (chatVisivel()) { desenharTopoChat(); desenharMembrosChat(); }
+  }
+  async function alternarJogando() {
+    const liga = !jogandoAte(chat.status.get(euChat()));
+    try {
+      const ate = await chatRpc('chat_jogando', { p_ligar: liga });
+      meuStatusChat(ate || null);
+      toast(liga ? `Status: jogando ${ateTxt(ate)}.` : 'Status de jogando desligado.');
+    } catch (e) { erroChat(e); }
+  }
+  function abrirBonde() {
+    if (!podeFalar(chat.canal === 'geral' ? 'geral' : 'bonde')) { toast('Você está silenciado no chat.', true); return; }
+    $('fBondeSrv').value = $('fBondeSrv').value || 'Servidor BR';
+    $('fBondeNota').value = '';
+    document.querySelectorAll('[data-vagas]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.vagas === '6')));
+    $('dlgBonde').showModal();
+  }
+  async function chamarBonde() {
+    const vagas = Number((document.querySelector('[data-vagas][aria-checked="true"]') || {}).dataset?.vagas || 6);
+    const canal = chat.canal === 'geral' ? 'geral' : 'bonde';
+    $('dlgBonde').close();
+    try {
+      const id = await chatRpc('chat_enviar', { p_canal: canal, p_txt: $('fBondeNota').value.trim(), p_tipo: 'bonde', p_dados: { srv: $('fBondeSrv').value.trim() || 'Servidor BR', max: vagas } });
+      if (!DEMO) {
+        const { data } = await sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').eq('msg_id', id);
+        for (const b of data || []) mexerBonde(b, true, false);
+      }
+      if (canal !== chat.canal) abrirCanalChat(canal);
+      await buscarMsgChat(id);
+      meuStatusChat(new Date(Date.now() + 90 * 60000).toISOString());
+    } catch (e) { erroChat(e); }
+  }
+  function apagarChat(m, nick, meu) {
+    confirmar('APAGAR MENSAGEM?', meu ? 'Ela some pra todo mundo.' : `Mensagem de ${nick}. Some pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
+      try {
+        await chatRpc('chat_apagar', { p_msg: m.id });
+        atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+        toast('Mensagem apagada.');
+        if (admChat()) contarDenuncias();
+      } catch (e) { erroChat(e); }
+    });
+  }
+  async function fixarChat(m, fixar) {
+    try {
+      await chatRpc('chat_fixar', { p_msg: m.id, p_fixar: fixar });
+      if (fixar) for (const x of chat.msgs[m.canal]) if (x.fixada && x !== m) { x.fixada = false; trocarLinhaChat(x); }
+      atualizarMsg({ id: m.id, fixada: fixar });
+      toast(fixar ? 'Mensagem fixada no topo do canal.' : 'Mensagem desafixada.');
+    } catch (e) { erroChat(e); }
+  }
+  function denunciarChat(m, nick) {
+    confirmar('DENUNCIAR MENSAGEM?', `O ADM vai olhar essa mensagem de ${nick}.`, 'Denunciar', async () => {
+      try { await chatRpc('chat_denunciar', { p_msg: m.id, p_motivo: '' }); toast('Denúncia enviada pro ADM.'); }
+      catch (e) { erroChat(e); }
+    });
+  }
+
+  // ---------- moderação (só ADM) ----------
+  let punindo = null;
+  const PRAZOS = [['10 min', 10], ['1 hora', 60], ['1 dia', 1440], ['7 dias', 10080], ['Sem prazo', null]];
+  function abrirPunir(alvo) {
+    punindo = { ...alvo, tipo: 'silencio', min: 60 };
+    $('tituloPunir').textContent = `PUNIR ${alvo.nick.toUpperCase()}`;
+    $('fPunirMotivo').value = '';
+    desenharPunir();
+    if ($('dlgModeracao').open) $('dlgModeracao').close();
+    $('dlgPunir').showModal();
+  }
+  function desenharPunir() {
+    const opc = (atual, valor, txt, fn) => el('button', { type: 'button', class: 'aba', role: 'radio', 'aria-checked': String(atual === valor), onclick: fn, text: txt });
+    trocar($('punirTipo'),
+      opc(punindo.tipo, 'silencio', 'Silenciar', () => { punindo.tipo = 'silencio'; desenharPunir(); }),
+      opc(punindo.tipo, 'ban', 'Tirar do chat', () => { punindo.tipo = 'ban'; desenharPunir(); }));
+    trocar($('punirPrazo'), ...PRAZOS.map(([t, v]) => opc(punindo.min, v, t, () => { punindo.min = v; desenharPunir(); })));
+    $('punirExplica').textContent = punindo.tipo === 'ban' ? 'Não lê nem escreve no chat.' : 'Lê o chat, mas não escreve nem reage.';
+  }
+  async function aplicarPunicao() {
+    const p = punindo;
+    if (!p) return;
+    try {
+      const r = await chatRpc('chat_punir', { p_user: p.user_id, p_tipo: p.tipo, p_minutos: p.min, p_motivo: $('fPunirMotivo').value.trim() });
+      $('dlgPunir').close();
+      if (r === 'adm') { toast('ADM não pode ser punido.', true); return; }
+      const prazo = PRAZOS.find(([, v]) => v === p.min)[0].toLowerCase();
+      toast(`${p.nick} ${p.tipo === 'ban' ? 'saiu do chat' : 'foi silenciado'} · ${p.min ? prazo : 'até você liberar'}.`);
+    } catch (e) { erroChat(e); }
+  }
+  let abaMod = 'denuncias';
+  async function abrirModeracao(aba = abaMod) {
+    abaMod = aba;
+    document.querySelectorAll('[data-mod]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mod === abaMod)));
+    const dlg = $('dlgModeracao');
+    if (!dlg.open) { trocar($('modCorpo'), el('p', { class: 'sec', text: 'Carregando…' })); dlg.showModal(); }
+    let d;
+    try { d = await chatRpc('chat_moderacao', {}); } catch (e) { erroChat(e); return; }
+    chat.denuncias = new Set(d.denuncias.map((x) => x.msg_id)).size;
+    desenharTopoChat();
+    const n = { denuncias: d.denuncias.length, punidos: d.punidos.length };
+    document.querySelectorAll('[data-mod]').forEach((b) => { const q = n[b.dataset.mod]; b.querySelector('i').textContent = q ? String(q) : ''; });
+    const vazio = (t) => el('div', { class: 'mod-vazio' }, svg(ICONE_MODERAR, 28), el('span', { text: t }));
+    let corpo;
+    if (abaMod === 'denuncias') corpo = d.denuncias.length ? d.denuncias.map(itemDenuncia) : [vazio('Nenhuma denúncia aberta.')];
+    else if (abaMod === 'punidos') corpo = d.punidos.length ? d.punidos.map(itemPunido) : [vazio('Ninguém punido agora.')];
+    else corpo = d.historico.length ? [el('ul', { class: 'mod-hist' }, ...d.historico.map(itemHistorico))] : [vazio('Nada feito ainda.')];
+    trocar($('modCorpo'), corpo);
+  }
+  function itemDenuncia(x) {
+    const nick = nickDoPlayer(null, x.nome);
+    const m = chat.porId.get(x.msg_id);
+    const acao = (txt, cls, fn) => el('button', { type: 'button', class: `btn ${cls}`, onclick: fn, text: txt });
+    return el('div', { class: 'mod-item' },
+      el('div', { class: 'mod-cab' }, avatarChat(nick, 'av-p'), el('b', { text: nick }),
+        el('span', { class: 'mod-sub', text: `#${x.canal} · ${haQuanto(x.created_at)}` }),
+        el('span', { class: 'mod-qtd', text: `${x.qtd} ${x.qtd > 1 ? 'denúncias' : 'denúncia'}` })),
+      el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.txt || '—' }),
+      el('div', { class: 'mod-sub', text: 'denunciou: ' + x.quem.map((q) => q.quem).join(', ') }),
+      el('div', { class: 'linha-btns' },
+        acao('Ignorar', 'btn-sec', async () => { try { await chatRpc('chat_ignorar_denuncia', { p_msg: x.msg_id }); abrirModeracao(); } catch (e) { erroChat(e); } }),
+        x.user_id ? acao('Punir', 'btn-sec', () => abrirPunir({ user_id: x.user_id, nick })) : null,
+        acao('Apagar', 'btn-perigo', async () => {
+          try { await chatRpc('chat_apagar', { p_msg: x.msg_id }); if (m) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' }); toast('Mensagem apagada.'); abrirModeracao(); }
+          catch (e) { erroChat(e); }
+        })));
+  }
+  function itemPunido(x) {
+    const nick = nickDoPlayer(x.player_id, x.nome);
+    return el('div', { class: 'mod-item mod-linha' },
+      avatarChat(nick, 'av-p'),
+      el('div', { class: 'mod-linha-txt' },
+        el('b', { text: nick }),
+        el('span', { class: `mod-pena ${x.tipo}`, text: x.tipo === 'ban' ? 'FORA DO CHAT' : 'SILENCIADO' }),
+        el('span', { class: 'mod-sub', text: [ateTxt(x.ate), x.motivo, x.por ? `por ${x.por}` : null].filter(Boolean).join(' · ') })),
+      el('button', { type: 'button', class: 'btn btn-sec', text: 'Liberar', onclick: async () => {
+        try { await chatRpc('chat_perdoar', { p_user: x.user_id }); toast(`${nick} liberado no chat.`); abrirModeracao(); } catch (e) { erroChat(e); }
+      } }));
+  }
+  function itemHistorico(h) {
+    const d = h.detalhe || {};
+    const prazo = d.minutos ? (PRAZOS.find(([, v]) => v === d.minutos) || [`${d.minutos} min`])[0] : 'sem prazo';
+    const txt = {
+      chat_apagar: `apagou mensagem de ${d.autor || '?'}${d.texto ? `: "${String(d.texto).slice(0, 60)}"` : ''}`,
+      chat_fixar: 'fixou uma mensagem', chat_desafixar: 'desafixou uma mensagem',
+      chat_punir: `${d.tipo === 'ban' ? 'tirou do chat' : 'silenciou'} ${d.quem || '?'} · ${prazo}${d.motivo ? ` · ${d.motivo}` : ''}`,
+      chat_perdoar: `liberou ${d.quem || '?'}`, chat_ignorar_denuncia: 'ignorou uma denúncia',
+    }[h.acao] || h.acao;
+    return el('li', null, el('b', { text: h.quem || 'ADM' }), ` ${txt}`, el('span', { class: 'mod-sub', text: haQuanto(h.created_at) }));
+  }
+
+  // ---------- digitando, @menção e emojis ----------
+  let ultDigitou = 0;
+  function avisarDigitando() {
+    if (DEMO || !chat.presenca || Date.now() - ultDigitou < 2500) return;
+    ultDigitou = Date.now();
+    chat.presenca.send({ type: 'broadcast', event: 'digitando', payload: { user_id: euChat(), nome: meuNick(), canal: chat.canal } });
+  }
+  function alguemDigitando(p) {
+    if (!p || p.user_id === euChat()) return;
+    chat.digitando.set(p.user_id, { ...p, ate: Date.now() + 3500 });
+    if (chatVisivel()) { desenharDigitando(); setTimeout(desenharDigitando, 3600); }
+  }
+  function sugerirMencao() {
+    const campo = $('chatTxt'), caixa = $('chatMencoes');
+    const m = campo.value.slice(0, campo.selectionStart).match(/@([\p{L}\p{N}_.-]*)$/u);
+    if (!m) { caixa.hidden = true; return; }
+    const q = busca(m[1]);
+    const lista = jogadores.filter((r) => r.ativo && busca(r.nick).startsWith(q) && r.id !== (chat.eu && chat.eu.player_id)).slice(0, 6);
+    if (!lista.length) { caixa.hidden = true; return; }
+    trocar(caixa, lista.map((r, i) => el('button', {
+      type: 'button', class: i === 0 ? 'sel' : '',
+      onclick: () => {
+        const ini = campo.selectionStart - m[0].length;
+        campo.value = campo.value.slice(0, ini) + '@' + r.nick + ' ' + campo.value.slice(campo.selectionStart);
+        caixa.hidden = true;
+        $('chatEnviar').disabled = false;
+        campo.focus();
+      },
+    }, avatarChat(r.nick, 'av-p'), el('b', { text: r.nick }), chipPatente(ptsPat(chave(r.nick))))));
+    caixa.hidden = false;
+  }
+  function abrirEmojisChat(alvo, escolher) {
+    const pop = $('chatEmojis');
+    trocar(pop, REACOES_CHAT.map((e) => el('button', { type: 'button', class: e === 'GG' ? 'ch-gg' : '', 'aria-label': e, onclick: () => { pop.hidden = true; escolher(e); }, text: e })));
+    pop.hidden = false;
+    const r = alvo.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + 'px';
+    pop.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + 'px';
+  }
+
+  function ligarControlesChat() {
+    $('chatBondeBtn').append(svg(ICONE_BONDE, 20));
+    $('chatEmojiBtn').append(svg(ICONE_SORRISO, 20));
+    $('chatEnviar').append(svg(ICONE_ENVIAR, 18));
+    const campo = $('chatTxt');
+    campo.addEventListener('input', () => { $('chatEnviar').disabled = !campo.value.trim(); sugerirMencao(); if (campo.value) avisarDigitando(); });
+    campo.addEventListener('keydown', (e) => {
+      const caixa = $('chatMencoes');
+      if (caixa.hidden) { if (e.key === 'Escape' && chat.resp) cancelarRespChat(); return; }
+      const bs = [...caixa.querySelectorAll('button')], i = bs.findIndex((b) => b.classList.contains('sel'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const k = (i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length; bs.forEach((b, j) => b.classList.toggle('sel', j === k)); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && i >= 0) { e.preventDefault(); bs[i].click(); }
+      else if (e.key === 'Escape') caixa.hidden = true;
+    });
+    $('chatCompor').addEventListener('submit', (e) => { e.preventDefault(); enviarChat(); });
+    $('chatEmojiBtn').addEventListener('click', (e) => abrirEmojisChat(e.currentTarget, (x) => {
+      const i = campo.selectionStart ?? campo.value.length;
+      campo.value = campo.value.slice(0, i) + x + ' ' + campo.value.slice(i);
+      $('chatEnviar').disabled = false;
+      campo.focus();
+    }));
+    $('chatBondeBtn').addEventListener('click', abrirBonde);
+    $('formBonde').addEventListener('submit', (e) => { e.preventDefault(); chamarBonde(); });
+    $('btnCancelarBonde').addEventListener('click', () => $('dlgBonde').close());
+    document.querySelectorAll('[data-vagas]').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('[data-vagas]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    }));
+    $('chatJogando').addEventListener('click', alternarJogando);
+    $('chatModBtn').addEventListener('click', () => abrirModeracao('denuncias'));
+    $('chatMembrosBtn').addEventListener('click', () => $('chatMembros').classList.toggle('aberto'));
+    $('chatNovas').addEventListener('click', () => descerChat(true));
+    $('chatMsgs').addEventListener('scroll', () => { if (pertoDoFimChat()) { $('chatNovas').hidden = true; chat.novas = 0; marcarLidoChat(); } });
+    // no celular: tocar na mensagem mostra as ações dela
+    $('chatMsgs').addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const n = e.target.closest('.ch-m');
+      const ja = n && n.classList.contains('ativa');
+      $('chatMsgs').querySelectorAll('.ch-m.ativa').forEach((x) => x.classList.remove('ativa'));
+      if (n && !ja) n.classList.add('ativa');
+    });
+    document.addEventListener('pointerdown', (e) => {
+      const pop = $('chatEmojis');
+      if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.ch-acoes, #chatEmojiBtn')) pop.hidden = true;
+    });
+    document.querySelectorAll('[data-mod]').forEach((b) => b.addEventListener('click', () => abrirModeracao(b.dataset.mod)));
+    $('btnFecharMod').addEventListener('click', () => $('dlgModeracao').close());
+    $('btnCancelarPunir').addEventListener('click', () => $('dlgPunir').close());
+    $('btnAplicarPunir').addEventListener('click', aplicarPunicao);
+    addEventListener('resize', ajustarChat);
+    if (window.visualViewport) visualViewport.addEventListener('resize', ajustarChat);
+    document.addEventListener('visibilitychange', () => { if (chatVisivel()) marcarLidoChat(); });
+    // bonde que fecha, "jogando" que vence, silêncio que acaba: a tela acompanha
+    setInterval(() => {
+      if (!chat.eu || !chatVisivel()) return;
+      desenharTopoChat(); desenharMembrosChat(); desenharComporChat();
+    }, 30000);
+  }
+
+  // ---------- demonstração: o chat funciona só nesta tela ----------
+  const demoChat = { id: 0, denuncias: [], punidos: [], historico: [] };
+  function demoChatSemear() {
+    limparChat();
+    const nomeEu = admin && !euId ? admin.nome : nickDoPlayer(euId, 'Você');
+    chat.eu = { user_id: 'eu', player_id: euId, nome: nomeEu, adm: !!admin, punicao: null };
+    const min = (m) => new Date(Date.now() - m * 60000).toISOString();
+    const u = (pid) => 'u-' + pid;
+    const msg = (canal, pid, txt, m, extra = {}) => {
+      const r = jogPorId.get(pid);
+      const x = { id: ++demoChat.id, canal, user_id: u(pid), player_id: pid, nome: r ? r.nick : '', adm: pid === 'dj0', tipo: 'msg', txt, dados: {}, resp: null, fixada: false, apagada: false, created_at: min(m), ...extra };
+      guardarMsg(x);
+      return x;
+    };
+    const massa = (canal, p) => guardarMsg({ id: ++demoChat.id, canal, user_id: null, player_id: null, nome: 'COBR', adm: false, tipo: 'massa', txt: '', dados: { score_id: p.id, player: p.player, mass: p.mass }, resp: null, fixada: false, apagada: false, created_at: p.created_at });
+    const recentes = partidas.slice(0, 6).reverse();
+    for (const p of recentes) massa('recordes', p);
+    let a = msg('geral', 'dj1', 'boa noite família 🐍', 300);
+    msg('geral', 'dj3', 'boa! hoje tem treino pra copa?', 296);
+    a = msg('geral', 'dj0', 'tem sim, 21h no servidor BR. quem for da copa cola', 290);
+    a.fixada = true;
+    mexerReac(a.id, '🔥', u('dj1'), true, false); mexerReac(a.id, '🔥', u('dj3'), true, false); mexerReac(a.id, '👍', u('dj4'), true, false);
+    const big = recentes.filter((p) => p.mass >= 100000).pop();
+    let mm = null;
+    if (big) { mm = massa('geral', big); mexerReac(mm.id, '🔥', u('dj4'), true, false); mexerReac(mm.id, 'GG', u('dj3'), true, false); }
+    const b = msg('geral', 'dj4', mm ? '100k?? tá de hack kkkk' : 'alguém on?', 100, { resp: mm ? mm.id : null });
+    mexerReac(b.id, '😂', u('dj1'), true, false);
+    const bonde = msg('geral', 'dj3', '', 20, { tipo: 'bonde', dados: { srv: 'Servidor BR · 21h', max: 6 } });
+    for (const pid of ['dj3', 'dj4', 'dj5']) mexerBonde({ msg_id: bonde.id, user_id: u(pid), player_id: pid, nome: jogPorId.get(pid).nick }, true, false);
+    msg('geral', 'dj5', `@${nickDoPlayer('dj3', '')} guarda vaga pra mim`, 12);
+    msg('bonde', 'dj6', 'alguém pra jogar de madrugada?', 50);
+    msg('avisos', 'dj0', 'Copa COBR no sábado às 21h. Cada um com a tag [COBR] no nick.', 900);
+    for (const pid of ['dj3', 'dj4', 'dj5']) chat.status.set(u(pid), { user_id: u(pid), player_id: pid, nome: jogPorId.get(pid).nick, jogando_ate: new Date(Date.now() + 70 * 60000).toISOString() });
+    chat.online = new Map([['eu', { player_id: euId, nome: nomeEu }], ...['dj0', 'dj1', 'dj6'].map((pid) => [u(pid), { player_id: pid, nome: jogPorId.get(pid).nick }])]);
+    demoChat.denuncias = [{ msg_id: b.id, user_id: u('dj2') }];
+  }
+  function demoChatRpc(nome, a) {
+    const agora = new Date().toISOString();
+    const eu = chat.eu;
+    const m = a && a.p_msg ? chat.porId.get(a.p_msg) : null;
+    const punicao = (u) => demoChat.punidos.find((p) => p.user_id === u && (!p.ate || Date.parse(p.ate) > Date.now()));
+    const log = (acao, detalhe) => demoChat.historico.unshift({ acao, detalhe, created_at: agora, quem: eu.nome });
+    switch (nome) {
+      case 'chat_enviar': {
+        const x = { id: ++demoChat.id, canal: a.p_canal, user_id: eu.user_id, player_id: eu.player_id, nome: meuNick(), adm: eu.adm, tipo: a.p_tipo || 'msg', txt: a.p_txt || '', dados: a.p_dados || {}, resp: a.p_resp || null, fixada: false, apagada: false, created_at: agora };
+        if (x.tipo === 'bonde') chat.bonde.set(x.id, [{ user_id: eu.user_id, player_id: eu.player_id, nome: meuNick() }]);
+        chegouMsg(x);
+        return x.id;
+      }
+      case 'chat_reagir': { const s = chat.reac.get(a.p_msg)?.get(a.p_emoji); return !(s && s.has(eu.user_id)); }
+      case 'chat_bonde_entrar': return 'ok';
+      case 'chat_jogando': return a.p_ligar ? new Date(Date.now() + 90 * 60000).toISOString() : null;
+      case 'chat_denunciar': demoChat.denuncias.push({ msg_id: a.p_msg, user_id: eu.user_id }); return null;
+      case 'chat_apagar': if (m && m.user_id !== eu.user_id) log('chat_apagar', { autor: m.nome, texto: m.txt }); demoChat.denuncias = demoChat.denuncias.filter((d) => d.msg_id !== a.p_msg); return null;
+      case 'chat_fixar': log(a.p_fixar ? 'chat_fixar' : 'chat_desafixar', {}); return null;
+      case 'chat_punir': {
+        const quem = (chat.msgs.geral.concat(...Object.values(chat.msgs)).find((x) => x.user_id === a.p_user) || {}).nome || '?';
+        demoChat.punidos = demoChat.punidos.filter((p) => p.user_id !== a.p_user);
+        demoChat.punidos.unshift({ user_id: a.p_user, nome: quem, player_id: a.p_user.replace('u-', ''), tipo: a.p_tipo, ate: a.p_minutos ? new Date(Date.now() + a.p_minutos * 60000).toISOString() : null, motivo: a.p_motivo, por: eu.nome, created_at: agora });
+        log('chat_punir', { quem, tipo: a.p_tipo, minutos: a.p_minutos, motivo: a.p_motivo });
+        return 'ok';
+      }
+      case 'chat_perdoar': { const p = demoChat.punidos.find((x) => x.user_id === a.p_user); demoChat.punidos = demoChat.punidos.filter((x) => x.user_id !== a.p_user); log('chat_perdoar', { quem: p && p.nome }); return null; }
+      case 'chat_ignorar_denuncia': demoChat.denuncias = demoChat.denuncias.filter((d) => d.msg_id !== a.p_msg); log('chat_ignorar_denuncia', {}); return null;
+      case 'chat_moderacao': {
+        const grupos = new Map();
+        for (const d of demoChat.denuncias) {
+          const x = chat.porId.get(d.msg_id);
+          if (!x) continue;
+          const g = grupos.get(d.msg_id) || { msg_id: x.id, canal: x.canal, user_id: x.user_id, nome: x.nome, txt: x.txt, tipo: x.tipo, created_at: x.created_at, qtd: 0, quem: [] };
+          g.qtd++; g.quem.push({ quem: d.user_id === eu.user_id ? meuNick() : nickDoPlayer(d.user_id.replace('u-', ''), 'membro'), motivo: '' });
+          grupos.set(d.msg_id, g);
+        }
+        return { denuncias: [...grupos.values()], punidos: demoChat.punidos.filter((p) => punicao(p.user_id)), historico: demoChat.historico };
+      }
+    }
+    return null;
+  }
+
+  // regras do chat (aba "Chat" do Como funciona)
+  function regrasChat() {
+    return [
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('#geral', 'papo do clã'),
+        linhaRegra('#bonde', 'chamada pra jogar junto'),
+        linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
+        linhaRegra('#avisos', 'só ADM escreve'),
+        linhaRegra('Massa de 100k+', 'aparece também no #geral')),
+      tituloRegra('STATUS'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Online', 'com o site aberto'),
+        linhaRegra('Jogando', 'tocou em "Tô jogando" ou entrou num bonde'),
+        linhaRegra('Jogando some', 'sozinho depois de 90 min'),
+        linhaRegra('Bonde', 'fecha 3 h depois de criado')),
+      tituloRegra('MODERAÇÃO'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Denunciar', 'manda a mensagem pro ADM olhar'),
+        linhaRegra('Silenciado', 'lê, mas não escreve nem reage'),
+        linhaRegra('Fora do chat', 'não lê nem escreve'),
+        linhaRegra('Apagar', 'a sua mensagem, ou qualquer uma pelo ADM'),
+        linhaRegra('Limite', '5 mensagens a cada 10 segundos')),
+    ];
+  }
+
   // ---------- início ----------
   function iniciar() {
     // volta do link do e-mail (confirmar conta / senha nova): o Supabase manda tudo depois do #
@@ -4613,6 +5584,7 @@ ${frente}
     $('printOpc').textContent = PRINT_OBRIGATORIO ? '' : '(opcional)';
 
     renderTabelaPontos();
+    ligarControlesChat();
     $('stCemRot').textContent = `PARTIDAS ${marcoTxt}`;
     $('thCem').textContent = marcoTxt;
 
