@@ -920,15 +920,92 @@ input[type="number"]:focus, input[type="datetime-local"]:focus, input[type="sear
 
 /* portão: sem login só aparece a tela de entrada */
 body.trancado > :not(.portao):not(dialog):not(.toast):not(script) { display: none !important; }
-.portao { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
-.portao-caixa { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
-.portao-caixa img { width: 120px; height: 120px; border-radius: 50%; margin-bottom: 8px; }
-.portao-nome { margin: 0; font-family: var(--f-titulo); font-size: 64px; font-weight: 700; line-height: .9; letter-spacing: 1px; }
-.portao-sub { margin: 0; font-size: 12px; letter-spacing: 3px; color: var(--texto-3); }
+.portao {
+  position: relative; isolation: isolate; overflow: hidden; min-height: 100vh; min-height: 100dvh;
+  display: grid; place-items: center; padding: 24px 16px;
+  background: radial-gradient(ellipse at 50% 120%, #2A1306 0%, transparent 60%), radial-gradient(ellipse at 50% -20%, #1C0E07 0%, transparent 55%), var(--fundo);
+}
+/* cobras neon no fundo (canvas) e escurecido no meio pra ler o texto */
+.portao-fundo { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
+.portao::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 60% 55% at 50% 50%, rgba(11, 8, 6, .82) 0%, rgba(11, 8, 6, .45) 55%, rgba(11, 8, 6, .1) 100%);
+}
+.portao-caixa {
+  width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  padding: 34px 28px 26px; border-radius: 28px;
+  background: linear-gradient(180deg, rgba(30, 18, 10, .62), rgba(14, 9, 6, .72));
+  border: 1px solid rgba(255, 122, 26, .22);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 210, 160, .08), 0 0 60px rgba(255, 122, 26, .08);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+/* tudo sobe e aparece em sequência */
+.portao-caixa > * { animation: portaoSobe .8s cubic-bezier(.2, .8, .2, 1) both; }
+.portao-caixa > :nth-child(2) { animation-delay: .08s; }
+.portao-caixa > :nth-child(3) { animation-delay: .14s; }
+.portao-caixa > :nth-child(4) { animation-delay: .2s; }
+.portao-caixa > :nth-child(5) { animation-delay: .26s; }
+.portao-caixa > :nth-child(6) { animation-delay: .32s; }
+.portao-caixa > :nth-child(7) { animation-delay: .38s; }
+@keyframes portaoSobe { from { opacity: 0; transform: translateY(18px); } }
+
+/* logo com anel de fogo girando e brilho pulsando */
+.portao-logo { position: relative; isolation: isolate; width: 136px; height: 136px; display: grid; place-items: center; margin-bottom: 12px; }
+.portao-logo::before {
+  content: ""; position: absolute; inset: -7px; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 12%, #FF3B4A 24%, #FF7A1A 34%, #FFD84D 42%, transparent 56%, transparent 66%, #C6A8FF 80%, #7DF9FF 88%, transparent 96%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: girar 3.6s linear infinite;
+}
+.portao-logo::after {
+  content: ""; position: absolute; inset: -34px; z-index: -1; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 122, 26, .55) 0%, rgba(255, 59, 74, .18) 45%, transparent 70%);
+  animation: portaoPulso 3s ease-in-out infinite;
+}
+@keyframes portaoPulso { 0%, 100% { opacity: .6; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+.portao-logo img { position: relative; width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(11, 8, 6, .95), 0 12px 40px rgba(0, 0, 0, .7); }
+
+.portao-nome { margin: 0; font-family: var(--f-titulo); font-size: 76px; font-weight: 700; line-height: .85; letter-spacing: 1.5px; filter: drop-shadow(0 0 18px rgba(255, 122, 26, .35)) drop-shadow(0 4px 10px rgba(0, 0, 0, .6)); }
+/* reflexo de luz passando no nome do clã */
+.portao-tag {
+  background:
+    linear-gradient(100deg, transparent 38%, rgba(255, 250, 235, .95) 50%, transparent 62%),
+    linear-gradient(180deg, #FFE08A 0%, #FF9A2E 45%, #FF6A1A 70%, #FF3B4A 100%);
+  background-size: 260% 100%, 100% 100%; background-repeat: no-repeat;
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+  text-shadow: none; /* sombra por cima do texto recortado apagaria o degradê; o brilho vem do h1 */
+  animation: portaoReflexo 4.5s ease-in-out infinite 1s;
+}
+@keyframes portaoReflexo { 0%, 45% { background-position: 100% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
+.portao-sub { margin: 0; font-size: 12px; letter-spacing: 4px; color: var(--laranja-claro); opacity: .75; }
+
+/* escada das patentes: cresce até Diamantes */
+.portao-patentes { display: flex; align-items: flex-end; justify-content: center; gap: 4px; margin-top: 22px; min-height: 64px; }
+.portao-patentes .av { flex: 0 0 auto; animation: portaoPat .7s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes portaoPat { from { opacity: 0; transform: translateY(14px) scale(.6); } }
+.portao-escada { margin: 2px 0 0; font-size: 11px; letter-spacing: 2px; color: var(--texto-3); }
+.portao-escada b { color: #7DF9FF; font-weight: 700; text-shadow: 0 0 10px rgba(125, 249, 255, .6); }
+
 .portao-txt { margin: 18px 0 6px; font-size: 16px; color: var(--texto-2); }
 .portao-txt b { color: var(--texto); }
 .portao-btns { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .portao-btns .btn { width: 100%; }
+.portao .btn-pri { position: relative; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 179, 71, .45), 0 10px 32px rgba(255, 122, 26, .45); }
+.portao .btn-pri::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .5) 50%, transparent 70%);
+  transform: translateX(-120%); animation: portaoVarre 3.4s ease-in-out infinite 1.4s;
+}
+@keyframes portaoVarre { 0%, 55% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+.portao .btn-sec { background: rgba(255, 255, 255, .04); border-color: rgba(255, 179, 71, .3); }
+.portao .btn-sec:hover { border-color: var(--laranja); background: rgba(255, 122, 26, .1); }
+@media (max-width: 420px) {
+  /* no celular a caixa ocupa a tela: mais transparente pra ver as cobras passando atrás */
+  .portao-caixa { padding: 28px 20px 22px; background: linear-gradient(180deg, rgba(30, 18, 10, .38), rgba(14, 9, 6, .5)); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  .portao::after { background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(11, 8, 6, .55) 0%, rgba(11, 8, 6, .2) 70%, transparent 100%); }
+  .portao-nome { font-size: 64px; }
+}
 
 /* pedidos pra entrar (admin, página Jogadores) */
 .pedidos-qtd { display: inline-grid; place-items: center; min-width: 28px; height: 28px; padding: 0 8px; margin-left: 6px; border-radius: 999px; background: var(--laranja); color: var(--tinta-btn); font-size: 18px; vertical-align: middle; }

@@ -3902,10 +3902,163 @@ ${frente}
       pedido: ['Pedido enviado: ', el('b', { text: comTag(meuPedido || '') }), '. Um admin do clã vai aprovar e aí você entra.'],
     })[st]);
     document.querySelectorAll('#portao [data-portao]').forEach((b) => { b.hidden = !b.dataset.portao.split(' ').includes(st); });
+    montarEscadaPortao();
+    ligarFundo();
   }
   function destrancar() {
     document.body.classList.remove('trancado');
     $('portao').hidden = true;
+    pararFundo();
+  }
+
+  // escudos das patentes, crescendo até Diamantes (vitrine do que dá pra conquistar)
+  function montarEscadaPortao() {
+    const box = $('portaoPatentes');
+    if (box.childElementCount) return;
+    const lista = PATENTES.filter((p) => p.nivel > 0);
+    lista.forEach((p, i) => {
+      const tam = Math.round(34 + 30 * (i / Math.max(1, lista.length - 1)));
+      const a = el('span', { class: `av av-esc ${i >= lista.length - 2 ? 'av-g' : 'av-m'} ${p.diamante ? 'esc-dia' : ''}`, title: p.nome,
+        style: `--pc:${p.cor};width:${tam}px;height:${tam}px;animation-delay:${(.45 + i * .09).toFixed(2)}s` });
+      a.innerHTML = escudoSVG(p, '');
+      box.append(a);
+    });
+    const ult = lista[lista.length - 1];
+    $('portaoEscada').replaceChildren(`DE ${lista[0].nome.toUpperCase()} A `, el('b', { text: ult.nome.toUpperCase() }));
+  }
+
+  // ---------- fundo do portão: cobras neon deslizando (estilo slither.io) ----------
+  const fundo = { raf: 0, ctx: null, w: 0, h: 0, cobras: [], comida: [], sprites: {} };
+  const CORES_COBRA = [['#FF7A1A', '#B34A06'], ['#FFD84D', '#B88A12'], ['#FF3B4A', '#9E1622'], ['#C6A8FF', '#6E4FC2'], ['#7DF9FF', '#2A8FA8'], ['#FFB347', '#A8620F']];
+  const quieto = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function medirFundo() {
+    const cv = $('portaoFundo');
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    fundo.w = innerWidth;
+    fundo.h = innerHeight;
+    cv.width = Math.round(fundo.w * dpr);
+    cv.height = Math.round(fundo.h * dpr);
+    fundo.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  // bolinha de comida brilhando, desenhada uma vez por cor
+  function spriteComida(cor) {
+    if (fundo.sprites[cor]) return fundo.sprites[cor];
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    const rg = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    rg.addColorStop(0, '#FFFFFF');
+    rg.addColorStop(.18, cor);
+    rg.addColorStop(.45, cor + '55');
+    rg.addColorStop(1, cor + '00');
+    g.fillStyle = rg;
+    g.fillRect(0, 0, 32, 32);
+    return (fundo.sprites[cor] = c);
+  }
+  function novaComida() {
+    const cor = CORES_COBRA[Math.floor(Math.random() * CORES_COBRA.length)][0];
+    return { x: Math.random() * fundo.w, y: Math.random() * fundo.h, r: 2 + Math.random() * 3, fase: Math.random() * 6.3, img: spriteComida(cor) };
+  }
+  function novaCobra(i) {
+    const [cor, escura] = CORES_COBRA[i % CORES_COBRA.length];
+    const x = Math.random() * fundo.w, y = Math.random() * fundo.h, a = Math.random() * Math.PI * 2;
+    const vel = 1.3 + Math.random() * 1.3;
+    const corpo = Array.from({ length: Math.round(70 + Math.random() * 110) }, (_, k) => ({ x: x - Math.cos(a) * k * vel, y: y - Math.sin(a) * k * vel }));
+    return { cor, escura, r: 5 + Math.random() * 6, a, vel, giro: 0, t: Math.random() * 100, corpo };
+  }
+  function passoFundo() {
+    const { w, h } = fundo;
+    for (const c of fundo.cobras) {
+      const cab = c.corpo[0];
+      const m = 160;
+      c.t += .016;
+      if (cab.x < -m || cab.x > w + m || cab.y < -m || cab.y > h + m) {
+        // saiu da tela: faz a curva e volta
+        const d = Math.atan2(h / 2 - cab.y, w / 2 - cab.x) - c.a;
+        c.a += Math.atan2(Math.sin(d), Math.cos(d)) * .05;
+      } else {
+        c.giro = Math.max(-.045, Math.min(.045, (c.giro + (Math.random() - .5) * .018) * .97));
+        c.a += c.giro + Math.sin(c.t * 1.4) * .01;
+      }
+      c.corpo.unshift({ x: cab.x + Math.cos(c.a) * c.vel, y: cab.y + Math.sin(c.a) * c.vel });
+      c.corpo.pop();
+      // come a comida que passa perto da cabeça
+      for (const f of fundo.comida) {
+        if (Math.abs(f.x - cab.x) < c.r + 6 && Math.abs(f.y - cab.y) < c.r + 6) Object.assign(f, novaComida());
+      }
+    }
+  }
+  function desenharFundo() {
+    const { ctx, w, h } = fundo;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of fundo.comida) {
+      f.fase += .05;
+      const s = f.r * (1 + .3 * Math.sin(f.fase)) * 3;
+      ctx.globalAlpha = .45 + .35 * Math.sin(f.fase);
+      ctx.drawImage(f.img, f.x - s, f.y - s, s * 2, s * 2);
+    }
+    ctx.lineCap = ctx.lineJoin = 'round';
+    for (const c of fundo.cobras) {
+      // rastro de luz em volta do corpo
+      ctx.beginPath();
+      c.corpo.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.strokeStyle = c.cor;
+      ctx.globalAlpha = .07;
+      ctx.lineWidth = c.r * 5;
+      ctx.stroke();
+      ctx.globalAlpha = .1;
+      ctx.lineWidth = c.r * 2.6;
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    for (const c of fundo.cobras) {
+      // gomos listrados do rabo pra cabeça (o rabo some aos poucos)
+      const n = c.corpo.length;
+      for (let k = n - 1; k >= 0; k -= 3) {
+        const p = c.corpo[k], f = 1 - k / n;
+        const r = c.r * (.5 + .5 * Math.min(1, f * 2.5));
+        ctx.globalAlpha = .18 + .62 * f;
+        ctx.fillStyle = Math.floor(k / 9) % 2 ? c.escura : c.cor;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, 6.2832);
+        ctx.fill();
+      }
+      // olhos
+      const cab = c.corpo[0], px = Math.cos(c.a + 1.57), py = Math.sin(c.a + 1.57);
+      const fx = Math.cos(c.a) * c.r * .35, fy = Math.sin(c.a) * c.r * .35;
+      ctx.globalAlpha = .95;
+      for (const lado of [-1, 1]) {
+        const ox = cab.x + px * c.r * .5 * lado + fx, oy = cab.y + py * c.r * .5 * lado + fy;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath(); ctx.arc(ox, oy, c.r * .38, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = '#0B0806';
+        ctx.beginPath(); ctx.arc(ox + Math.cos(c.a) * c.r * .14, oy + Math.sin(c.a) * c.r * .14, c.r * .2, 0, 6.2832); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function ligarFundo() {
+    if (fundo.raf) return;
+    const cv = $('portaoFundo');
+    if (!fundo.ctx) {
+      fundo.ctx = cv.getContext('2d');
+      if (!fundo.ctx) return;
+      addEventListener('resize', () => { if (fundo.ctx && !$('portao').hidden) { medirFundo(); if (quieto()) desenharFundo(); } });
+    }
+    medirFundo();
+    if (!fundo.cobras.length) {
+      const qtd = Math.max(5, Math.min(10, Math.round(fundo.w * fundo.h / 110000)));
+      fundo.cobras = Array.from({ length: qtd }, (_, i) => novaCobra(i));
+      fundo.comida = Array.from({ length: Math.round(qtd * 9) }, novaComida);
+    }
+    if (quieto()) { desenharFundo(); return; } // movimento reduzido: só a foto parada
+    const quadro = () => { passoFundo(); desenharFundo(); fundo.raf = requestAnimationFrame(quadro); };
+    fundo.raf = requestAnimationFrame(quadro);
+  }
+  function pararFundo() {
+    cancelAnimationFrame(fundo.raf);
+    fundo.raf = 0;
   }
   // carrega tudo e mostra o site (depois de entrar ou ao abrir já logado)
   async function abrirSite() {
