@@ -33,6 +33,23 @@
 </head>
 <body>
 
+<!-- portão: sem login (ou esperando aprovação) só aparece isto -->
+<section class="portao" id="portao" aria-labelledby="portaoNome" hidden>
+  <div class="portao-caixa">
+    <img src="logo-cobr.webp" alt="" width="120" height="120">
+    <h1 id="portaoNome" class="portao-nome">CLÃ <span class="laranja" data-tag>COBR</span></h1>
+    <p class="portao-sub">RANKING · SLITHER.IO</p>
+    <p class="portao-txt" id="portaoTxt" aria-live="polite">Carregando…</p>
+    <div class="portao-btns">
+      <button type="button" class="btn btn-pri btn-grande" id="btnPortaoEntrar" data-portao="visitante">ENTRAR</button>
+      <button type="button" class="btn btn-sec btn-grande" id="btnPortaoCriar" data-portao="visitante">CRIAR CONTA</button>
+      <button type="button" class="btn btn-pri btn-grande" id="btnPortaoNick" data-portao="sem-nick">ESCOLHER NICK</button>
+      <button type="button" class="btn btn-pri btn-grande" id="btnPortaoConferir" data-portao="pedido">JÁ FUI APROVADO</button>
+      <button type="button" class="link-btn" id="btnPortaoSair" data-portao="sem-nick pedido">Sair da conta</button>
+    </div>
+  </div>
+</section>
+
 <header class="topo">
   <div class="wrap topo-in">
     <a class="marca" href="#" aria-label="Início">
@@ -255,6 +272,11 @@
     <div class="jog-numeros" id="jogNumeros"></div>
 
     <p class="aviso-elenco" id="avisoElenco" hidden>O cadastro de jogadores ainda não foi ligado no banco. Rode o <code>supabase-setup.sql</code> inteiro de novo no SQL Editor do Supabase (não apaga nada nem muda o PIN).</p>
+
+    <div class="painel cadastro" id="pedidos" hidden>
+      <h3 class="laranja">PEDIDOS PRA ENTRAR <span class="pedidos-qtd" id="qtdPedidos"></span></h3>
+      <ul class="pedidos-lista" id="listaPedidos"></ul>
+    </div>
 
     <form class="painel cadastro" id="formCadastro" novalidate hidden>
       <div class="cadastro-txt">

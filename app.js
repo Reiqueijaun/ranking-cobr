@@ -3881,20 +3881,68 @@ ${frente}
 
   async function sairAdmin(silencioso = false) {
     const era = admin;
-    admin = null;
-    if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
-    euId = null; // é a mesma sessão: sair do admin sai do jogador ligado a ele também
-    contaSemJogador = false;
-    aplicarAdmin(null);
+    await sairDaConta();
     if (era && !silencioso) toast('Você saiu da área do admin.');
   }
 
+  // ---------- portão: o site é só pra membro do clã logado ----------
+  // Sem login (ou com a conta esperando aprovação) aparece só a tela de entrada.
+  // Quem fecha de verdade é o banco: visitante e conta sem nick não leem nada (passo 5e do SQL).
+  let siteAberto = false;   // já carregou os dados e ligou o tempo real uma vez
+  const podeVer = () => !!admin || !!euId;
+  function trancar(estado) {
+    const st = estado || (meuPedido ? 'pedido' : contaSemJogador ? 'sem-nick' : 'visitante');
+    document.body.classList.add('trancado');
+    $('portao').hidden = false;
+    $('portao').dataset.estado = st;
+    $('portaoTxt').replaceChildren(...({
+      carregando: ['Carregando…'],
+      visitante: ['O ranking do clã é só pra membros. Entre ou crie a sua conta.'],
+      'sem-nick': ['Falta escolher o seu nick no clã.'],
+      pedido: ['Pedido enviado: ', el('b', { text: comTag(meuPedido || '') }), '. Um admin do clã vai aprovar e aí você entra.'],
+    })[st]);
+    document.querySelectorAll('#portao [data-portao]').forEach((b) => { b.hidden = !b.dataset.portao.split(' ').includes(st); });
+  }
+  function destrancar() {
+    document.body.classList.remove('trancado');
+    $('portao').hidden = true;
+  }
+  // carrega tudo e mostra o site (depois de entrar ou ao abrir já logado)
+  async function abrirSite() {
+    await carregar();
+    destrancar();
+    aplicarAdmin(admin);
+    mostrarRota();
+    if (!siteAberto) {
+      siteAberto = true;
+      cerimoniaAutomatica();
+      ligarTempoReal();
+    }
+  }
+  // sai da conta e esconde tudo de novo (num aparelho emprestado, ninguém vê o que ficou)
+  async function sairDaConta() {
+    admin = null;
+    euId = null;
+    meuPedido = null;
+    contaSemJogador = false;
+    logins = new Map();
+    pedidos = [];
+    if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
+    if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
+    document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+    $('btnAdmin').textContent = 'Área do admin';
+    trancar('visitante');
+  }
+
   // ---------- entrar (jogador e admin usam a mesma conta: e-mail + senha) ----------
-  // O jogador cria a conta com o e-mail dele, confirma pelo link e fica com o nick escolhido
-  // (jogador_vincular, no banco). Admin é quem está na tabela admins: o banco confere em cada ação.
+  // O jogador cria a conta com o e-mail dele e o nick. Depois de confirmar o e-mail:
+  // nick do elenco liga na hora; nick novo fica esperando um admin aprovar.
+  // Admin é quem está na tabela admins: o banco confere em cada ação.
   let modoEntrar = 'entrar';
-  let contaSemJogador = false; // logou, mas a conta ainda não tem nick (o nick escolhido já tinha dono)
+  let contaSemJogador = false; // logou, mas a conta não tem nick (o escolhido já tinha dono)
+  let meuPedido = null;        // nick novo esperando aprovação
   let linkEmail = null;        // { tipo: 'signup' | 'recovery' } quando a pessoa chegou pelo link do e-mail
+  let pedidos = [];            // só pro admin: contas esperando aprovação
   // demonstração: VENO já tem conta (veno@demo.com, senha 1234); outro e-mail com 1234 entra como admin
   const demoContas = new Map([['veno@demo.com', { senha: '1234', player: 'dj0' }]]);
   const TEXTO_ENTRAR = {
@@ -3902,25 +3950,31 @@ ${frente}
     criar: { titulo: 'CRIAR CONTA', botao: 'Criar conta', campos: ['nick', 'email', 'senha'] },
     esqueci: { titulo: 'ESQUECI A SENHA', botao: 'Mandar link', campos: ['email'], txt: 'Mandamos um link pro seu e-mail pra você criar uma senha nova.' },
     nova: { titulo: 'SENHA NOVA', botao: 'Salvar senha', campos: ['senha'] },
-    nick: { titulo: 'QUAL É O SEU NICK?', botao: 'Pronto', campos: ['nick'], txt: 'Escolha o seu nick no clã. Ele fica ligado à sua conta.' },
+    nick: { titulo: 'QUAL É O SEU NICK?', botao: 'Pronto', campos: ['nick'], txt: 'O seu nick no clã. Se for novo, um admin aprova antes de você entrar.' },
     enviado: { titulo: 'OLHA O SEU E-MAIL', botao: null, campos: [] },
   };
 
-  // lê quem está logado: admin, jogador e, se a conta ainda não tem nick, liga o que ela escolheu no cadastro
+  // lê quem está logado: admin, jogador, pedido esperando; e manda o nick escolhido no cadastro
   async function lerConta() {
     if (DEMO) return;
     const { data } = await sb.auth.getSession();
     const s = data.session;
-    if (!s) { admin = null; euId = null; contaSemJogador = false; return; }
-    const [ra, rj] = await Promise.all([sb.rpc('admin_eu'), sb.rpc('jogador_eu')]);
+    admin = null; euId = null; meuPedido = null; contaSemJogador = false;
+    if (!s) return;
+    const [ra, rj, rp] = await Promise.all([sb.rpc('admin_eu'), sb.rpc('jogador_eu'), sb.rpc('meu_pedido')]);
     admin = !ra.error && ra.data ? { nome: ra.data } : null;
     euId = !rj.error && rj.data ? rj.data : null;
-    const pedido = s.user && s.user.user_metadata && s.user.user_metadata.player_id;
-    if (!euId && pedido && !admin) {
-      const rv = await sb.rpc('jogador_vincular', { p_player: pedido });
-      if (!rv.error && rv.data === 'ok') euId = pedido;
+    meuPedido = !rp.error && rp.data ? rp.data : null;
+    const meta = (s.user && s.user.user_metadata) || {};
+    if (!euId && !admin && !meuPedido && (meta.nick || meta.player_id)) {
+      // primeira vez depois de confirmar o e-mail
+      const rv = meta.nick
+        ? await sb.rpc('jogador_pedir_nick', { p_nick: meta.nick })
+        : await sb.rpc('jogador_vincular', { p_player: meta.player_id });
+      if (!rv.error && rv.data === 'ok') euId = (await sb.rpc('jogador_eu')).data || null;
+      else if (!rv.error && rv.data === 'pedido') meuPedido = meta.nick;
     }
-    contaSemJogador = !euId && !admin;
+    contaSemJogador = !euId && !admin && !meuPedido;
   }
 
   function trocarModoEntrar(m) {
@@ -3948,9 +4002,8 @@ ${frente}
   }
   function abrirEntrar(m = 'entrar') {
     if (document.querySelector('dialog[open]')) document.querySelectorAll('dialog[open]').forEach((d) => d.close());
-    $('listaNicks').replaceChildren(...jogadores.filter((r) => r.ativo).map((r) => el('option', { value: r.nick })));
     // quem tinha marcado "Sou eu" no aparelho (sistema antigo) já vem com o nick preenchido
-    if (!$('fEntNick').value) { const r = elenco.get(lerEuAntigo()); if (r) $('fEntNick').value = r.nick; }
+    if (!$('fEntNick').value) { const k = lerEuAntigo(); if (k) $('fEntNick').value = k; }
     $('fEntSenha').value = '';
     trocarModoEntrar(m);
     $('dlgEntrar').showModal();
@@ -3976,11 +4029,8 @@ ${frente}
     const campos = TEXTO_ENTRAR[m].campos;
     const email = $('fEntEmail').value.trim().toLowerCase();
     const senha = $('fEntSenha').value;
-    const r = elenco.get(chave($('fEntNick').value));
-    if (campos.includes('nick')) {
-      if (!chave($('fEntNick').value)) return falhar('Escreve o seu nick.');
-      if (!r) return falhar('Não achei esse nick no clã. Escreve igual está no ranking.');
-    }
+    const nick = limparNick($('fEntNick').value);
+    if (campos.includes('nick') && !nick) return falhar('Escreve o seu nick no clã.');
     if (campos.includes('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return falhar('Escreve o seu e-mail.');
     if (campos.includes('senha')) {
       if (!senha) return falhar('Escreve a senha.');
@@ -3990,10 +4040,10 @@ ${frente}
     btn.disabled = true;
     try {
       if (m === 'entrar') await fazerLogin(email, senha, falhar);
-      else if (m === 'criar') await criarConta(r, email, senha, falhar);
+      else if (m === 'criar') await criarConta(nick, email, senha, falhar);
       else if (m === 'esqueci') await esqueciSenha(email, falhar);
       else if (m === 'nova') await salvarSenhaNova(senha, falhar);
-      else if (m === 'nick') await escolherNick(r, falhar);
+      else if (m === 'nick') await escolherNick(nick, falhar);
     } catch (e) {
       console.error(e);
       falhar('Não consegui agora. Confere a internet e tenta de novo.');
@@ -4002,13 +4052,20 @@ ${frente}
     }
   }
 
+  // demonstração: o nick digitado vira o jogador do elenco (ou pedido, se for novo)
+  function demoNick(nick) { return jogadores.find((r) => chave(r.nick) === chave(nick)) || null; }
+  function demoLer(c) {
+    euId = c ? c.player : null;
+    meuPedido = c && !c.player ? c.pedido : null;
+    contaSemJogador = !!c && !c.player && !c.pedido;
+  }
+
   async function fazerLogin(email, senha, falhar) {
     if (DEMO) {
       const c = demoContas.get(email);
       if (c ? c.senha !== senha : senha !== '1234') return falhar('E-mail ou senha errados. (Na demonstração, a senha é 1234.)');
       admin = c ? null : { nome: email.split('@')[0] };
-      euId = c ? c.player : null;
-      contaSemJogador = false;
+      demoLer(c);
     } else {
       const { error } = await sb.auth.signInWithPassword({ email, password: senha });
       if (error) return falhar(msgLogin(error));
@@ -4016,34 +4073,43 @@ ${frente}
     }
     $('fEntSenha').value = '';
     $('dlgEntrar').close();
-    boasVindas();
+    await depoisDeEntrar();
   }
-  // depois de entrar (senha ou link do e-mail): avisa quem é e, se faltar o nick, pergunta
-  function boasVindas(confirmou = false) {
+  // depois de entrar (senha ou link do e-mail): abre o site, ou mostra o que falta
+  async function depoisDeEntrar(confirmou = false) {
+    if (!podeVer()) {
+      trancar();
+      if (contaSemJogador) abrirEntrar('nick');
+      else if (meuPedido && confirmou) toast('E-mail confirmado! Agora é só esperar um admin aprovar.');
+      return;
+    }
     try { if (euId) localStorage.removeItem('ranking_eu'); } catch (e) {}
-    aplicarAdmin(admin);
+    await abrirSite();
     const r = euId && jogPorId.get(euId);
-    if (contaSemJogador) { abrirEntrar('nick'); return; }
     if (admin) {
-      toast(`Bem-vindo, ${admin.nome}. Área do admin liberada.`);
-      if (!perfilAtual && !torneioAtual && pagAtual === 'ranking') $('registrar').scrollIntoView({ behavior: 'smooth' });
+      const n = pedidos.length;
+      toast(`Bem-vindo, ${admin.nome}.` + (n ? ` ${n} ${n === 1 ? 'pedido esperando' : 'pedidos esperando'} aprovação em Jogadores.` : ' Área do admin liberada.'));
     } else if (r) {
       toast(confirmou ? `E-mail confirmado! Bem-vindo, ${comTag(r.nick)}.` : `Bem-vindo, ${comTag(r.nick)}!`);
     }
   }
 
-  async function criarConta(r, email, senha, falhar) {
+  async function criarConta(nick, email, senha, falhar) {
+    let novo;
     if (DEMO) {
-      if ([...demoContas.values()].some((c) => c.player === r.id)) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      const r = demoNick(nick);
+      if (r && [...demoContas.values()].some((c) => c.player === r.id)) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
       if (demoContas.has(email)) return falhar('Esse e-mail já tem conta. Toque em "Entrar".');
-      demoContas.set(email, { senha, player: r.id });
+      novo = !r;
+      demoContas.set(email, { senha, player: r ? r.id : null, pedido: r ? null : nick });
     } else {
-      const livre = await sb.rpc('nick_livre', { p_player: r.id });
-      if (livre.error) throw new Error(livre.error.message);
-      if (!livre.data) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      const st = await sb.rpc('nick_status', { p_nick: nick });
+      if (st.error) throw new Error(st.error.message);
+      if (st.data === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      novo = st.data === 'novo';
       const { data, error } = await sb.auth.signUp({
         email, password: senha,
-        options: { emailRedirectTo: location.origin + location.pathname, data: { player_id: r.id } },
+        options: { emailRedirectTo: location.origin + location.pathname, data: { nick } },
       });
       if (error) {
         // o e-mail grátis do Supabase manda poucos por hora
@@ -4056,7 +4122,8 @@ ${frente}
     $('fEntSenha').value = '';
     trocarModoEntrar('enviado');
     $('txtEntrar').hidden = false;
-    $('txtEntrar').replaceChildren('Mandamos um link pra ', el('b', { text: email }), '. Abra e toque nele pra confirmar. Não chegou? Olhe no spam.');
+    $('txtEntrar').replaceChildren('Mandamos um link pra ', el('b', { text: email }), '. Abra e toque nele pra confirmar (olhe no spam também).',
+      novo ? ` Como ${comTag(nick)} é nick novo no clã, depois de confirmar um admin aprova.` : '');
   }
 
   async function esqueciSenha(email, falhar) {
@@ -4077,45 +4144,107 @@ ${frente}
     }
     $('fEntSenha').value = '';
     $('dlgEntrar').close();
-    aplicarAdmin(admin);
     toast('Senha nova salva!');
-    if (contaSemJogador) abrirEntrar('nick');
+    if (podeVer() && siteAberto) { aplicarAdmin(admin); return; }
+    await depoisDeEntrar();
   }
 
-  async function escolherNick(r, falhar) {
+  async function escolherNick(nick, falhar) {
+    let res;
     if (DEMO) {
-      euId = r.id;
+      const r = demoNick(nick);
+      res = r ? 'ok' : 'pedido';
+      if (r) euId = r.id; else meuPedido = nick;
     } else {
-      const res = await sb.rpc('jogador_vincular', { p_player: r.id });
-      if (res.error) throw new Error(res.error.message);
-      if (res.data === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
-      if (res.data !== 'ok') return falhar('Não deu certo. Tenta de novo.');
-      euId = r.id;
+      const rv = await sb.rpc('jogador_pedir_nick', { p_nick: nick });
+      if (rv.error) throw new Error(rv.error.message);
+      res = rv.data;
+      if (res === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
+      if (res === 'ok') euId = (await sb.rpc('jogador_eu')).data || null;
+      else if (res === 'pedido') meuPedido = nick;
+      else return falhar('Não deu certo. Tenta de novo.');
     }
     contaSemJogador = false;
     $('dlgEntrar').close();
-    try { localStorage.removeItem('ranking_eu'); } catch (e) {}
-    aplicarAdmin(admin);
-    toast(`Pronto! Você é ${comTag(r.nick)}.`);
+    await depoisDeEntrar();
+    if (res === 'pedido') toast('Pedido enviado! Um admin do clã vai aprovar.');
+  }
+
+  // "Já fui aprovado": confere de novo sem precisar sair e entrar
+  async function conferirPedido() {
+    const btn = $('btnPortaoConferir');
+    btn.disabled = true;
+    try {
+      if (DEMO) { const c = [...demoContas.values()].find((x) => x.pedido === meuPedido || (x.player && jogPorId.get(x.player) && chave(jogPorId.get(x.player).nick) === chave(meuPedido || ''))); demoLer(c); }
+      else await lerConta();
+      if (podeVer()) await depoisDeEntrar(); else { trancar(); toast('Ainda não foi aprovado. Tenta de novo mais tarde.'); }
+    } catch (e) {
+      console.error(e);
+      toast('Não consegui conferir agora.', true);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function sairConta() {
-    if (admin) { await sairAdmin(true); toast('Você saiu.'); return; }
-    euId = null;
-    contaSemJogador = false;
-    if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
-    render();
+    await sairDaConta();
     toast('Você saiu.');
   }
 
-  // ---------- admin: quem já tem login ----------
+  // ---------- admin: quem já tem login e quem pediu pra entrar ----------
   async function carregarLogins() {
-    if (DEMO || !admin) return;
-    const r = await sb.rpc('admin_logins');
-    if (r.error) { console.warn('logins:', r.error.message); return; }
-    logins = new Map((r.data || []).map((x) => [x.player_id, x]));
+    if (DEMO) { pedidos = [...demoContas.entries()].filter(([, c]) => c.pedido).map(([email, c]) => ({ user_id: email, email, nick: c.pedido, created_at: new Date().toISOString() })); renderPedidos(); return; }
+    if (!admin) return;
+    const [r, rp] = await Promise.all([sb.rpc('admin_logins'), sb.rpc('admin_pedidos')]);
+    if (r.error) console.warn('logins:', r.error.message);
+    else logins = new Map((r.data || []).map((x) => [x.player_id, x]));
+    if (rp.error) console.warn('pedidos:', rp.error.message);
+    else pedidos = rp.data || [];
+    renderPedidos();
     if ($('dlgJogador').open && editJog) renderLoginJog(editJog);
   }
+  function renderPedidos() {
+    const box = $('pedidos');
+    box.hidden = !admin || !pedidos.length;
+    if (box.hidden) return;
+    $('qtdPedidos').textContent = pedidos.length;
+    $('listaPedidos').replaceChildren(...pedidos.map((p) => {
+      const ja = elenco.get(chave(p.nick));
+      return el('li', { class: 'pedido' },
+        el('div', { class: 'pedido-txt' },
+          el('b', { text: comTag(limparNick(p.nick)) }),
+          el('small', { text: `${p.email} · ${haQuanto(p.created_at)}${ja ? ' · já está no elenco' : ' · nick novo'}` })),
+        el('div', { class: 'pedido-btns' },
+          el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('RECUSAR PEDIDO?', `${comTag(limparNick(p.nick))} (${p.email}) não entra no site e a conta é apagada.`, 'Recusar', () => responderPedido(p, false)) }, 'Recusar'),
+          el('button', { type: 'button', class: 'btn btn-pri', onclick: (e) => { e.currentTarget.disabled = true; responderPedido(p, true); } }, 'Aprovar')));
+    }));
+  }
+  async function responderPedido(p, aprovar) {
+    try {
+      if (DEMO) {
+        const c = demoContas.get(p.user_id);
+        if (aprovar) {
+          const id = 'dj' + (jogadores.length + 10);
+          jogadores.push({ id, nick: limparNick(p.nick), cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
+          indexarElenco();
+          c.player = id; c.pedido = null;
+        } else demoContas.delete(p.user_id);
+      } else {
+        if (aprovar) {
+          const res = await rpcAdmin('admin_aprovar_pedido', { p_user: p.user_id });
+          if (res === 'tem_login') { toast(`${comTag(p.nick)} já tem conta de outra pessoa. Recuse ou tire o login dele antes.`, true); await carregarLogins(); return; }
+        } else await rpcAdmin('admin_recusar_pedido', { p_user: p.user_id });
+        await carregar();
+      }
+      await carregarLogins();
+      render();
+      toast(aprovar ? `${comTag(limparNick(p.nick))} aprovado. Já pode entrar.` : 'Pedido recusado.');
+    } catch (e) {
+      console.error(e);
+      if (!erroSessao(e)) { toast('Não deu agora. Tenta de novo.', true); renderPedidos(); }
+    }
+  }
+
   function loginDe(id) {
     if (!DEMO) return logins.get(id) || null;
     const e = [...demoContas.entries()].find(([, c]) => c.player === id);
@@ -4141,7 +4270,7 @@ ${frente}
     if (!confirmarTirar) { confirmarTirar = true; $('btnTirarLogin').textContent = 'Toque de novo pra tirar'; return; }
     try {
       if (DEMO) {
-        for (const [e, c] of demoContas) if (c.player === r.id) demoContas.delete(e);
+        for (const c of demoContas.values()) if (c.player === r.id) c.player = null;
       } else {
         await rpcAdmin('admin_tirar_login', { p_player: r.id });
         await carregarLogins();
@@ -4271,7 +4400,7 @@ ${frente}
     let espera;
     const recarregar = () => {
       clearTimeout(espera);
-      espera = setTimeout(() => carregar().then(render).catch(() => {}), 400);
+      espera = setTimeout(() => { if (podeVer()) carregar().then(render).catch(() => {}); }, 400);
     };
     sb.channel('scores-ao-vivo')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, recarregar)
@@ -4288,7 +4417,11 @@ ${frente}
         .subscribe();
     }
     // reserva: atualiza a cada minuto mesmo sem tempo real
-    setInterval(() => { if (!document.hidden) carregar().then(render).catch(() => {}); }, 60000);
+    setInterval(() => {
+      if (document.hidden || !podeVer()) return;
+      carregar().then(render).catch(() => {});
+      if (admin) carregarLogins().catch(() => {});
+    }, 60000);
   }
 
   // ---------- início ----------
@@ -4487,6 +4620,14 @@ ${frente}
       if (e.target === e.currentTarget && fora) e.currentTarget.close();
     }));
 
+    // portão: entrar, criar conta, escolher nick, conferir pedido, sair
+    $('btnPortaoEntrar').addEventListener('click', () => abrirEntrar('entrar'));
+    $('btnPortaoCriar').addEventListener('click', () => abrirEntrar('criar'));
+    $('btnPortaoNick').addEventListener('click', () => abrirEntrar('nick'));
+    $('btnPortaoConferir').addEventListener('click', conferirPedido);
+    $('btnPortaoSair').addEventListener('click', sairConta);
+    trancar('carregando');
+
     if (DEMO) {
       $('avisoDemo').hidden = false;
       partidas = dadosDemo();
@@ -4495,38 +4636,41 @@ ${frente}
       const tn = torneiosDemo();
       torneios = tn.lista;
       lancamentos = tn.lanc;
-      render();
-      mostrarRota();
-      cerimoniaAutomatica();
-      ligarTempoReal();
+      trancar('visitante');
       return;
     }
 
     if (!window.supabase) {
-      $('podio').replaceChildren(el('p', { class: 'vazio', text: 'Não consegui carregar o sistema do ranking. Confere a internet e recarrega a página.' }));
+      $('portaoTxt').textContent = 'Não consegui carregar o sistema do ranking. Confere a internet e recarrega a página.';
       return;
     }
     sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
-    // sessão expirou ou saiu em outra aba: some o modo admin e o "Meu perfil"
+    // sessão expirou ou saiu em outra aba: fecha o site de novo
     // link de senha nova do e-mail: abre a janela pra criar a senha
     sb.auth.onAuthStateChange((evento) => {
-      if (evento === 'SIGNED_OUT' && (admin || euId || contaSemJogador)) setTimeout(() => { euId = null; contaSemJogador = false; aplicarAdmin(null); }, 0);
+      if (evento === 'SIGNED_OUT' && (admin || euId || meuPedido || contaSemJogador)) setTimeout(() => sairDaConta(), 0);
       if (evento === 'PASSWORD_RECOVERY') setTimeout(() => { if (!($('dlgEntrar').open && modoEntrar === 'nova')) abrirEntrar('nova'); }, 0);
     });
-    carregar()
+    lerConta()
+      .catch((e) => { console.error(e); admin = null; euId = null; meuPedido = null; contaSemJogador = false; })
       .then(async () => {
-        await lerConta().catch(() => { admin = null; euId = null; contaSemJogador = false; });
         if (/access_token=/.test(location.hash)) history.replaceState(history.state, '', location.pathname + location.search);
-        mostrarRota();
-        if (linkEmail && linkEmail.tipo === 'recovery') { aplicarAdmin(admin); if (!$('dlgEntrar').open) abrirEntrar('nova'); }
-        else if (linkEmail && linkEmail.tipo === 'signup') boasVindas(true);
-        else { aplicarAdmin(admin); if (contaSemJogador) abrirEntrar('nick'); }
-        cerimoniaAutomatica();
-        ligarTempoReal();
+        if (linkEmail && linkEmail.tipo === 'recovery') {
+          if (podeVer()) await abrirSite(); else trancar();
+          if (!$('dlgEntrar').open) abrirEntrar('nova');
+        } else if (linkEmail && linkEmail.tipo === 'signup') {
+          await depoisDeEntrar(true);
+        } else if (podeVer()) {
+          await abrirSite();
+        } else {
+          trancar();
+          if (contaSemJogador) abrirEntrar('nick');
+        }
       })
       .catch((e) => {
         console.error(e);
-        $('podio').replaceChildren(el('p', { class: 'vazio', text: 'Não consegui ler o ranking. Se você é o admin, confere o config.js e se o script do banco foi rodado no Supabase.' }));
+        trancar(podeVer() ? 'carregando' : undefined);
+        $('portaoTxt').textContent = 'Não consegui ler o ranking agora. Confere a internet e recarrega a página.';
       });
   }
 

@@ -21,13 +21,12 @@ create table if not exists public.scores (
 create index if not exists scores_created_at_idx on public.scores (created_at desc);
 
 alter table public.scores enable row level security;
-grant select on public.scores to anon, authenticated;
-revoke insert, update, delete on public.scores from anon, authenticated;
+revoke all on public.scores from anon;
+grant select on public.scores to authenticated;
+revoke insert, update, delete on public.scores from authenticated;
 
--- Qualquer pessoa com o link pode VER o ranking
+-- Quem pode VER o ranking: só membro logado (política no passo 5e, "Site fechado")
 drop policy if exists "todos leem" on public.scores;
-create policy "todos leem" on public.scores
-  for select to anon, authenticated using (true);
 
 -- Ninguém registra direto na tabela. Registrar e apagar: só admin, pelas funções do passo 3.
 drop policy if exists "todos registram" on public.scores;
@@ -44,11 +43,10 @@ create table if not exists public.players (
 create unique index if not exists players_nick_idx on public.players (lower(btrim(nick)));
 
 alter table public.players enable row level security;
-grant select on public.players to anon, authenticated;
-revoke insert, update, delete on public.players from anon, authenticated;
-drop policy if exists "todos leem jogadores" on public.players;
-create policy "todos leem jogadores" on public.players
-  for select to anon, authenticated using (true);
+revoke all on public.players from anon;
+grant select on public.players to authenticated;
+revoke insert, update, delete on public.players from authenticated;
+drop policy if exists "todos leem jogadores" on public.players; -- quem lê: passo 5e
 
 -- Quem já tem partida registrada entra no elenco (com o nick mais recente)
 insert into public.players (nick, created_at)
@@ -320,21 +318,14 @@ create index if not exists torneio_lanc_idx on public.torneio_lancamentos (torne
 
 alter table public.torneios enable row level security;
 alter table public.torneio_lancamentos enable row level security;
-grant select on public.torneios, public.torneio_lancamentos to anon, authenticated;
-revoke insert, update, delete on public.torneios, public.torneio_lancamentos from anon, authenticated;
+revoke all on public.torneios, public.torneio_lancamentos from anon;
+grant select on public.torneios, public.torneio_lancamentos to authenticated;
+revoke insert, update, delete on public.torneios, public.torneio_lancamentos from authenticated;
 
--- Todo mundo vê os torneios publicados; rascunho só admin vê
+-- Quem vê os torneios (membro vê os publicados, rascunho só admin): passo 5e
 drop policy if exists "todos veem torneios" on public.torneios;
 drop policy if exists "admins veem rascunhos" on public.torneios;
-create policy "todos veem torneios" on public.torneios
-  for select to anon using (publicado);
-create policy "admins veem rascunhos" on public.torneios
-  for select to authenticated using (publicado or public.is_admin());
--- resultado aparece pra quem consegue ver o torneio
 drop policy if exists "todos veem resultados" on public.torneio_lancamentos;
-create policy "todos veem resultados" on public.torneio_lancamentos
-  for select to anon, authenticated
-  using (exists (select 1 from public.torneios t where t.id = torneio_id));
 
 -- Criar (p_id null) ou editar um torneio. Não mexe no chaveamento.
 create or replace function public.admin_salvar_torneio(p_id uuid, p_dados jsonb)
@@ -473,11 +464,10 @@ create table if not exists public.config_site (
   atualizado_em timestamptz not null default now()
 );
 alter table public.config_site enable row level security;
-grant select on public.config_site to anon, authenticated;
-revoke insert, update, delete on public.config_site from anon, authenticated;
-drop policy if exists "todos leem config" on public.config_site;
-create policy "todos leem config" on public.config_site
-  for select to anon, authenticated using (true);
+revoke all on public.config_site from anon;
+grant select on public.config_site to authenticated;
+revoke insert, update, delete on public.config_site from authenticated;
+drop policy if exists "todos leem config" on public.config_site; -- quem lê: passo 5e
 
 create or replace function public.admin_salvar_config(p_chave text, p_valor jsonb)
 returns void
@@ -530,14 +520,7 @@ as $$
   select player_id from player_contas where user_id = auth.uid();
 $$;
 
--- Antes de cadastrar: esse nick ainda está livre?
-create or replace function public.nick_livre(p_player uuid)
-returns boolean
-language sql stable security definer set search_path = public
-as $$
-  select exists(select 1 from players where id = p_player)
-     and not exists(select 1 from player_contas where player_id = p_player);
-$$;
+drop function if exists public.nick_livre(uuid); -- virou nick_status (passo 5d)
 
 -- A conta logada (com e-mail confirmado) fica com esse jogador.
 -- Quem já tinha um jogador troca (ex.: escolheu o nick errado).
@@ -594,15 +577,182 @@ end;
 $$;
 
 revoke all on function public.jogador_eu() from public, anon;
-revoke all on function public.nick_livre(uuid) from public;
 revoke all on function public.jogador_vincular(uuid) from public, anon;
 revoke all on function public.admin_logins() from public, anon;
 revoke all on function public.admin_tirar_login(uuid) from public, anon;
 grant execute on function public.jogador_eu() to authenticated;
-grant execute on function public.nick_livre(uuid) to anon, authenticated;
 grant execute on function public.jogador_vincular(uuid) to authenticated;
 grant execute on function public.admin_logins() to authenticated;
 grant execute on function public.admin_tirar_login(uuid) to authenticated;
+
+
+-- 5d) Pedidos de nick novo: quem cria conta com um nick que não está no elenco
+--     fica esperando um admin aprovar (Jogadores > Pedidos pra entrar).
+create table if not exists public.player_pedidos (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  nick        text not null check (char_length(btrim(nick)) between 1 and 24),
+  created_at  timestamptz not null default now()
+);
+alter table public.player_pedidos enable row level security;
+revoke all on public.player_pedidos from anon, authenticated;
+
+-- Membro = conta ligada a um jogador do clã, ou admin. Só membro lê o site (passo 5e).
+create or replace function public.is_membro()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from player_contas where user_id = auth.uid())
+      or exists(select 1 from admins where user_id = auth.uid());
+$$;
+
+-- Antes de criar a conta: livre (do elenco, sem dono) | tem_login | novo (vai pra aprovação)
+create or replace function public.nick_status(p_nick text)
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select case when p.id is null then 'novo'
+              when exists(select 1 from player_contas c where c.player_id = p.id) then 'tem_login'
+              else 'livre' end
+  from (select 1) x
+  left join players p on lower(btrim(p.nick)) = lower(btrim(p_nick));
+$$;
+
+-- A conta (com e-mail confirmado) pede o nick: do elenco liga na hora; nick novo vira pedido.
+-- Devolve: ok | pedido | tem_login | sem_confirmar | invalido
+create or replace function public.jogador_pedir_nick(p_nick text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  n text := btrim(coalesce(p_nick, ''));
+  pid uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  if not exists(select 1 from auth.users where id = auth.uid() and email_confirmed_at is not null) then
+    return 'sem_confirmar';
+  end if;
+  if char_length(n) not between 1 and 24 then return 'invalido'; end if;
+  select id into pid from players where lower(btrim(nick)) = lower(n);
+  if pid is not null then
+    if exists(select 1 from player_contas where player_id = pid and user_id <> auth.uid()) then
+      return 'tem_login';
+    end if;
+    delete from player_contas where user_id = auth.uid() and player_id <> pid;
+    insert into player_contas (player_id, user_id) values (pid, auth.uid()) on conflict (player_id) do nothing;
+    delete from player_pedidos where user_id = auth.uid();
+    return 'ok';
+  end if;
+  insert into player_pedidos (user_id, nick) values (auth.uid(), n)
+  on conflict (user_id) do update set nick = excluded.nick, created_at = now();
+  return 'pedido';
+end;
+$$;
+
+-- Nick que a conta logada está esperando aprovar (null se nenhum)
+create or replace function public.meu_pedido()
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select nick from player_pedidos where user_id = auth.uid();
+$$;
+
+create or replace function public.admin_pedidos()
+returns table (user_id uuid, email text, nick text, created_at timestamptz)
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  return query
+    select p.user_id, u.email::text, p.nick, p.created_at
+    from player_pedidos p join auth.users u on u.id = p.user_id
+    order by p.created_at;
+end;
+$$;
+
+-- Aprovar: entra no elenco (ou volta, se já tinha esse nick) e a conta fica com ele.
+-- Devolve: ok | tem_login | nao_existe
+create or replace function public.admin_aprovar_pedido(p_user uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  r player_pedidos%rowtype;
+  pid uuid;
+begin
+  select * into r from player_pedidos where user_id = p_user;
+  perform exigir_admin('aprovar pedido', jsonb_build_object('user', p_user, 'nick', r.nick));
+  if r.user_id is null then return 'nao_existe'; end if;
+  select id into pid from players where lower(btrim(nick)) = lower(btrim(r.nick));
+  if pid is not null and exists(select 1 from player_contas where player_id = pid and user_id <> p_user) then
+    return 'tem_login';
+  end if;
+  if pid is null then
+    insert into players (nick) values (btrim(r.nick)) returning id into pid;
+  else
+    update players set ativo = true where id = pid and not ativo;
+  end if;
+  delete from player_contas where user_id = p_user;
+  insert into player_contas (player_id, user_id) values (pid, p_user);
+  delete from player_pedidos where user_id = p_user;
+  return 'ok';
+end;
+$$;
+
+-- Recusar: apaga o pedido e a conta (quem é de fora não fica com conta parada)
+create or replace function public.admin_recusar_pedido(p_user uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('recusar pedido', jsonb_build_object('user', p_user,
+    'nick', (select nick from player_pedidos where user_id = p_user),
+    'email', (select email from auth.users where id = p_user)));
+  delete from player_pedidos where user_id = p_user;
+  delete from auth.users where id = p_user
+    and id not in (select user_id from admins)
+    and id not in (select user_id from player_contas);
+end;
+$$;
+
+revoke all on function public.is_membro() from public, anon;
+revoke all on function public.nick_status(text) from public;
+revoke all on function public.jogador_pedir_nick(text) from public, anon;
+revoke all on function public.meu_pedido() from public, anon;
+revoke all on function public.admin_pedidos() from public, anon;
+revoke all on function public.admin_aprovar_pedido(uuid) from public, anon;
+revoke all on function public.admin_recusar_pedido(uuid) from public, anon;
+grant execute on function public.is_membro() to authenticated;
+grant execute on function public.nick_status(text) to anon, authenticated;
+grant execute on function public.jogador_pedir_nick(text) to authenticated;
+grant execute on function public.meu_pedido() to authenticated;
+grant execute on function public.admin_pedidos() to authenticated;
+grant execute on function public.admin_aprovar_pedido(uuid) to authenticated;
+grant execute on function public.admin_recusar_pedido(uuid) to authenticated;
+
+
+-- 5e) Site fechado: o ranking, os jogadores e os torneios só aparecem pra membro logado.
+--     Visitante sem login (anon) não lê nada. Conta sem nick ou com pedido esperando também não.
+drop policy if exists "membros leem" on public.scores;
+create policy "membros leem" on public.scores
+  for select to authenticated using ((select public.is_membro()));
+drop policy if exists "membros leem jogadores" on public.players;
+create policy "membros leem jogadores" on public.players
+  for select to authenticated using ((select public.is_membro()));
+drop policy if exists "membros leem config" on public.config_site;
+create policy "membros leem config" on public.config_site
+  for select to authenticated using ((select public.is_membro()));
+-- torneio publicado: membro vê; rascunho: só admin
+drop policy if exists "membros veem torneios" on public.torneios;
+create policy "membros veem torneios" on public.torneios
+  for select to authenticated using ((publicado and (select public.is_membro())) or (select public.is_admin()));
+drop policy if exists "membros veem resultados" on public.torneio_lancamentos;
+create policy "membros veem resultados" on public.torneio_lancamentos
+  for select to authenticated
+  using ((select public.is_membro()) and exists (select 1 from public.torneios t where t.id = torneio_id));
 
 
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
