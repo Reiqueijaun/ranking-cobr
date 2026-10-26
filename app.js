@@ -4657,7 +4657,9 @@ ${frente}
   const donoChat = () => !!(chat.eu && chat.eu.dono);
   const papelDe = (u) => (u ? chat.equipe.get(u) || null : null);
   const canalChat = (id) => CANAIS_CHAT.find((c) => c.id === id);
-  const cfgCanal = (c) => chat.cfg.get(c) || { travado: false, lento: 0 };
+  const cfgCanal = (c) => chat.cfg.get(c) || { travado: false, lento: 0, desligado: false };
+  // o Dono pode desligar o #recordes: some pra todo mundo até ele ligar de novo
+  const canaisChat = () => CANAIS_CHAT.filter((c) => !cfgCanal(c.id).desligado);
   const horaChat = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const nickDoPlayer = (pid, nome) => (pid && jogPorId.get(pid) ? jogPorId.get(pid).nick : nome || 'Membro');
@@ -4743,7 +4745,7 @@ ${frente}
         completarMsgs([...chat.porId.values()]),
         sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
         sb.rpc('chat_equipe'),
-        sb.from('chat_canais_cfg').select('canal, travado, lento'),
+        sb.from('chat_canais_cfg').select('canal, travado, lento, desligado'),
       ]);
       for (const s of rst.data || []) chat.status.set(s.user_id, s);
       for (const e of req.data || []) chat.equipe.set(e.user_id, e.papel);
@@ -4820,7 +4822,7 @@ ${frente}
       .on(...tabela('chat_status', (p) => { if (p.new && p.new.user_id) { chat.status.set(p.new.user_id, p.new); if (chatVisivel()) { desenharMembrosChat(); desenharTopoChat(); } } }))
       .on(...tabela('chat_punicoes', () => { recarregarEuChat(); if (admChat() && $('dlgModeracao').open) abrirModeracao(); }))
       .on(...tabela('chat_adms', () => { recarregarEquipe(); recarregarEuChat(); }))
-      .on(...tabela('chat_canais_cfg', (p) => { if (p.new && p.new.canal) chat.cfg.set(p.new.canal, p.new); if (chatVisivel()) desenharComporChat(); }))
+      .on(...tabela('chat_canais_cfg', (p) => { if (p.new && p.new.canal) chat.cfg.set(p.new.canal, p.new); atualizarBadgesChat(); if (chatVisivel()) desenharChat(); }))
       .on(...tabela('chat_denuncias', (p) => {
         if (!admChat()) return;
         contarDenuncias();
@@ -4939,7 +4941,7 @@ ${frente}
     atualizarBadgesChat();
   }
   function atualizarBadgesChat() {
-    const total = chat.eu ? CANAIS_CHAT.reduce((s, c) => s + naoLidasChat(c.id), 0) : 0;
+    const total = chat.eu ? canaisChat().reduce((s, c) => s + naoLidasChat(c.id), 0) : 0;
     document.querySelectorAll('[data-badge-chat]').forEach((b) => { b.hidden = !total; b.textContent = total > 99 ? '99+' : String(total); });
     if (chatVisivel()) desenharCanaisChat();
   }
@@ -5142,10 +5144,11 @@ ${frente}
 
   function desenharChat() {
     if (!chat.eu) { trocar($('chatMsgs'), el('div', { class: 'ch-vazio', text: 'Carregando o chat…' })); return; }
+    if (cfgCanal(chat.canal).desligado) chat.canal = 'geral';
     desenharCanaisChat(); desenharTopoChat(); desenharMsgsChat(); desenharComporChat(); desenharMembrosChat(); desenharDigitando();
   }
   function desenharCanaisChat() {
-    trocar($('chatCanais'), el('div', { class: 'ch-lado-rot', text: 'CANAIS' }), ...CANAIS_CHAT.map((c) => {
+    trocar($('chatCanais'), el('div', { class: 'ch-lado-rot', text: 'CANAIS' }), ...canaisChat().map((c) => {
       const n = chat.eu ? naoLidasChat(c.id) : 0;
       const travado = c.soAdm || cfgCanal(c.id).travado;
       return el('button', { type: 'button', class: `ch-canal ${n ? 'tem' : ''}`, 'aria-current': String(c.id === chat.canal), onclick: () => abrirCanalChat(c.id) },
@@ -5612,6 +5615,7 @@ ${frente}
     return [
       el('div', { class: 'mod-rot', text: 'TRAVADO: SÓ ADM FALA · LENTO: TEMPO ENTRE MENSAGENS' }),
       ...linhas,
+      donoChat() ? painelRecordes(d.canais && d.canais.recordes) : null,
       el('div', { class: 'mod-item' },
         el('div', { class: 'mod-cab' }, el('b', { text: 'Palavrões' }), el('span', { class: 'mod-sub', text: 'viram *** no chat' })),
         caixa,
@@ -5623,6 +5627,22 @@ ${frente}
         } }))),
       donoChat() ? painelFaxina(d.faxina) : null,
     ];
+  }
+  // só o Dono: desliga o #recordes pra todo mundo, ou liga de volta
+  function painelRecordes(cfg) {
+    const ligado = !(cfg && cfg.desligado);
+    return el('div', { class: 'mod-item mod-canal' },
+      el('div', { class: 'mod-cab' }, svg(ICONE_CHAMA, 16), el('b', { text: '#recordes' }), el('span', { class: 'mod-sub', text: 'só o Dono liga e desliga' })),
+      el('div', { class: 'mod-canal-ops' },
+        el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(ligado), onclick: async () => {
+          try {
+            await chatRpc('dono_canal', { p_canal: 'recordes', p_ligado: !ligado });
+            chat.cfg.set('recordes', { ...cfgCanal('recordes'), canal: 'recordes', desligado: ligado });
+            atualizarBadgesChat(); desenharChat();
+            toast(ligado ? '#recordes desligado.' : '#recordes ligado de novo.');
+            abrirModeracao('canais');
+          } catch (e) { erroChat(e); }
+        } }, el('i'), ligado ? 'Ligado' : 'Desligado')));
   }
   // só o Dono: quanto a faxina vai levar, e o botão pra fazer na hora
   function painelFaxina(fx) {
@@ -5688,6 +5708,7 @@ ${frente}
       chat_faxina: `${d.manual ? 'fez a faxina' : 'faxina automática'}: ${d.fotos || 0} ${d.fotos === 1 ? 'foto' : 'fotos'} e ${d.msgs || 0} ${d.msgs === 1 ? 'mensagem' : 'mensagens'}`,
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
       dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
+      dono_canal: `${d.ligado ? 'ligou' : 'desligou'} o #${d.canal || 'recordes'}`,
     }[h.acao] || h.acao;
     return el('li', null, el('b', { text: h.quem || 'ADM' }), ` ${txt}`, el('span', { class: 'mod-sub', text: haQuanto(h.created_at) }));
   }
@@ -5967,6 +5988,7 @@ ${frente}
       case 'chat_perdoar': { const p = demoChat.punidos.find((x) => x.user_id === a.p_user); demoChat.punidos = demoChat.punidos.filter((x) => x.user_id !== a.p_user); log('chat_perdoar', { quem: p && p.nome }); return null; }
       case 'chat_ignorar_denuncia': demoChat.denuncias = demoChat.denuncias.filter((d) => d.msg_id !== a.p_msg); log('chat_ignorar_denuncia', {}); return null;
       case 'chat_config_canal': log('chat_canal', { canal: a.p_canal, travado: a.p_travado, lento: a.p_lento }); return null;
+      case 'dono_canal': log('dono_canal', { canal: a.p_canal, ligado: a.p_ligado }); return null;
       case 'chat_salvar_palavroes': demoChat.palavroes = [...new Set(a.p_lista.map((x) => x.toLowerCase()))]; log('chat_palavroes', { qtd: demoChat.palavroes.length }); return demoChat.palavroes.length;
       case 'chat_moderacao': {
         const grupos = new Map();
@@ -5998,7 +6020,7 @@ ${frente}
       el('ul', { class: 'rg-lista' },
         linhaRegra('#geral', 'papo do clã'),
         linhaRegra('#bonde', 'chamada pra jogar junto'),
-        linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
+        cfgCanal('recordes').desligado ? null : linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
         linhaRegra('#avisos', 'só ADM escreve'),
         linhaRegra('Massa de 100k+', 'aparece também no #geral'),
         linhaRegra('Editar', 'até 15 min depois de mandar')),

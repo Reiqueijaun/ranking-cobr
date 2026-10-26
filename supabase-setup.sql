@@ -869,12 +869,15 @@ create table if not exists public.chat_adms (
   created_at  timestamptz not null default now()
 );
 
--- canal travado (só ADM fala) e modo lento (segundos entre mensagens de cada membro)
+-- canal travado (só ADM fala), modo lento (segundos entre mensagens de cada membro) e #recordes desligado (só o Dono)
 create table if not exists public.chat_canais_cfg (
-  canal       text primary key check (canal in ('geral', 'bonde', 'avisos')),
+  canal       text primary key,
   travado     boolean not null default false,
   lento       integer not null default 0 check (lento between 0 and 3600)
 );
+alter table public.chat_canais_cfg add column if not exists desligado boolean not null default false;
+alter table public.chat_canais_cfg drop constraint if exists chat_canais_cfg_canal_check;
+alter table public.chat_canais_cfg add constraint chat_canais_cfg_canal_check check (canal in ('geral', 'bonde', 'recordes', 'avisos'));
 
 -- palavras que viram *** (lista editada pelos ADMs)
 create table if not exists public.chat_palavroes (
@@ -1266,6 +1269,19 @@ begin
 end;
 $$;
 
+-- só o Dono: desliga o #recordes (some do chat e as massas param de cair lá) ou liga de volta
+create or replace function public.dono_canal(p_canal text, p_ligado boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_canal is distinct from 'recordes' then raise exception 'canal invalido'; end if;
+  perform exigir_admin('dono_canal', jsonb_build_object('canal', p_canal, 'ligado', p_ligado));
+  insert into chat_canais_cfg (canal, desligado) values (p_canal, not coalesce(p_ligado, true))
+  on conflict (canal) do update set desligado = excluded.desligado;
+end;
+$$;
+
 create or replace function public.chat_salvar_palavroes(p_lista text[])
 returns integer
 language plpgsql security definer set search_path = public
@@ -1298,7 +1314,7 @@ begin
         'player_id', (select player_id from player_contas where user_id = x.user_id),
         'tipo', x.tipo, 'ate', x.ate, 'motivo', x.motivo, 'por', x.por, 'created_at', x.created_at) order by x.created_at desc)
       from chat_punicoes x where x.ate is null or x.ate > now()), '[]'::jsonb),
-    'canais', coalesce((select jsonb_object_agg(canal, jsonb_build_object('travado', travado, 'lento', lento)) from chat_canais_cfg), '{}'::jsonb),
+    'canais', coalesce((select jsonb_object_agg(canal, jsonb_build_object('travado', travado, 'lento', lento, 'desligado', desligado)) from chat_canais_cfg), '{}'::jsonb),
     'palavroes', coalesce((select jsonb_agg(palavra order by palavra) from chat_palavroes), '[]'::jsonb),
     'historico', coalesce((select jsonb_agg(h order by h.created_at desc) from (
       select l.acao, l.detalhe, l.created_at, coalesce(a.nome, chat_nome(l.user_id), l.email) as quem
@@ -1418,7 +1434,7 @@ begin
 end;
 $$;
 
--- massa registrada no ranking cai sozinha no #recordes (e no #geral quando passa de 100k)
+-- massa registrada no ranking cai sozinha no #recordes, se o Dono não desligou (e no #geral quando passa de 100k)
 create or replace function public.chat_massa_nova()
 returns trigger
 language plpgsql security definer set search_path = public
@@ -1430,7 +1446,9 @@ begin
     return old;
   end if;
   v_dados := jsonb_build_object('score_id', new.id, 'player', new.player, 'mass', new.mass);
-  insert into chat_mensagens (canal, nome, tipo, dados, created_at) values ('recordes', 'COBR', 'massa', v_dados, new.created_at);
+  if not exists (select 1 from chat_canais_cfg where canal = 'recordes' and desligado) then
+    insert into chat_mensagens (canal, nome, tipo, dados, created_at) values ('recordes', 'COBR', 'massa', v_dados, new.created_at);
+  end if;
   if new.mass >= 100000 then
     insert into chat_mensagens (canal, nome, tipo, dados, created_at) values ('geral', 'COBR', 'massa', v_dados, new.created_at);
   end if;
@@ -1640,7 +1658,7 @@ begin
     'chat_limpar(uuid, integer)', 'chat_fixar(bigint, boolean)', 'chat_punir(uuid, text, integer, text)', 'chat_perdoar(uuid)',
     'chat_ignorar_denuncia(bigint)', 'chat_config_canal(text, boolean, integer)', 'chat_salvar_palavroes(text[])', 'chat_moderacao()',
     'chat_faxina_fotos()', 'chat_faxina(text[], boolean)',
-    'dono_equipe()', 'dono_promover(uuid, boolean)', 'dono_expulsar(uuid)',
+    'dono_equipe()', 'dono_promover(uuid, boolean)', 'dono_expulsar(uuid)', 'dono_canal(text, boolean)',
     'push_chave()', 'push_inscrever(text, text, text)', 'push_sair(text)', 'push_eu(text)', 'push_salvar_prefs(boolean, boolean, boolean, boolean)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
