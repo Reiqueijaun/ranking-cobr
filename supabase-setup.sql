@@ -530,11 +530,9 @@ returns text
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if auth.uid() is null then
+  -- só admin liga a própria conta direto (botão "Sou eu"); jogador passa por pedido e aprovação
+  if not is_admin() then
     raise exception 'acesso negado' using errcode = '42501';
-  end if;
-  if not exists(select 1 from auth.users where id = auth.uid() and email_confirmed_at is not null) then
-    return 'sem_confirmar';
   end if;
   if not exists(select 1 from players where id = p_player) then return 'nao_existe'; end if;
   if exists(select 1 from player_contas where player_id = p_player and user_id <> auth.uid()) then
@@ -586,8 +584,8 @@ grant execute on function public.admin_logins() to authenticated;
 grant execute on function public.admin_tirar_login(uuid) to authenticated;
 
 
--- 5d) Pedidos de nick novo: quem cria conta com um nick que não está no elenco
---     fica esperando um admin aprovar (Jogadores > Pedidos pra entrar).
+-- 5d) Pedidos pra entrar: toda conta nova espera um admin aprovar (Jogadores > Pedidos pra entrar),
+--     com nick do elenco ou novo. O admin confere e escolhe de quem é o perfil.
 create table if not exists public.player_pedidos (
   user_id     uuid primary key references auth.users (id) on delete cascade,
   nick        text not null check (char_length(btrim(nick)) between 1 and 24),
@@ -617,7 +615,7 @@ as $$
   left join players p on lower(btrim(p.nick)) = lower(btrim(p_nick));
 $$;
 
--- A conta (com e-mail confirmado) pede o nick: do elenco liga na hora; nick novo vira pedido.
+-- A conta (com e-mail confirmado) pede o nick: vira pedido pra um admin aprovar (do elenco ou novo).
 -- Devolve: ok | pedido | tem_login | sem_confirmar | invalido
 create or replace function public.jogador_pedir_nick(p_nick text)
 returns text
@@ -635,14 +633,9 @@ begin
   end if;
   if char_length(n) not between 1 and 24 then return 'invalido'; end if;
   select id into pid from players where lower(btrim(nick)) = lower(n);
-  if pid is not null then
-    if exists(select 1 from player_contas where player_id = pid and user_id <> auth.uid()) then
-      return 'tem_login';
-    end if;
-    delete from player_contas where user_id = auth.uid() and player_id <> pid;
-    insert into player_contas (player_id, user_id) values (pid, auth.uid()) on conflict (player_id) do nothing;
-    delete from player_pedidos where user_id = auth.uid();
-    return 'ok';
+  -- nick do elenco também espera um admin conferir (senão qualquer um pega o perfil de outro)
+  if pid is not null and exists(select 1 from player_contas where player_id = pid and user_id <> auth.uid()) then
+    return 'tem_login';
   end if;
   insert into player_pedidos (user_id, nick) values (auth.uid(), n)
   on conflict (user_id) do update set nick = excluded.nick, created_at = now();
@@ -673,20 +666,26 @@ begin
 end;
 $$;
 
--- Aprovar: entra no elenco (ou volta, se já tinha esse nick) e a conta fica com ele.
+-- Aprovar: a conta fica com o perfil que o admin escolheu (p_player) ou, sem escolha,
+-- com o jogador desse nick (entra no elenco se for novo, volta se era ex-membro).
 -- Devolve: ok | tem_login | nao_existe
-create or replace function public.admin_aprovar_pedido(p_user uuid)
+drop function if exists public.admin_aprovar_pedido(uuid);
+create or replace function public.admin_aprovar_pedido(p_user uuid, p_player uuid default null)
 returns text
 language plpgsql security definer set search_path = public
 as $$
 declare
   r player_pedidos%rowtype;
-  pid uuid;
+  pid uuid := p_player;
 begin
   select * into r from player_pedidos where user_id = p_user;
-  perform exigir_admin('aprovar pedido', jsonb_build_object('user', p_user, 'nick', r.nick));
+  perform exigir_admin('aprovar pedido', jsonb_build_object('user', p_user, 'nick', r.nick, 'perfil', p_player,
+    'email', (select email from auth.users where id = p_user)));
   if r.user_id is null then return 'nao_existe'; end if;
-  select id into pid from players where lower(btrim(nick)) = lower(btrim(r.nick));
+  if pid is not null and not exists(select 1 from players where id = pid) then return 'nao_existe'; end if;
+  if pid is null then
+    select id into pid from players where lower(btrim(nick)) = lower(btrim(r.nick));
+  end if;
   if pid is not null and exists(select 1 from player_contas where player_id = pid and user_id <> p_user) then
     return 'tem_login';
   end if;
@@ -723,14 +722,14 @@ revoke all on function public.nick_status(text) from public;
 revoke all on function public.jogador_pedir_nick(text) from public, anon;
 revoke all on function public.meu_pedido() from public, anon;
 revoke all on function public.admin_pedidos() from public, anon;
-revoke all on function public.admin_aprovar_pedido(uuid) from public, anon;
+revoke all on function public.admin_aprovar_pedido(uuid, uuid) from public, anon;
 revoke all on function public.admin_recusar_pedido(uuid) from public, anon;
 grant execute on function public.is_membro() to authenticated;
 grant execute on function public.nick_status(text) to anon, authenticated;
 grant execute on function public.jogador_pedir_nick(text) to authenticated;
 grant execute on function public.meu_pedido() to authenticated;
 grant execute on function public.admin_pedidos() to authenticated;
-grant execute on function public.admin_aprovar_pedido(uuid) to authenticated;
+grant execute on function public.admin_aprovar_pedido(uuid, uuid) to authenticated;
 grant execute on function public.admin_recusar_pedido(uuid) to authenticated;
 
 

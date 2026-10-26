@@ -4103,7 +4103,7 @@ ${frente}
     criar: { titulo: 'CRIAR CONTA', botao: 'Criar conta', campos: ['nick', 'email', 'senha'] },
     esqueci: { titulo: 'ESQUECI A SENHA', botao: 'Mandar link', campos: ['email'], txt: 'Mandamos um link pro seu e-mail pra você criar uma senha nova.' },
     nova: { titulo: 'SENHA NOVA', botao: 'Salvar senha', campos: ['senha'] },
-    nick: { titulo: 'QUAL É O SEU NICK?', botao: 'Pronto', campos: ['nick'], txt: 'O seu nick no clã. Se for novo, um admin aprova antes de você entrar.' },
+    nick: { titulo: 'QUAL É O SEU NICK?', botao: 'Pronto', campos: ['nick'], txt: 'O seu nick no clã. Um admin confere e libera a sua entrada.' },
     enviado: { titulo: 'OLHA O SEU E-MAIL', botao: null, campos: [] },
   };
 
@@ -4119,13 +4119,10 @@ ${frente}
     euId = !rj.error && rj.data ? rj.data : null;
     meuPedido = !rp.error && rp.data ? rp.data : null;
     const meta = (s.user && s.user.user_metadata) || {};
-    if (!euId && !admin && !meuPedido && (meta.nick || meta.player_id)) {
-      // primeira vez depois de confirmar o e-mail
-      const rv = meta.nick
-        ? await sb.rpc('jogador_pedir_nick', { p_nick: meta.nick })
-        : await sb.rpc('jogador_vincular', { p_player: meta.player_id });
-      if (!rv.error && rv.data === 'ok') euId = (await sb.rpc('jogador_eu')).data || null;
-      else if (!rv.error && rv.data === 'pedido') meuPedido = meta.nick;
+    if (!euId && !admin && !meuPedido && meta.nick) {
+      // primeira vez depois de confirmar o e-mail: vira pedido pra um admin aprovar
+      const rv = await sb.rpc('jogador_pedir_nick', { p_nick: meta.nick });
+      if (!rv.error && rv.data === 'pedido') meuPedido = meta.nick;
     }
     contaSemJogador = !euId && !admin && !meuPedido;
   }
@@ -4248,18 +4245,15 @@ ${frente}
   }
 
   async function criarConta(nick, email, senha, falhar) {
-    let novo;
     if (DEMO) {
       const r = demoNick(nick);
       if (r && [...demoContas.values()].some((c) => c.player === r.id)) return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
       if (demoContas.has(email)) return falhar('Esse e-mail já tem conta. Toque em "Entrar".');
-      novo = !r;
-      demoContas.set(email, { senha, player: r ? r.id : null, pedido: r ? null : nick });
+      demoContas.set(email, { senha, player: null, pedido: nick });
     } else {
       const st = await sb.rpc('nick_status', { p_nick: nick });
       if (st.error) throw new Error(st.error.message);
       if (st.data === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
-      novo = st.data === 'novo';
       const { data, error } = await sb.auth.signUp({
         email, password: senha,
         options: { emailRedirectTo: location.origin + location.pathname, data: { nick } },
@@ -4276,7 +4270,7 @@ ${frente}
     trocarModoEntrar('enviado');
     $('txtEntrar').hidden = false;
     $('txtEntrar').replaceChildren('Mandamos um link pra ', el('b', { text: email }), '. Abra e toque nele pra confirmar (olhe no spam também).',
-      novo ? ` Como ${comTag(nick)} é nick novo no clã, depois de confirmar um admin aprova.` : '');
+      ' Depois um admin do clã confere e libera a sua entrada.');
   }
 
   async function esqueciSenha(email, falhar) {
@@ -4305,16 +4299,16 @@ ${frente}
   async function escolherNick(nick, falhar) {
     let res;
     if (DEMO) {
-      const r = demoNick(nick);
-      res = r ? 'ok' : 'pedido';
-      if (r) euId = r.id; else meuPedido = nick;
+      res = 'pedido';
+      meuPedido = nick;
+      const c = [...demoContas.values()].find((x) => !x.player && !x.pedido);
+      if (c) c.pedido = nick;
     } else {
       const rv = await sb.rpc('jogador_pedir_nick', { p_nick: nick });
       if (rv.error) throw new Error(rv.error.message);
       res = rv.data;
       if (res === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
-      if (res === 'ok') euId = (await sb.rpc('jogador_eu')).data || null;
-      else if (res === 'pedido') meuPedido = nick;
+      if (res === 'pedido') meuPedido = nick;
       else return falhar('Não deu certo. Tenta de novo.');
     }
     contaSemJogador = false;
@@ -4356,42 +4350,66 @@ ${frente}
     renderPedidos();
     if ($('dlgJogador').open && editJog) renderLoginJog(editJog);
   }
+  // cada pedido: quem é (e-mail), o nick que digitou e de quem é o perfil (o admin confere e escolhe)
   function renderPedidos() {
     const box = $('pedidos');
-    box.hidden = !admin || !pedidos.length;
+    box.hidden = !admin;
     if (box.hidden) return;
-    $('qtdPedidos').textContent = pedidos.length;
+    $('qtdPedidos').textContent = pedidos.length || '';
+    $('qtdPedidos').hidden = !pedidos.length;
+    if (!pedidos.length) { $('listaPedidos').replaceChildren(el('li', { class: 'pedido-vazio', text: 'Nenhum pedido esperando.' })); return; }
+    const qtdPartidas = (r) => partidas.filter((x) => chave(x.player) === chave(r.nick)).length;
+    // perfis que ainda não têm dono, quem está no clã primeiro
+    const livres = jogadores.filter((r) => !loginDe(r.id)).sort((a, b) => (b.ativo - a.ativo) || a.nick.localeCompare(b.nick, 'pt-BR'));
     $('listaPedidos').replaceChildren(...pedidos.map((p) => {
-      const ja = elenco.get(chave(p.nick));
+      const nick = limparNick(p.nick);
+      const igual = elenco.get(chave(nick));
+      const sel = el('select', { class: 'pedido-perfil', 'aria-label': `Perfil de ${p.email}` },
+        el('option', { value: '', text: `Jogador novo: ${nick}` }),
+        ...livres.map((r) => { const n = qtdPartidas(r); return el('option', { value: r.id, text: `${r.nick}${n ? ` · ${n} ${n === 1 ? 'partida' : 'partidas'}` : ''}${r.ativo ? '' : ' · ex-membro'}` }); }));
+      if (igual && !loginDe(igual.id)) sel.value = igual.id;
+      const aviso = el('small', { class: 'pedido-aviso' });
+      const avisar = () => {
+        const r = jogPorId.get(sel.value);
+        aviso.textContent = r ? `Vai ficar com o perfil de ${comTag(r.nick)}${qtdPartidas(r) ? ' e as partidas dele' : ''}. Confere se é ele mesmo.` : 'Entra no elenco como jogador novo.';
+      };
+      sel.addEventListener('change', avisar);
+      avisar();
       return el('li', { class: 'pedido' },
         el('div', { class: 'pedido-txt' },
-          el('b', { text: comTag(limparNick(p.nick)) }),
-          el('small', { text: `${p.email} · ${haQuanto(p.created_at)}${ja ? ' · já está no elenco' : ' · nick novo'}` })),
+          el('b', { text: p.email }),
+          el('small', { text: `Digitou ${comTag(nick)}${igual && loginDe(igual.id) ? ' (esse já tem dono)' : ''} · ${haQuanto(p.created_at)}` })),
+        el('label', { class: 'pedido-campo' }, el('span', { text: 'PERFIL' }), sel),
+        aviso,
         el('div', { class: 'pedido-btns' },
-          el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('RECUSAR PEDIDO?', `${comTag(limparNick(p.nick))} (${p.email}) não entra no site e a conta é apagada.`, 'Recusar', () => responderPedido(p, false)) }, 'Recusar'),
-          el('button', { type: 'button', class: 'btn btn-pri', onclick: (e) => { e.currentTarget.disabled = true; responderPedido(p, true); } }, 'Aprovar')));
+          el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('RECUSAR PEDIDO?', `${p.email} não entra no site e a conta é apagada.`, 'Recusar', () => responderPedido(p, false)) }, 'Recusar'),
+          el('button', { type: 'button', class: 'btn btn-pri', onclick: (e) => { e.currentTarget.disabled = true; responderPedido(p, true, sel.value || null); } }, 'Aprovar')));
     }));
   }
-  async function responderPedido(p, aprovar) {
+  async function responderPedido(p, aprovar, perfil = null) {
     try {
       if (DEMO) {
         const c = demoContas.get(p.user_id);
         if (aprovar) {
-          const id = 'dj' + (jogadores.length + 10);
-          jogadores.push({ id, nick: limparNick(p.nick), cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
-          indexarElenco();
+          let id = perfil;
+          if (!id) {
+            id = 'dj' + (jogadores.length + 10);
+            jogadores.push({ id, nick: limparNick(p.nick), cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
+            indexarElenco();
+          }
           c.player = id; c.pedido = null;
         } else demoContas.delete(p.user_id);
       } else {
         if (aprovar) {
-          const res = await rpcAdmin('admin_aprovar_pedido', { p_user: p.user_id });
-          if (res === 'tem_login') { toast(`${comTag(p.nick)} já tem conta de outra pessoa. Recuse ou tire o login dele antes.`, true); await carregarLogins(); return; }
+          const res = await rpcAdmin('admin_aprovar_pedido', { p_user: p.user_id, p_player: perfil });
+          if (res === 'tem_login') { toast('Esse perfil já tem conta de outra pessoa. Escolha outro ou tire o login dele antes.', true); await carregarLogins(); return; }
         } else await rpcAdmin('admin_recusar_pedido', { p_user: p.user_id });
         await carregar();
       }
       await carregarLogins();
       render();
-      toast(aprovar ? `${comTag(limparNick(p.nick))} aprovado. Já pode entrar.` : 'Pedido recusado.');
+      const dono = perfil && jogPorId.get(perfil);
+      toast(aprovar ? `${p.email} aprovado como ${comTag(dono ? dono.nick : limparNick(p.nick))}. Já pode entrar.` : 'Pedido recusado.');
     } catch (e) {
       console.error(e);
       if (!erroSessao(e)) { toast('Não deu agora. Tenta de novo.', true); renderPedidos(); }
