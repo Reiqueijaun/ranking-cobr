@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Site do clã COBR. Só a função api/push.js usa dependência.",
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}

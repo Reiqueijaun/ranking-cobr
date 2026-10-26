@@ -791,8 +791,9 @@ end;
 $$;
 
 -- 7) Chat do clã: só membro lê e escreve. Tudo passa pelas funções abaixo (ninguém grava direto).
---    Moderação é do ADM: apaga, fixa, silencia, tira do chat e resolve as denúncias dos membros.
---    Cada ação de moderação vai pro admin_log.
+--    Dono = quem está em "admins": manda no site todo e escolhe os ADMs do chat.
+--    ADM do chat = só modera o chat (apaga, fixa, silencia, tira do chat, trava canal, filtro de palavrão).
+--    Não registra massa, não aprova entrada e não pune outro ADM. Cada ação vai pro admin_log.
 create table if not exists public.chat_mensagens (
   id          bigint generated always as identity primary key,
   canal       text not null check (canal in ('geral', 'bonde', 'recordes', 'avisos')),
@@ -800,14 +801,19 @@ create table if not exists public.chat_mensagens (
   player_id   uuid references public.players (id) on delete set null,
   nome        text not null default '' check (char_length(nome) <= 40),
   adm         boolean not null default false,
-  tipo        text not null default 'msg' check (tipo in ('msg', 'bonde', 'massa')),
+  tipo        text not null default 'msg' check (tipo in ('msg', 'bonde', 'massa', 'foto')),
   txt         text not null default '' check (char_length(txt) <= 500),
   dados       jsonb not null default '{}'::jsonb,
   resp        bigint references public.chat_mensagens (id) on delete set null,
   fixada      boolean not null default false,
   apagada     boolean not null default false,
+  editada     boolean not null default false,
   created_at  timestamptz not null default now()
 );
+-- (pra quem criou a tabela antes das fotos e da edição)
+alter table public.chat_mensagens add column if not exists editada boolean not null default false;
+alter table public.chat_mensagens drop constraint if exists chat_mensagens_tipo_check;
+alter table public.chat_mensagens add constraint chat_mensagens_tipo_check check (tipo in ('msg', 'bonde', 'massa', 'foto'));
 create index if not exists chat_mensagens_canal_id on public.chat_mensagens (canal, id desc);
 create index if not exists chat_mensagens_user on public.chat_mensagens (user_id, created_at desc);
 
@@ -837,7 +843,7 @@ create table if not exists public.chat_status (
   jogando_ate timestamptz
 );
 
--- silenciado (lê mas não fala) ou banido do chat (nem lê). ate null = até o ADM tirar
+-- silenciado (lê mas não fala) ou banido do chat (nem lê). ate null = até um ADM tirar
 create table if not exists public.chat_punicoes (
   user_id     uuid primary key references auth.users (id) on delete cascade,
   tipo        text not null check (tipo in ('silencio', 'ban')),
@@ -856,14 +862,69 @@ create table if not exists public.chat_denuncias (
   unique (msg_id, user_id)
 );
 
+-- ADMs do chat (o Dono promove e tira pelo site)
+create table if not exists public.chat_adms (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  por         text not null default '',
+  created_at  timestamptz not null default now()
+);
+
+-- canal travado (só ADM fala) e modo lento (segundos entre mensagens de cada membro)
+create table if not exists public.chat_canais_cfg (
+  canal       text primary key check (canal in ('geral', 'bonde', 'avisos')),
+  travado     boolean not null default false,
+  lento       integer not null default 0 check (lento between 0 and 3600)
+);
+
+-- palavras que viram *** (lista editada pelos ADMs)
+create table if not exists public.chat_palavroes (
+  palavra     text primary key check (char_length(palavra) between 2 and 40)
+);
+
 alter table public.chat_mensagens enable row level security;
 alter table public.chat_reacoes enable row level security;
 alter table public.chat_bonde enable row level security;
 alter table public.chat_status enable row level security;
 alter table public.chat_punicoes enable row level security;
 alter table public.chat_denuncias enable row level security;
-revoke all on public.chat_mensagens, public.chat_reacoes, public.chat_bonde, public.chat_status, public.chat_punicoes, public.chat_denuncias from anon, authenticated;
-grant select on public.chat_mensagens, public.chat_reacoes, public.chat_bonde, public.chat_status, public.chat_punicoes, public.chat_denuncias to authenticated;
+alter table public.chat_adms enable row level security;
+alter table public.chat_canais_cfg enable row level security;
+alter table public.chat_palavroes enable row level security;
+revoke all on public.chat_mensagens, public.chat_reacoes, public.chat_bonde, public.chat_status, public.chat_punicoes,
+  public.chat_denuncias, public.chat_adms, public.chat_canais_cfg, public.chat_palavroes from anon, authenticated;
+grant select on public.chat_mensagens, public.chat_reacoes, public.chat_bonde, public.chat_status, public.chat_punicoes,
+  public.chat_denuncias, public.chat_adms, public.chat_canais_cfg, public.chat_palavroes to authenticated;
+
+-- ADM do chat (ou Dono)
+create or replace function public.is_chat_adm()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from admins where user_id = auth.uid())
+      or exists(select 1 from chat_adms where user_id = auth.uid());
+$$;
+
+-- conta que ninguém pune nem mexe nas mensagens (a não ser o Dono): Dono e ADMs
+create or replace function public.chat_protegido(p_user uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from admins where user_id = p_user) or exists(select 1 from chat_adms where user_id = p_user);
+$$;
+
+-- confere se é ADM do chat e anota no histórico
+create or replace function public.exigir_mod(p_acao text, p_detalhe jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_chat_adm() then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  insert into admin_log (user_id, email, acao, detalhe)
+  values (auth.uid(), auth.jwt() ->> 'email', p_acao, p_detalhe);
+end;
+$$;
 
 -- lê o chat: membro que não foi tirado do chat
 create or replace function public.chat_pode_ler()
@@ -881,9 +942,33 @@ language plpgsql stable security definer set search_path = public
 as $$
 begin
   if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
-  if not is_admin() and exists (select 1 from chat_punicoes where user_id = auth.uid() and (ate is null or ate > now())) then
+  if not is_chat_adm() and exists (select 1 from chat_punicoes where user_id = auth.uid() and (ate is null or ate > now())) then
     raise exception 'silenciado' using errcode = 'P0001';
   end if;
+end;
+$$;
+
+-- nome que aparece no chat: o nick do jogador, ou o nome de admin
+create or replace function public.chat_nome(p_user uuid)
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select left(coalesce((select p.nick from player_contas c join players p on p.id = c.player_id where c.user_id = p_user),
+                       (select nullif(btrim(nome), '') from admins where user_id = p_user), 'Membro'), 40);
+$$;
+
+-- troca os palavrões da lista por ***
+create or replace function public.chat_filtrar(p_txt text)
+returns text
+language plpgsql stable security definer set search_path = public
+as $$
+declare w text; t text := p_txt;
+begin
+  for w in select palavra from chat_palavroes loop
+    t := regexp_replace(t, '(^|[^[:alnum:]_])(' || regexp_replace(w, '([.^$*+?()\[\]{}|\\-])', '\\\1', 'g') || ')(?![[:alnum:]_])',
+                        '\1' || repeat('*', char_length(w)), 'gi');
+  end loop;
+  return t;
 end;
 $$;
 
@@ -895,14 +980,20 @@ drop policy if exists "membros leem bonde" on public.chat_bonde;
 create policy "membros leem bonde" on public.chat_bonde for select to authenticated using ((select public.chat_pode_ler()));
 drop policy if exists "membros leem status" on public.chat_status;
 create policy "membros leem status" on public.chat_status for select to authenticated using ((select public.chat_pode_ler()));
--- a punição: a própria pessoa vê a dela; o ADM vê todas
+drop policy if exists "membros leem adms" on public.chat_adms;
+create policy "membros leem adms" on public.chat_adms for select to authenticated using ((select public.chat_pode_ler()));
+drop policy if exists "membros leem canais" on public.chat_canais_cfg;
+create policy "membros leem canais" on public.chat_canais_cfg for select to authenticated using ((select public.chat_pode_ler()));
+-- a punição: a própria pessoa vê a dela; os ADMs veem todas
 drop policy if exists "punicao propria ou adm" on public.chat_punicoes;
-create policy "punicao propria ou adm" on public.chat_punicoes for select to authenticated using (user_id = (select auth.uid()) or (select public.is_admin()));
--- denúncias: só o ADM
+create policy "punicao propria ou adm" on public.chat_punicoes for select to authenticated using (user_id = (select auth.uid()) or (select public.is_chat_adm()));
+-- denúncias e lista de palavrões: só ADM
 drop policy if exists "adm le denuncias" on public.chat_denuncias;
-create policy "adm le denuncias" on public.chat_denuncias for select to authenticated using ((select public.is_admin()));
+create policy "adm le denuncias" on public.chat_denuncias for select to authenticated using ((select public.is_chat_adm()));
+drop policy if exists "adm le palavroes" on public.chat_palavroes;
+create policy "adm le palavroes" on public.chat_palavroes for select to authenticated using ((select public.is_chat_adm()));
 
--- quem é a conta logada no chat: { player_id, nome, adm, punicao }
+-- quem é a conta logada no chat
 create or replace function public.chat_eu()
 returns jsonb
 language sql stable security definer set search_path = public
@@ -910,13 +1001,25 @@ as $$
   select jsonb_build_object(
     'user_id', auth.uid(),
     'player_id', (select player_id from player_contas where user_id = auth.uid()),
-    'nome', coalesce((select p.nick from player_contas c join players p on p.id = c.player_id where c.user_id = auth.uid()),
-                     (select nullif(btrim(nome), '') from admins where user_id = auth.uid()), 'Membro'),
-    'adm', is_admin(),
+    'nome', chat_nome(auth.uid()),
+    'adm', is_chat_adm(),
+    'dono', is_admin(),
     'punicao', (select to_jsonb(x) - 'user_id' from chat_punicoes x where x.user_id = auth.uid() and (x.ate is null or x.ate > now())));
 $$;
 
--- manda mensagem (ou abre um bonde). Devolve o id.
+-- Dono e ADMs (pras etiquetas no chat)
+create or replace function public.chat_equipe()
+returns jsonb
+language sql stable security definer set search_path = public
+as $$
+  select case when not chat_pode_ler() then '[]'::jsonb else coalesce((
+    select jsonb_agg(jsonb_build_object('user_id', user_id, 'papel', papel)) from (
+      select user_id, 'dono' as papel from admins
+      union all
+      select user_id, 'adm' from chat_adms where user_id not in (select user_id from admins)) e), '[]'::jsonb) end;
+$$;
+
+-- manda mensagem, foto ou abre um bonde. Devolve o id.
 create or replace function public.chat_enviar(p_canal text, p_txt text, p_resp bigint default null, p_tipo text default 'msg', p_dados jsonb default '{}'::jsonb)
 returns bigint
 language plpgsql security definer set search_path = public
@@ -924,35 +1027,69 @@ as $$
 declare
   v_txt text := btrim(coalesce(p_txt, ''));
   v_player uuid := (select player_id from player_contas where user_id = auth.uid());
-  v_nome text;
+  v_nome text := chat_nome(auth.uid());
+  v_mod boolean := is_chat_adm();
+  v_cfg chat_canais_cfg;
   v_dados jsonb := '{}'::jsonb;
   novo bigint;
 begin
   perform chat_exigir_voz();
   if p_canal not in ('geral', 'bonde', 'avisos') then raise exception 'canal invalido'; end if;
-  if p_canal = 'avisos' and not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
-  if p_tipo not in ('msg', 'bonde') then raise exception 'tipo invalido'; end if;
+  if p_canal = 'avisos' and not v_mod then raise exception 'acesso negado' using errcode = '42501'; end if;
+  select * into v_cfg from chat_canais_cfg where canal = p_canal;
+  if coalesce(v_cfg.travado, false) and not v_mod then raise exception 'travado' using errcode = 'P0001'; end if;
+  if p_tipo not in ('msg', 'bonde', 'foto') then raise exception 'tipo invalido'; end if;
   if p_tipo = 'msg' and (char_length(v_txt) < 1 or char_length(v_txt) > 500) then raise exception 'texto invalido'; end if;
   if p_tipo = 'bonde' then
     v_dados := jsonb_build_object('srv', left(btrim(coalesce(p_dados ->> 'srv', 'Servidor BR')), 40),
                                   'max', greatest(2, least(10, coalesce((p_dados ->> 'max')::int, 6))));
     v_txt := left(v_txt, 120);
   end if;
-  -- anti-flood: no máximo 5 mensagens em 10 segundos (ADM não tem limite)
-  if not is_admin() and (select count(*) from chat_mensagens where user_id = auth.uid() and created_at > now() - interval '10 seconds') >= 5 then
-    raise exception 'devagar' using errcode = 'P0001';
+  if p_tipo = 'foto' then
+    -- a foto já foi enviada pra pasta da própria conta no armazenamento "chat"
+    if coalesce(p_dados ->> 'path', '') !~ ('^' || auth.uid()::text || '/[A-Za-z0-9._-]+$') then raise exception 'foto invalida'; end if;
+    v_dados := jsonb_build_object('path', p_dados ->> 'path', 'w', least(4000, greatest(1, coalesce((p_dados ->> 'w')::int, 1))),
+                                  'h', least(4000, greatest(1, coalesce((p_dados ->> 'h')::int, 1))));
+    v_txt := left(v_txt, 500);
+  end if;
+  if not v_mod then
+    -- anti-flood: no máximo 5 mensagens em 10 segundos; e o modo lento do canal
+    if (select count(*) from chat_mensagens where user_id = auth.uid() and created_at > now() - interval '10 seconds') >= 5 then
+      raise exception 'devagar' using errcode = 'P0001';
+    end if;
+    if coalesce(v_cfg.lento, 0) > 0 and exists (select 1 from chat_mensagens where user_id = auth.uid() and canal = p_canal
+        and created_at > now() - make_interval(secs => v_cfg.lento)) then
+      raise exception 'lento' using errcode = 'P0001';
+    end if;
   end if;
   if p_resp is not null and not exists (select 1 from chat_mensagens where id = p_resp) then p_resp := null; end if;
-  v_nome := coalesce((select nick from players where id = v_player), (select nullif(btrim(nome), '') from admins where user_id = auth.uid()), 'Membro');
   insert into chat_mensagens (canal, user_id, player_id, nome, adm, tipo, txt, dados, resp)
-  values (p_canal, auth.uid(), v_player, left(v_nome, 40), is_admin(), p_tipo, v_txt, v_dados, p_resp)
+  values (p_canal, auth.uid(), v_player, v_nome, v_mod, p_tipo, chat_filtrar(v_txt), v_dados, p_resp)
   returning id into novo;
   if p_tipo = 'bonde' then
-    insert into chat_bonde (msg_id, user_id, player_id, nome) values (novo, auth.uid(), v_player, left(v_nome, 40));
-    insert into chat_status (user_id, player_id, nome, jogando_ate) values (auth.uid(), v_player, left(v_nome, 40), now() + interval '90 minutes')
+    insert into chat_bonde (msg_id, user_id, player_id, nome) values (novo, auth.uid(), v_player, v_nome);
+    insert into chat_status (user_id, player_id, nome, jogando_ate) values (auth.uid(), v_player, v_nome, now() + interval '90 minutes')
     on conflict (user_id) do update set jogando_ate = excluded.jogando_ate, player_id = excluded.player_id, nome = excluded.nome;
   end if;
   return novo;
+end;
+$$;
+
+-- editar a própria mensagem (até 15 minutos depois)
+create or replace function public.chat_editar(p_msg bigint, p_txt text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare v_txt text := btrim(coalesce(p_txt, '')); m chat_mensagens;
+begin
+  perform chat_exigir_voz();
+  select * into m from chat_mensagens where id = p_msg;
+  if m.id is null or m.user_id is distinct from auth.uid() or m.apagada or m.tipo not in ('msg', 'foto') then raise exception 'acesso negado' using errcode = '42501'; end if;
+  if m.created_at < now() - interval '15 minutes' then raise exception 'tarde' using errcode = 'P0001'; end if;
+  if char_length(v_txt) > 500 or (m.tipo = 'msg' and char_length(v_txt) < 1) then raise exception 'texto invalido'; end if;
+  v_txt := chat_filtrar(v_txt);
+  update chat_mensagens set txt = v_txt, editada = true where id = p_msg;
+  return v_txt;
 end;
 $$;
 
@@ -979,7 +1116,7 @@ as $$
 declare
   m chat_mensagens;
   v_player uuid := (select player_id from player_contas where user_id = auth.uid());
-  v_nome text;
+  v_nome text := chat_nome(auth.uid());
 begin
   perform chat_exigir_voz();
   select * into m from chat_mensagens where id = p_msg and tipo = 'bonde' and not apagada;
@@ -991,9 +1128,8 @@ begin
   end if;
   if exists (select 1 from chat_bonde where msg_id = p_msg and user_id = auth.uid()) then return 'ok'; end if;
   if (select count(*) from chat_bonde where msg_id = p_msg) >= coalesce((m.dados ->> 'max')::int, 6) then return 'lotado'; end if;
-  v_nome := coalesce((select nick from players where id = v_player), (select nullif(btrim(nome), '') from admins where user_id = auth.uid()), 'Membro');
-  insert into chat_bonde (msg_id, user_id, player_id, nome) values (p_msg, auth.uid(), v_player, left(v_nome, 40));
-  insert into chat_status (user_id, player_id, nome, jogando_ate) values (auth.uid(), v_player, left(v_nome, 40), now() + interval '90 minutes')
+  insert into chat_bonde (msg_id, user_id, player_id, nome) values (p_msg, auth.uid(), v_player, v_nome);
+  insert into chat_status (user_id, player_id, nome, jogando_ate) values (auth.uid(), v_player, v_nome, now() + interval '90 minutes')
   on conflict (user_id) do update set jogando_ate = excluded.jogando_ate, player_id = excluded.player_id, nome = excluded.nome;
   return 'ok';
 end;
@@ -1004,19 +1140,17 @@ create or replace function public.chat_jogando(p_ligar boolean)
 returns timestamptz
 language plpgsql security definer set search_path = public
 as $$
-declare
-  v_player uuid := (select player_id from player_contas where user_id = auth.uid());
-  v_nome text := coalesce((select nick from players where id = v_player), (select nullif(btrim(nome), '') from admins where user_id = auth.uid()), 'Membro');
-  v_ate timestamptz := case when p_ligar then now() + interval '90 minutes' end;
+declare v_ate timestamptz := case when p_ligar then now() + interval '90 minutes' end;
 begin
   if not chat_pode_ler() then raise exception 'acesso negado' using errcode = '42501'; end if;
-  insert into chat_status (user_id, player_id, nome, jogando_ate) values (auth.uid(), v_player, left(v_nome, 40), v_ate)
+  insert into chat_status (user_id, player_id, nome, jogando_ate)
+  values (auth.uid(), (select player_id from player_contas where user_id = auth.uid()), chat_nome(auth.uid()), v_ate)
   on conflict (user_id) do update set jogando_ate = excluded.jogando_ate, player_id = excluded.player_id, nome = excluded.nome;
   return v_ate;
 end;
 $$;
 
--- membro denuncia uma mensagem pro ADM olhar
+-- membro denuncia uma mensagem pros ADMs olharem
 create or replace function public.chat_denunciar(p_msg bigint, p_motivo text default '')
 returns void
 language plpgsql security definer set search_path = public
@@ -1028,21 +1162,44 @@ begin
 end;
 $$;
 
--- apagar: o ADM apaga qualquer uma; o membro, só a dele
-create or replace function public.chat_apagar(p_msg bigint)
-returns void
+-- apagar: o membro apaga a dele; ADM apaga a de membro; mensagem de ADM ou do Dono, só o Dono.
+-- Devolve o caminho da foto (pro site apagar o arquivo também) ou null.
+drop function if exists public.chat_apagar(bigint);
+create function public.chat_apagar(p_msg bigint)
+returns text
 language plpgsql security definer set search_path = public
 as $$
 declare m chat_mensagens;
 begin
   select * into m from chat_mensagens where id = p_msg;
-  if m.id is null then return; end if;
+  if m.id is null then return null; end if;
   if m.user_id is distinct from auth.uid() or not is_membro() then
-    perform exigir_admin('chat_apagar', jsonb_build_object('msg', m.id, 'canal', m.canal, 'autor', m.nome, 'texto', m.txt));
+    if m.tipo = 'massa' then raise exception 'acesso negado' using errcode = '42501'; end if;
+    if chat_protegido(m.user_id) and not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+    perform exigir_mod('chat_apagar', jsonb_build_object('msg', m.id, 'canal', m.canal, 'autor', m.nome, 'texto', m.txt));
   end if;
   update chat_mensagens set apagada = true, fixada = false, txt = '' where id = p_msg;
   delete from chat_reacoes where msg_id = p_msg;
   delete from chat_denuncias where msg_id = p_msg;
+  return case when m.tipo = 'foto' then m.dados ->> 'path' end;
+end;
+$$;
+
+-- apaga as mensagens de alguém (p_horas null = todas). Devolve { qtd, fotos }
+create or replace function public.chat_limpar(p_user uuid, p_horas integer default 24)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare v_fotos jsonb; v_qtd integer;
+begin
+  if chat_protegido(p_user) and not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  perform exigir_mod('chat_limpar', jsonb_build_object('quem', chat_nome(p_user), 'horas', p_horas));
+  select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo = 'foto'), '[]'::jsonb), count(*) into v_fotos, v_qtd
+  from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas));
+  delete from chat_reacoes where msg_id in (select id from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas)));
+  update chat_mensagens set apagada = true, fixada = false, txt = ''
+  where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas));
+  return jsonb_build_object('qtd', v_qtd, 'fotos', v_fotos);
 end;
 $$;
 
@@ -1052,25 +1209,25 @@ language plpgsql security definer set search_path = public
 as $$
 declare v_canal text := (select canal from chat_mensagens where id = p_msg);
 begin
-  perform exigir_admin(case when p_fixar then 'chat_fixar' else 'chat_desafixar' end, jsonb_build_object('msg', p_msg, 'canal', v_canal));
+  perform exigir_mod(case when p_fixar then 'chat_fixar' else 'chat_desafixar' end, jsonb_build_object('msg', p_msg, 'canal', v_canal));
   if p_fixar then update chat_mensagens set fixada = false where canal = v_canal and fixada; end if;
   update chat_mensagens set fixada = p_fixar where id = p_msg and not apagada;
 end;
 $$;
 
--- silenciar (p_tipo 'silencio') ou tirar do chat ('ban'). p_minutos null = até o ADM tirar
+-- silenciar (p_tipo 'silencio') ou tirar do chat ('ban'). p_minutos null = até um ADM tirar.
+-- Dono e ADMs não podem ser punidos. Devolve: ok | adm
 create or replace function public.chat_punir(p_user uuid, p_tipo text, p_minutos integer default null, p_motivo text default '')
 returns text
 language plpgsql security definer set search_path = public
 as $$
-declare v_nome text := coalesce((select p.nick from player_contas c join players p on p.id = c.player_id where c.user_id = p_user), 'conta sem nick');
 begin
-  perform exigir_admin('chat_punir', jsonb_build_object('quem', v_nome, 'tipo', p_tipo, 'minutos', p_minutos, 'motivo', p_motivo));
   if p_tipo not in ('silencio', 'ban') then raise exception 'tipo invalido'; end if;
-  if exists (select 1 from admins where user_id = p_user) then return 'adm'; end if;
+  if chat_protegido(p_user) then return 'adm'; end if;
+  perform exigir_mod('chat_punir', jsonb_build_object('quem', chat_nome(p_user), 'tipo', p_tipo, 'minutos', p_minutos, 'motivo', p_motivo));
   insert into chat_punicoes (user_id, tipo, ate, motivo, por)
   values (p_user, p_tipo, case when p_minutos is not null then now() + make_interval(mins => p_minutos) end,
-          left(btrim(coalesce(p_motivo, '')), 120), coalesce(admin_eu(), ''))
+          left(btrim(coalesce(p_motivo, '')), 120), chat_nome(auth.uid()))
   on conflict (user_id) do update set tipo = excluded.tipo, ate = excluded.ate, motivo = excluded.motivo, por = excluded.por, created_at = now();
   return 'ok';
 end;
@@ -1081,7 +1238,7 @@ returns void
 language plpgsql security definer set search_path = public
 as $$
 begin
-  perform exigir_admin('chat_perdoar', jsonb_build_object('quem', coalesce((select p.nick from player_contas c join players p on p.id = c.player_id where c.user_id = p_user), 'conta sem nick')));
+  perform exigir_mod('chat_perdoar', jsonb_build_object('quem', chat_nome(p_user)));
   delete from chat_punicoes where user_id = p_user;
 end;
 $$;
@@ -1092,34 +1249,116 @@ returns void
 language plpgsql security definer set search_path = public
 as $$
 begin
-  perform exigir_admin('chat_ignorar_denuncia', jsonb_build_object('msg', p_msg));
+  perform exigir_mod('chat_ignorar_denuncia', jsonb_build_object('msg', p_msg));
   delete from chat_denuncias where msg_id = p_msg;
 end;
 $$;
 
--- painel de moderação do ADM: denúncias abertas, quem está punido e o histórico
+-- travar canal (só ADM fala) e modo lento (segundos; 0 = desligado)
+create or replace function public.chat_config_canal(p_canal text, p_travado boolean, p_lento integer)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_mod('chat_canal', jsonb_build_object('canal', p_canal, 'travado', p_travado, 'lento', p_lento));
+  insert into chat_canais_cfg (canal, travado, lento) values (p_canal, coalesce(p_travado, false), greatest(0, least(3600, coalesce(p_lento, 0))))
+  on conflict (canal) do update set travado = excluded.travado, lento = excluded.lento;
+end;
+$$;
+
+create or replace function public.chat_salvar_palavroes(p_lista text[])
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_mod('chat_palavroes', jsonb_build_object('qtd', coalesce(array_length(p_lista, 1), 0)));
+  delete from chat_palavroes where true;
+  insert into chat_palavroes (palavra)
+  select distinct lower(btrim(x)) from unnest(coalesce(p_lista, '{}')) x where char_length(btrim(x)) between 2 and 40
+  on conflict do nothing;
+  return (select count(*) from chat_palavroes);
+end;
+$$;
+
+-- painel de moderação: denúncias abertas, quem está punido, canais, palavrões e o histórico do chat
 create or replace function public.chat_moderacao()
 returns jsonb
 language plpgsql stable security definer set search_path = public
 as $$
 begin
-  if not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  if not is_chat_adm() then raise exception 'acesso negado' using errcode = '42501'; end if;
   return jsonb_build_object(
     'denuncias', coalesce((select jsonb_agg(d order by d.ultima desc) from (
       select m.id as msg_id, m.canal, m.user_id, m.nome, m.txt, m.tipo, m.created_at,
              count(*) as qtd, max(x.created_at) as ultima,
-             jsonb_agg(jsonb_build_object('quem', coalesce(p.nick, 'membro'), 'motivo', x.motivo)) as quem
+             jsonb_agg(jsonb_build_object('quem', chat_nome(x.user_id), 'motivo', x.motivo)) as quem
       from chat_denuncias x join chat_mensagens m on m.id = x.msg_id
-      left join player_contas c on c.user_id = x.user_id left join players p on p.id = c.player_id
       group by m.id) d), '[]'::jsonb),
-    'punidos', coalesce((select jsonb_agg(jsonb_build_object('user_id', x.user_id, 'nome', coalesce(p.nick, 'conta sem nick'), 'player_id', c.player_id,
+    'punidos', coalesce((select jsonb_agg(jsonb_build_object('user_id', x.user_id, 'nome', chat_nome(x.user_id),
+        'player_id', (select player_id from player_contas where user_id = x.user_id),
         'tipo', x.tipo, 'ate', x.ate, 'motivo', x.motivo, 'por', x.por, 'created_at', x.created_at) order by x.created_at desc)
-      from chat_punicoes x left join player_contas c on c.user_id = x.user_id left join players p on p.id = c.player_id
-      where x.ate is null or x.ate > now()), '[]'::jsonb),
+      from chat_punicoes x where x.ate is null or x.ate > now()), '[]'::jsonb),
+    'canais', coalesce((select jsonb_object_agg(canal, jsonb_build_object('travado', travado, 'lento', lento)) from chat_canais_cfg), '{}'::jsonb),
+    'palavroes', coalesce((select jsonb_agg(palavra order by palavra) from chat_palavroes), '[]'::jsonb),
     'historico', coalesce((select jsonb_agg(h order by h.created_at desc) from (
-      select l.acao, l.detalhe, l.created_at, coalesce(a.nome, l.email) as quem
+      select l.acao, l.detalhe, l.created_at, coalesce(a.nome, chat_nome(l.user_id), l.email) as quem
       from admin_log l left join admins a on a.user_id = l.user_id
-      where l.acao like 'chat_%' order by l.created_at desc limit 40) h), '[]'::jsonb));
+      where l.acao like 'chat_%' or l.acao like 'dono_%' order by l.created_at desc limit 50) h), '[]'::jsonb));
+end;
+$$;
+
+-- ---------- Dono: equipe do chat e expulsão ----------
+-- todas as contas de membro, com o papel de cada um
+create or replace function public.dono_equipe()
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  return coalesce((select jsonb_agg(e order by e.ordem, lower(e.nome)) from (
+    select c.user_id, c.player_id, p.nick as nome,
+           case when exists (select 1 from admins a where a.user_id = c.user_id) then 'dono'
+                when exists (select 1 from chat_adms d where d.user_id = c.user_id) then 'adm' else 'membro' end as papel,
+           case when exists (select 1 from admins a where a.user_id = c.user_id) then 0
+                when exists (select 1 from chat_adms d where d.user_id = c.user_id) then 1 else 2 end as ordem
+    from player_contas c join players p on p.id = c.player_id
+    union all
+    select a.user_id, null, coalesce(nullif(btrim(a.nome), ''), 'Dono'), 'dono', 0
+    from admins a where not exists (select 1 from player_contas c where c.user_id = a.user_id)) e), '[]'::jsonb);
+end;
+$$;
+
+-- promover a ADM do chat (p_adm true) ou tirar
+create or replace function public.dono_promover(p_user uuid, p_adm boolean)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin(case when p_adm then 'dono_promover' else 'dono_rebaixar' end, jsonb_build_object('quem', chat_nome(p_user)));
+  if exists (select 1 from admins where user_id = p_user) then return 'dono'; end if;
+  if not exists (select 1 from player_contas where user_id = p_user) then return 'nao_existe'; end if;
+  if p_adm then
+    insert into chat_adms (user_id, por) values (p_user, chat_nome(auth.uid())) on conflict (user_id) do nothing;
+    delete from chat_punicoes where user_id = p_user;
+  else
+    delete from chat_adms where user_id = p_user;
+  end if;
+  return 'ok';
+end;
+$$;
+
+-- expulsar do clã: a conta é apagada e o jogador vira ex-membro (as partidas ficam no ranking)
+create or replace function public.dono_expulsar(p_user uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare v_player uuid := (select player_id from player_contas where user_id = p_user);
+begin
+  perform exigir_admin('dono_expulsar', jsonb_build_object('quem', chat_nome(p_user)));
+  if exists (select 1 from admins where user_id = p_user) then return 'dono'; end if;
+  if v_player is not null then update players set ativo = false where id = v_player; end if;
+  delete from auth.users where id = p_user;
+  return 'ok';
 end;
 $$;
 
@@ -1149,40 +1388,215 @@ drop trigger if exists chat_massa_nova on public.scores;
 create trigger chat_massa_nova after insert or delete on public.scores
   for each row execute function public.chat_massa_nova();
 
+-- fotos do chat: pasta fechada (só membro vê), cada um envia na própria pasta, até 2 MB
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('chat', 'chat', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists "membros veem fotos do chat" on storage.objects;
+drop policy if exists "membros enviam fotos do chat" on storage.objects;
+drop policy if exists "dono ou adm apaga foto do chat" on storage.objects;
+create policy "membros veem fotos do chat" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'chat' and public.chat_pode_ler());
+create policy "membros enviam fotos do chat" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'chat' and (storage.foldername(name))[1] = auth.uid()::text and public.chat_pode_ler()
+              and not exists (select 1 from public.chat_punicoes where user_id = auth.uid() and (ate is null or ate > now())));
+create policy "dono ou adm apaga foto do chat" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'chat' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_chat_adm()));
+
+-- ---------- notificações no celular ----------
+-- O banco monta quem recebe e chama /api/push do site (Vercel), que entrega as notificações.
+-- As chaves e o segredo ficam só na tabela push_config (ninguém de fora lê);
+-- são preenchidas uma vez à mão, fora deste arquivo.
+create extension if not exists pg_net with schema extensions;
+create table if not exists public.push_config (
+  id            integer primary key default 1 check (id = 1),
+  url           text,
+  segredo       text,
+  sujeito       text,
+  vapid_publica text,
+  vapid_privada text,
+  sb_url        text,
+  sb_chave      text
+);
+create table if not exists public.push_inscricoes (
+  endpoint    text primary key,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  p256dh      text not null,
+  auth        text not null,
+  created_at  timestamptz not null default now()
+);
+create table if not exists public.push_prefs (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  mencao      boolean not null default true,
+  resposta    boolean not null default true,
+  aviso       boolean not null default true,
+  bonde       boolean not null default true
+);
+alter table public.push_config enable row level security;
+alter table public.push_inscricoes enable row level security;
+alter table public.push_prefs enable row level security;
+revoke all on public.push_config, public.push_inscricoes, public.push_prefs from anon, authenticated;
+
+create or replace function public.push_chave()
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select case when is_membro() then (select vapid_publica from push_config where id = 1) end;
+$$;
+
+-- este aparelho recebe (ou não) as notificações da conta logada
+create or replace function public.push_inscrever(p_endpoint text, p_p256dh text, p_auth text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  insert into push_inscricoes (endpoint, user_id, p256dh, auth) values (p_endpoint, auth.uid(), p_p256dh, p_auth)
+  on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth;
+end;
+$$;
+create or replace function public.push_sair(p_endpoint text)
+returns void
+language sql security definer set search_path = public
+as $$
+  delete from push_inscricoes where endpoint = p_endpoint and user_id = auth.uid();
+$$;
+
+-- o que a conta quer receber, e se este aparelho está inscrito
+create or replace function public.push_eu(p_endpoint text default null)
+returns jsonb
+language sql stable security definer set search_path = public
+as $$
+  select jsonb_build_object(
+    'prefs', coalesce((select to_jsonb(p) - 'user_id' from push_prefs p where p.user_id = auth.uid()),
+                      '{"mencao": true, "resposta": true, "aviso": true, "bonde": true}'::jsonb),
+    'inscrito', exists (select 1 from push_inscricoes where endpoint = p_endpoint and user_id = auth.uid()));
+$$;
+create or replace function public.push_salvar_prefs(p_mencao boolean, p_resposta boolean, p_aviso boolean, p_bonde boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  insert into push_prefs (user_id, mencao, resposta, aviso, bonde) values (auth.uid(), p_mencao, p_resposta, p_aviso, p_bonde)
+  on conflict (user_id) do update set mencao = excluded.mencao, resposta = excluded.resposta, aviso = excluded.aviso, bonde = excluded.bonde;
+end;
+$$;
+
+-- /api/push devolve os aparelhos que não existem mais (celular trocado, app desinstalado)
+create or replace function public.push_remover(p_segredo text, p_endpoints text[])
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_segredo is null or p_segredo is distinct from (select segredo from push_config where id = 1) then
+    raise exception 'acesso negado' using errcode = '42501';
+  end if;
+  delete from push_inscricoes where endpoint = any (p_endpoints);
+end;
+$$;
+
+-- mensagem nova: quem foi marcado, quem recebeu a resposta, aviso do ADM e bonde chamado
+create or replace function public.chat_avisar_push()
+returns trigger
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  cfg push_config;
+  v_autor text;
+  v_envios jsonb;
+begin
+  select * into cfg from push_config where id = 1;
+  if cfg.url is null or cfg.vapid_privada is null or new.tipo not in ('msg', 'bonde', 'foto') then return new; end if;
+  if new.canal <> 'avisos' and new.tipo <> 'bonde' and new.resp is null and position('@' in new.txt) = 0 then return new; end if;
+  v_autor := coalesce((select nick from players where id = new.player_id), nullif(new.nome, ''), 'Alguém');
+  with membros as (
+    select user_id from player_contas union select user_id from admins
+  ), alvo as (
+    select m.user_id, 'aviso' as motivo, 3 as ordem from membros m where new.canal = 'avisos'
+    union all
+    select m.user_id, 'bonde', 4 from membros m where new.tipo = 'bonde'
+    union all
+    select c.user_id, 'mencao', 1 from player_contas c join players p on p.id = c.player_id
+      where new.txt ~* ('(^|[^[:alnum:]_])@' || regexp_replace(p.nick, '([.^$*+?()\[\]{}|\\-])', '\\\1', 'g') || '(?![[:alnum:]_])')
+    union all
+    select r.user_id, 'resposta', 2 from chat_mensagens r where r.id = new.resp and r.user_id is not null
+  ), um as (
+    select distinct on (a.user_id) a.user_id, a.motivo from alvo a
+    where a.user_id is distinct from new.user_id
+      and not exists (select 1 from chat_punicoes x where x.user_id = a.user_id and x.tipo = 'ban' and (x.ate is null or x.ate > now()))
+    order by a.user_id, a.ordem
+  ), quer as (
+    select u.user_id, u.motivo from um u left join push_prefs p on p.user_id = u.user_id
+    where case u.motivo when 'mencao' then coalesce(p.mencao, true) when 'resposta' then coalesce(p.resposta, true)
+                        when 'aviso' then coalesce(p.aviso, true) else coalesce(p.bonde, true) end
+  )
+  select jsonb_agg(jsonb_build_object('endpoint', i.endpoint, 'p256dh', i.p256dh, 'auth', i.auth, 'payload', jsonb_build_object(
+      'title', case q.motivo when 'mencao' then v_autor || ' te marcou no #' || new.canal
+                             when 'resposta' then v_autor || ' respondeu você'
+                             when 'aviso' then 'Aviso do clã · ' || v_autor
+                             else v_autor || ' chamou o bonde' end,
+      'body', case when new.tipo = 'bonde' then coalesce(new.dados ->> 'srv', 'Servidor BR') || case when new.txt <> '' then ' · ' || new.txt else '' end
+                   when new.tipo = 'foto' and new.txt = '' then '📷 Foto'
+                   else left(new.txt, 160) end,
+      'tag', 'chat-' || new.canal,
+      'url', '/#chat')))
+  into v_envios
+  from quer q join push_inscricoes i on i.user_id = q.user_id;
+  if v_envios is null then return new; end if;
+  perform net.http_post(
+    url := cfg.url,
+    body := jsonb_build_object('segredo', cfg.segredo, 'sujeito', cfg.sujeito, 'publica', cfg.vapid_publica, 'privada', cfg.vapid_privada,
+                               'sb', cfg.sb_url, 'chave', cfg.sb_chave, 'envios', v_envios),
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    timeout_milliseconds := 8000);
+  return new;
+exception when others then
+  -- notificação nunca atrapalha mandar mensagem
+  return new;
+end;
+$$;
+drop trigger if exists chat_avisar_push on public.chat_mensagens;
+create trigger chat_avisar_push after insert on public.chat_mensagens
+  for each row execute function public.chat_avisar_push();
+
+-- quem executa o quê
 revoke all on function public.chat_exigir_voz() from public, anon, authenticated;
 revoke all on function public.chat_massa_nova() from public, anon, authenticated;
-revoke all on function public.chat_pode_ler() from public, anon;
-revoke all on function public.chat_eu() from public, anon;
-revoke all on function public.chat_enviar(text, text, bigint, text, jsonb) from public, anon;
-revoke all on function public.chat_reagir(bigint, text) from public, anon;
-revoke all on function public.chat_bonde_entrar(bigint, boolean) from public, anon;
-revoke all on function public.chat_jogando(boolean) from public, anon;
-revoke all on function public.chat_denunciar(bigint, text) from public, anon;
-revoke all on function public.chat_apagar(bigint) from public, anon;
-revoke all on function public.chat_fixar(bigint, boolean) from public, anon;
-revoke all on function public.chat_punir(uuid, text, integer, text) from public, anon;
-revoke all on function public.chat_perdoar(uuid) from public, anon;
-revoke all on function public.chat_ignorar_denuncia(bigint) from public, anon;
-revoke all on function public.chat_moderacao() from public, anon;
-grant execute on function public.chat_pode_ler() to authenticated;
-grant execute on function public.chat_eu() to authenticated;
-grant execute on function public.chat_enviar(text, text, bigint, text, jsonb) to authenticated;
-grant execute on function public.chat_reagir(bigint, text) to authenticated;
-grant execute on function public.chat_bonde_entrar(bigint, boolean) to authenticated;
-grant execute on function public.chat_jogando(boolean) to authenticated;
-grant execute on function public.chat_denunciar(bigint, text) to authenticated;
-grant execute on function public.chat_apagar(bigint) to authenticated;
-grant execute on function public.chat_fixar(bigint, boolean) to authenticated;
-grant execute on function public.chat_punir(uuid, text, integer, text) to authenticated;
-grant execute on function public.chat_perdoar(uuid) to authenticated;
-grant execute on function public.chat_ignorar_denuncia(bigint) to authenticated;
-grant execute on function public.chat_moderacao() to authenticated;
+revoke all on function public.chat_avisar_push() from public, anon, authenticated;
+revoke all on function public.exigir_mod(text, jsonb) from public, anon, authenticated;
+revoke all on function public.chat_nome(uuid) from public, anon, authenticated;
+revoke all on function public.chat_filtrar(text) from public, anon, authenticated;
+revoke all on function public.chat_protegido(uuid) from public, anon, authenticated;
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'is_chat_adm()', 'chat_pode_ler()', 'chat_eu()', 'chat_equipe()',
+    'chat_enviar(text, text, bigint, text, jsonb)', 'chat_editar(bigint, text)', 'chat_reagir(bigint, text)',
+    'chat_bonde_entrar(bigint, boolean)', 'chat_jogando(boolean)', 'chat_denunciar(bigint, text)', 'chat_apagar(bigint)',
+    'chat_limpar(uuid, integer)', 'chat_fixar(bigint, boolean)', 'chat_punir(uuid, text, integer, text)', 'chat_perdoar(uuid)',
+    'chat_ignorar_denuncia(bigint)', 'chat_config_canal(text, boolean, integer)', 'chat_salvar_palavroes(text[])', 'chat_moderacao()',
+    'dono_equipe()', 'dono_promover(uuid, boolean)', 'dono_expulsar(uuid)',
+    'push_chave()', 'push_inscrever(text, text, text)', 'push_sair(text)', 'push_eu(text)', 'push_salvar_prefs(boolean, boolean, boolean, boolean)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end;
+$$;
+-- /api/push chama sem login (anon), protegido pelo segredo
+revoke all on function public.push_remover(text, text[]) from public;
+grant execute on function public.push_remover(text, text[]) to anon, authenticated;
 
 -- chat ao vivo
 do $$
 declare t text;
 begin
-  foreach t in array array['chat_mensagens', 'chat_reacoes', 'chat_bonde', 'chat_status', 'chat_punicoes', 'chat_denuncias'] loop
+  foreach t in array array['chat_mensagens', 'chat_reacoes', 'chat_bonde', 'chat_status', 'chat_punicoes', 'chat_denuncias', 'chat_adms', 'chat_canais_cfg'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

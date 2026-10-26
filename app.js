@@ -4083,7 +4083,7 @@ ${frente}
     contaSemJogador = false;
     logins = new Map();
     pedidos = [];
-    desligarChat();
+    await desligarChat();
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
     if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
     document.querySelectorAll('dialog[open]').forEach((d) => d.close());
@@ -4269,6 +4269,13 @@ ${frente}
       }
       // e-mail que já tinha conta: o Supabase finge que deu certo, mas não manda nada
       if (data.user && Array.isArray(data.user.identities) && !data.user.identities.length) return falhar('Esse e-mail já tem conta. Toque em "Entrar".');
+      if (data.session) {
+        await lerConta();
+        $('fEntSenha').value = '';
+        $('dlgEntrar').close();
+        await depoisDeEntrar();
+        return;
+      }
     }
     $('fEntSenha').value = '';
     trocarModoEntrar('enviado');
@@ -4602,7 +4609,7 @@ ${frente}
   // ---------- chat do clã ----------
   // Só membro lê e fala (o banco confere, passo 7 do SQL). Mensagens, reações, bonde e "tô jogando"
   // chegam ao vivo; quem está com o site aberto aparece online (presença do Supabase).
-  // A moderação é do ADM: apaga, fixa, silencia, tira do chat e resolve as denúncias.
+  // Dono (quem é admin do site) escolhe os ADMs do chat; ADM do chat só modera o chat.
   const ICONE_HASH = '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/>';
   const ICONE_BONDE = '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.7 6.5A2.7 2.7 0 0 0 6.6 17l2.1-2h6.6l2.1 2a2.7 2.7 0 0 0 4.6-1.9l-.7-6.5A4 4 0 0 0 17.3 5z"/>';
   const ICONE_CHAMA = '<path d="M12 22c4 0 7-3 7-7 0-5-4-6-5-11-3 2-4 5-4 8-1-1-2-2-2-4-2 2-3 4-3 7 0 4 3 7 7 7z"/>';
@@ -4618,6 +4625,8 @@ ${frente}
   const ICONE_MODERAR = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>';
   const ICONE_SETA = '<path d="M5 12h14M13 6l6 6-6 6"/>';
   const ICONE_DESCE = '<path d="M12 5v14M6 13l6 6 6-6"/>';
+  const ICONE_FOTO = '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 5l1.5-2h5L16 5"/>';
+  const ICONE_SINO = '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>';
   const CANAIS_CHAT = [
     { id: 'geral', nome: 'geral', ico: ICONE_HASH, vazio: 'Manda o primeiro oi pro clã.' },
     { id: 'bonde', nome: 'bonde', ico: ICONE_BONDE, vazio: 'Toque no controle pra chamar o bonde.' },
@@ -4625,34 +4634,44 @@ ${frente}
     { id: 'avisos', nome: 'avisos', ico: ICONE_MEGAFONE, soAdm: true, vazio: 'Nenhum aviso ainda.' },
   ];
   const REACOES_CHAT = ['🔥', '😂', '💀', '👑', '🐍', '💯', '👍', 'GG'];
-  const POR_CANAL = 80;               // mensagens que carrega de cada canal
+  const POR_CANAL = 80;               // mensagens que carrega de cada canal (o resto vem ao subir a tela)
+  const MAIS_ANTIGAS = 50;
   const BONDE_DURA = 3 * 3600000;     // depois disso o bonde fecha
+  const EDITA_ATE = 15 * 60000;       // dá pra editar a própria mensagem até 15 min depois
+  const LENTOS = [[0, 'Desligado'], [10, '10 s'], [30, '30 s'], [60, '1 min'], [300, '5 min']];
   const chat = {
-    ligado: false, eu: null, canal: 'geral', resp: null, rt: null, presenca: null, conectou: false,
+    ligado: false, eu: null, canal: 'geral', resp: null, editando: null, rt: null, presenca: null, conectou: false,
     msgs: Object.fromEntries(CANAIS_CHAT.map((c) => [c.id, []])),
+    temMais: {},                      // canal -> ainda tem mensagem mais velha no banco
     porId: new Map(),                 // id -> mensagem
     reac: new Map(),                  // id -> Map(emoji -> Set(user_id))
     bonde: new Map(),                 // id -> [{ user_id, player_id, nome }]
     status: new Map(),                // user_id -> { player_id, nome, jogando_ate }
-    online: new Map(),                // user_id -> { player_id, nome, adm }
-    digitando: new Map(), lido: {}, novas: 0, denuncias: 0,
+    online: new Map(),                // user_id -> { player_id, nome }
+    equipe: new Map(),                // user_id -> 'dono' | 'adm'
+    cfg: new Map(),                   // canal -> { travado, lento }
+    digitando: new Map(), lido: {}, novas: 0, denuncias: 0, antigas: false,
   };
   const euChat = () => (chat.eu && chat.eu.user_id) || null;
   const admChat = () => !!(chat.eu && chat.eu.adm);
+  const donoChat = () => !!(chat.eu && chat.eu.dono);
+  const papelDe = (u) => (u ? chat.equipe.get(u) || null : null);
   const canalChat = (id) => CANAIS_CHAT.find((c) => c.id === id);
+  const cfgCanal = (c) => chat.cfg.get(c) || { travado: false, lento: 0 };
   const horaChat = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const nickDoPlayer = (pid, nome) => (pid && jogPorId.get(pid) ? jogPorId.get(pid).nick : nome || 'Membro');
   const nickMsg = (m) => (m.tipo === 'massa' ? 'COBR' : nickDoPlayer(m.player_id, m.nome));
   const meuNick = () => (chat.eu ? nickDoPlayer(chat.eu.player_id, chat.eu.nome) : '');
   const jogandoAte = (s) => (s && s.jogando_ate && Date.parse(s.jogando_ate) > Date.now() ? s.jogando_ate : null);
+  const tempoTxt = (s) => (LENTOS.find(([v]) => v === s) || [s, `${s} s`])[1];
   function punicaoAtiva() {
     const p = chat.eu && chat.eu.punicao;
     return p && (!p.ate || Date.parse(p.ate) > Date.now()) ? p : null;
   }
   const foraDoChat = () => { const p = punicaoAtiva(); return !!p && p.tipo === 'ban'; };
   function ateTxt(iso) {
-    if (!iso) return 'até o ADM liberar';
+    if (!iso) return 'até um ADM liberar';
     const d = new Date(iso);
     return d.toDateString() === new Date().toDateString() ? `até ${horaChat(iso)}` : `até ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${horaChat(iso)}`;
   }
@@ -4662,7 +4681,7 @@ ${frente}
   }
   const meMarcou = (m) => !!m.txt && !!meuNick() && new RegExp('@' + escRe(meuNick()) + '(?![\\p{L}\\p{N}_])', 'iu').test(m.txt);
   const chatVisivel = () => pagAtual === 'chat' && !perfilAtual && !torneioAtual && !document.hidden && !document.body.classList.contains('trancado');
-  const podeFalar = (c) => !!chat.eu && !punicaoAtiva() && !canalChat(c).soSite && (!canalChat(c).soAdm || admChat());
+  const podeFalar = (c) => !!chat.eu && !punicaoAtiva() && !canalChat(c).soSite && (!canalChat(c).soAdm || admChat()) && (!cfgCanal(c).travado || admChat());
 
   // ---------- falar com o banco (na demonstração tudo fica só nesta tela) ----------
   async function chatRpc(nome, args) {
@@ -4675,15 +4694,19 @@ ${frente}
     const t = String((e && e.message) || '');
     if (/silenciado/.test(t)) { toast('Você está silenciado no chat.', true); recarregarEuChat(); }
     else if (/devagar/.test(t)) toast('Calma! Espera uns segundos pra mandar de novo.', true);
+    else if (/lento/.test(t)) toast(`Modo lento: 1 mensagem a cada ${tempoTxt(cfgCanal(chat.canal).lento)} neste canal.`, true);
+    else if (/travado/.test(t)) toast('Canal travado pelo ADM.', true);
+    else if (/tarde/.test(t)) toast('Só dá pra editar até 15 minutos depois de mandar.', true);
+    else if (/foto/.test(t)) toast('Não deu pra enviar essa foto. Tenta outra.', true);
     else if ((e && e.code === '42501') || /acesso negado/.test(t)) toast('Sem permissão pra isso.', true);
     else toast('Não deu agora. Tenta de novo.', true);
   }
 
   // ---------- carregar ----------
   function limparChat() {
-    for (const c of CANAIS_CHAT) chat.msgs[c.id] = [];
-    chat.porId.clear(); chat.reac.clear(); chat.bonde.clear(); chat.status.clear(); chat.digitando.clear();
-    chat.resp = null; chat.novas = 0; chat.denuncias = 0;
+    for (const c of CANAIS_CHAT) { chat.msgs[c.id] = []; chat.temMais[c.id] = false; }
+    chat.porId.clear(); chat.reac.clear(); chat.bonde.clear(); chat.status.clear(); chat.digitando.clear(); chat.equipe.clear(); chat.cfg.clear();
+    chat.resp = null; chat.editando = null; chat.novas = 0; chat.denuncias = 0;
   }
   function guardarMsg(m) {
     chat.porId.set(m.id, m);
@@ -4693,6 +4716,16 @@ ${frente}
     l.splice(i, 0, m);
     return i;
   }
+  // reações e gente no bonde dessas mensagens
+  async function completarMsgs(lista) {
+    const ids = lista.map((m) => m.id), bondes = lista.filter((m) => m.tipo === 'bonde').map((m) => m.id);
+    const [rr, rb] = await Promise.all([
+      ids.length ? sb.from('chat_reacoes').select('msg_id, user_id, emoji').in('msg_id', ids) : { data: [] },
+      bondes.length ? sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').in('msg_id', bondes).order('created_at') : { data: [] },
+    ]);
+    for (const r of rr.data || []) mexerReac(r.msg_id, r.emoji, r.user_id, true, false);
+    for (const b of rb.data || []) mexerBonde(b, true, false);
+  }
   async function carregarChat() {
     if (DEMO) { demoChatSemear(); return depoisDeCarregarChat(); }
     const re = await sb.rpc('chat_eu');
@@ -4701,19 +4734,20 @@ ${frente}
     limparChat();
     if (!foraDoChat()) {
       const rs = await Promise.all(CANAIS_CHAT.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
-      for (const r of rs) {
+      rs.forEach((r, i) => {
         if (r.error) throw new Error(r.error.message);
+        chat.temMais[CANAIS_CHAT[i].id] = r.data.length === POR_CANAL;
         for (const m of r.data) guardarMsg(m);
-      }
-      const ids = [...chat.porId.keys()], bondes = ids.filter((id) => chat.porId.get(id).tipo === 'bonde');
-      const [rr, rb, rst] = await Promise.all([
-        ids.length ? sb.from('chat_reacoes').select('msg_id, user_id, emoji').in('msg_id', ids) : { data: [] },
-        bondes.length ? sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').in('msg_id', bondes).order('created_at') : { data: [] },
+      });
+      const [, rst, req, rcf] = await Promise.all([
+        completarMsgs([...chat.porId.values()]),
         sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
+        sb.rpc('chat_equipe'),
+        sb.from('chat_canais_cfg').select('canal, travado, lento'),
       ]);
-      for (const r of rr.data || []) mexerReac(r.msg_id, r.emoji, r.user_id, true, false);
-      for (const b of rb.data || []) mexerBonde(b, true, false);
       for (const s of rst.data || []) chat.status.set(s.user_id, s);
+      for (const e of req.data || []) chat.equipe.set(e.user_id, e.papel);
+      for (const c of rcf.data || []) chat.cfg.set(c.canal, c);
       if (admChat()) await contarDenuncias(false);
     }
     depoisDeCarregarChat();
@@ -4723,14 +4757,42 @@ ${frente}
     atualizarBadgesChat();
     if (chatVisivel()) desenharChat();
   }
+  async function carregarAntigas() {
+    const c = chat.canal, l = chat.msgs[c];
+    if (DEMO || chat.antigas || !chat.temMais[c] || !l.length) return;
+    chat.antigas = true;
+    try {
+      const { data, error } = await sb.from('chat_mensagens').select('*').eq('canal', c).lt('id', l[0].id).order('id', { ascending: false }).limit(MAIS_ANTIGAS);
+      if (error) throw error;
+      chat.temMais[c] = data.length === MAIS_ANTIGAS;
+      const novas = data.filter((m) => !chat.porId.has(m.id));
+      for (const m of novas) guardarMsg(m);
+      await completarMsgs(novas);
+      if (chat.canal === c && chatVisivel()) {
+        // segura a tela no mesmo lugar enquanto as mais velhas entram em cima
+        const box = $('chatMsgs'), doFim = box.scrollHeight - box.scrollTop;
+        desenharMsgsChat(false);
+        box.scrollTop = box.scrollHeight - doFim;
+      }
+    } catch (e) { console.warn('chat:', e.message); } finally { chat.antigas = false; }
+  }
   async function recarregarEuChat() {
     if (DEMO) return;
-    const antes = foraDoChat();
+    const antes = { ban: foraDoChat(), adm: admChat() };
     const re = await sb.rpc('chat_eu');
     if (re.error) return;
     chat.eu = re.data;
-    if (antes !== foraDoChat()) { carregarChat().catch(() => {}); return; }
-    if (chatVisivel()) { desenharComporChat(); desenharTopoChat(); desenharMsgsChat(); }
+    if (antes.ban !== foraDoChat()) { carregarChat().catch(() => {}); return; }
+    if (!antes.adm && admChat()) { toast('Você agora é ADM do chat.'); contarDenuncias(false); }
+    if (antes.adm && !admChat()) toast('Você não é mais ADM do chat.');
+    if (chatVisivel()) desenharChat();
+  }
+  async function recarregarEquipe() {
+    if (DEMO) return;
+    const r = await sb.rpc('chat_equipe');
+    if (r.error) return;
+    chat.equipe = new Map((r.data || []).map((e) => [e.user_id, e.papel]));
+    if (chatVisivel()) desenharMsgsChat(false);
   }
   async function contarDenuncias(redesenhar = true) {
     if (DEMO) { chat.denuncias = new Set(demoChat.denuncias.map((d) => d.msg_id)).size; }
@@ -4757,6 +4819,8 @@ ${frente}
       .on(...tabela('chat_bonde', (p) => mexerBonde(p.eventType === 'DELETE' ? p.old : p.new, p.eventType !== 'DELETE')))
       .on(...tabela('chat_status', (p) => { if (p.new && p.new.user_id) { chat.status.set(p.new.user_id, p.new); if (chatVisivel()) { desenharMembrosChat(); desenharTopoChat(); } } }))
       .on(...tabela('chat_punicoes', () => { recarregarEuChat(); if (admChat() && $('dlgModeracao').open) abrirModeracao(); }))
+      .on(...tabela('chat_adms', () => { recarregarEquipe(); recarregarEuChat(); }))
+      .on(...tabela('chat_canais_cfg', (p) => { if (p.new && p.new.canal) chat.cfg.set(p.new.canal, p.new); if (chatVisivel()) desenharComporChat(); }))
       .on(...tabela('chat_denuncias', (p) => {
         if (!admChat()) return;
         contarDenuncias();
@@ -4775,10 +4839,18 @@ ${frente}
       if (chatVisivel()) desenharMembrosChat();
     })
       .on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
-      .subscribe((st) => { if (st === 'SUBSCRIBED') pr.track({ player_id: chat.eu.player_id, nome: meuNick(), adm: chat.eu.adm }); });
+      .subscribe((st) => { if (st === 'SUBSCRIBED') pr.track({ player_id: chat.eu.player_id, nome: meuNick() }); });
     chat.presenca = pr;
   }
-  function desligarChat() {
+  // ao sair da conta: este aparelho para de receber as notificações dela
+  async function desligarChat() {
+    if (!DEMO && sb && chat.eu) {
+      try {
+        const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+        const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+        if (sub) { await sb.rpc('push_sair', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      } catch (e) {}
+    }
     if (sb && chat.rt) sb.removeChannel(chat.rt);
     if (sb && chat.presenca) sb.removeChannel(chat.presenca);
     chat.rt = null; chat.presenca = null; chat.conectou = false; chat.ligado = false; chat.eu = null;
@@ -4798,7 +4870,7 @@ ${frente}
       if (i !== l.length - 1) { desenharMsgsChat(); return; }
       const box = $('chatMsgs'), fim = pertoDoFimChat() || meu;
       const ant = l[i - 1];
-      if (!ant) box.replaceChildren();
+      box.querySelector('.ch-vazio')?.remove();
       if (!ant || new Date(ant.created_at).toDateString() !== new Date(m.created_at).toDateString()) box.append(el('div', { class: 'ch-dia', text: rotDia(m.created_at) }));
       if (m.tipo === 'massa') m._conta = true;
       const n = linhaChat(m, ant && new Date(ant.created_at).toDateString() === new Date(m.created_at).toDateString() ? ant : null);
@@ -4827,7 +4899,7 @@ ${frente}
     if (!m) return;
     chat.porId.delete(id);
     chat.msgs[m.canal] = chat.msgs[m.canal].filter((x) => x.id !== id);
-    if (chatVisivel() && chat.canal === m.canal) desenharMsgsChat();
+    if (chatVisivel() && chat.canal === m.canal) desenharMsgsChat(false);
     atualizarBadgesChat();
   }
   function mexerReac(id, emoji, user, liga, redesenhar = true) {
@@ -4883,15 +4955,14 @@ ${frente}
     a.innerHTML = escudoSVG(p, letra);
     return a;
   }
+  const tagPapel = (papel) => (papel === 'dono' ? el('span', { class: 'ch-tag ch-tag-dono', text: 'DONO' })
+    : papel === 'adm' ? el('span', { class: 'ch-tag ch-tag-adm', text: 'ADM' }) : null);
   function tagsChat(m, nick) {
     if (nick === 'COBR') return [el('span', { class: 'ch-tag ch-tag-bot', text: 'AUTOMÁTICO' })];
-    const k = chave(nick), r = m.player_id && jogPorId.get(m.player_id);
-    const lider = r && /l[ií]der/i.test(r.cargo || '') ? r.cargo : null;
-    return [chipPatente(ptsPat(k)), chipRei(k),
-      lider ? el('span', { class: 'ch-tag ch-tag-lider', text: lider.toUpperCase() }) : null,
-      m.adm ? el('span', { class: 'ch-tag ch-tag-adm', text: 'ADM' }) : null];
+    const k = chave(nick);
+    return [chipPatente(ptsPat(k)), chipRei(k), tagPapel(papelDe(m.user_id))];
   }
-  function textoChat(txt) {
+  function textoChat(txt, editada = false) {
     const s = el('div', { class: 'ch-txt' });
     const eu = chave(meuNick());
     for (const parte of String(txt || '').split(/(@[\p{L}\p{N}_.-]+)/u)) {
@@ -4899,12 +4970,14 @@ ${frente}
       if (k && elenco.has(k)) s.append(el('span', { class: `ch-mencao ${k === eu ? 'eu' : ''}`, text: parte }));
       else if (parte) s.append(parte);
     }
+    if (editada) s.append(el('span', { class: 'ch-editada', text: 'editada' }));
     return s;
   }
   function resumoChat(m) {
     if (m.apagada) return 'mensagem apagada';
     if (m.tipo === 'massa') return `${nomeDe(chave(m.dados.player || ''), m.dados.player || '')} fez ${fmt(m.dados.mass || 0)} de massa`;
     if (m.tipo === 'bonde') return `bonde · ${(m.dados && m.dados.srv) || 'Servidor BR'}`;
+    if (m.tipo === 'foto') return m.txt ? `📷 ${m.txt}` : '📷 Foto';
     return m.txt;
   }
   // a partida dessa massa fez o jogador subir de patente na temporada?
@@ -4972,16 +5045,39 @@ ${frente}
         el('span', { class: 'ch-bonde-cont' }, `${gente.length}/${max}`, el('small', { text: fechado ? 'ENCERRADO' : cheio ? 'LOTADO' : 'NO BONDE' })),
         pode ? el('button', { type: 'button', class: `btn ${dentro ? 'btn-sec' : 'btn-bonde'}`, onclick: () => entrarNoBonde(m, !dentro), text: dentro ? 'Sair' : 'Tô dentro' }) : null));
   }
+  // fotos ficam numa pasta fechada: o link vale por algumas horas
+  const urlsFoto = new Map();
+  async function urlFoto(path) {
+    const c = urlsFoto.get(path);
+    if (c && c.ate > Date.now()) return c.url;
+    if (DEMO || !path) return null;
+    const { data } = await sb.storage.from('chat').createSignedUrl(path, 6 * 3600);
+    if (!data) return null;
+    urlsFoto.set(path, { url: data.signedUrl, ate: Date.now() + 5 * 3600000 });
+    return data.signedUrl;
+  }
+  function cartaoFoto(m) {
+    const d = m.dados || {};
+    const img = el('img', { alt: m.txt ? `Foto: ${m.txt}` : 'Foto', decoding: 'async' });
+    const box = el('button', { type: 'button', class: 'ch-foto', 'aria-label': 'Ver foto grande', style: `aspect-ratio:${d.w || 4} / ${d.h || 3}`,
+      onclick: () => { if (img.src) abrirPrintLivre(img.src, `${nickMsg(m)} · ${horaChat(m.created_at)}${m.txt ? ' · ' + m.txt : ''}`); } }, img);
+    urlFoto(d.path).then((u) => { if (u) img.src = u; else box.classList.add('sem'); });
+    return [box, m.txt ? textoChat(m.txt, m.editada) : null];
+  }
+  const protegido = (u) => !!papelDe(u);
+  const podeEditar = (m, meu) => meu && (m.tipo === 'msg' || m.tipo === 'foto') && !punicaoAtiva() && Date.now() - Date.parse(m.created_at) < EDITA_ATE;
   function acoesChat(m, nick, meu) {
     const b = (ico, rot, fn, cls = '') => el('button', { type: 'button', class: cls, title: rot, 'aria-label': rot, onclick: fn }, svg(ico, 17));
     const voz = !!chat.eu && !punicaoAtiva();
+    const mexe = admChat() && m.tipo !== 'massa' && (!protegido(m.user_id) || donoChat());
     return el('div', { class: 'ch-acoes' },
       voz ? b(ICONE_SORRISO, 'Reagir', (e) => abrirEmojisChat(e.currentTarget, (x) => reagirChat(m, x))) : null,
       podeFalar(m.canal) ? b(ICONE_RESPONDER, 'Responder', () => responderChat(m)) : null,
+      podeEditar(m, meu) ? b(ICONE_LAPIS, 'Editar', () => editarChat(m)) : null,
       admChat() && m.tipo !== 'massa' ? b(ICONE_FIXAR, m.fixada ? 'Desafixar' : 'Fixar no topo', () => fixarChat(m, !m.fixada), m.fixada ? 'on' : '') : null,
-      admChat() && m.user_id && !meu && !m.adm ? b(ICONE_MUDO, `Punir ${nick}`, () => abrirPunir({ user_id: m.user_id, nick })) : null,
-      !admChat() && !meu && m.user_id ? b(ICONE_BANDEIRA, 'Denunciar pro ADM', () => denunciarChat(m, nick)) : null,
-      (meu || admChat()) && m.tipo !== 'massa' ? b(ICONE_LIXO, 'Apagar', () => apagarChat(m, nick, meu), 'perigo') : null);
+      admChat() && m.user_id && !meu && !protegido(m.user_id) ? b(ICONE_MUDO, `Punir ${nick}`, () => abrirPunir({ user_id: m.user_id, nick })) : null,
+      !admChat() && !meu && m.user_id ? b(ICONE_BANDEIRA, 'Denunciar pros ADMs', () => denunciarChat(m, nick)) : null,
+      meu || mexe ? b(ICONE_LIXO, 'Apagar', () => apagarChat(m, nick, meu), 'perigo') : null);
   }
   function linhaChat(m, ant, pop = null) {
     const nick = nickMsg(m), meu = !!m.user_id && m.user_id === euChat();
@@ -5004,8 +5100,9 @@ ${frente}
     if (m.apagada) corpo.append(el('div', { class: 'ch-txt apagada', text: 'mensagem apagada' }));
     else if (m.tipo === 'massa') corpo.append(cartaoMassa(m));
     else if (m.tipo === 'bonde') corpo.append(cartaoBonde(m));
-    else if (m.canal === 'avisos') corpo.append(el('div', { class: 'ch-cv ch-cv-aviso' }, el('div', { class: 'ch-cv-rot' }, svg(ICONE_MEGAFONE, 14), 'AVISO'), textoChat(m.txt)));
-    else corpo.append(textoChat(m.txt));
+    else if (m.tipo === 'foto') corpo.append(...cartaoFoto(m).filter(Boolean));
+    else if (m.canal === 'avisos') corpo.append(el('div', { class: 'ch-cv ch-cv-aviso' }, el('div', { class: 'ch-cv-rot' }, svg(ICONE_MEGAFONE, 14), 'AVISO'), textoChat(m.txt, m.editada)));
+    else corpo.append(textoChat(m.txt, m.editada));
     const reacs = [...(chat.reac.get(m.id) || new Map())].filter(([, s]) => s.size);
     if (reacs.length && !m.apagada) corpo.append(el('div', { class: 'ch-reacoes' }, ...reacs.map(([e, s]) =>
       el('button', { type: 'button', class: `ch-reac ${s.has(euChat()) ? 'minha' : ''} ${pop === e ? 'pop' : ''}`, 'aria-label': `${e} ${s.size}`, onclick: () => reagirChat(m, e) },
@@ -5048,14 +5145,17 @@ ${frente}
   function desenharCanaisChat() {
     trocar($('chatCanais'), el('div', { class: 'ch-lado-rot', text: 'CANAIS' }), ...CANAIS_CHAT.map((c) => {
       const n = chat.eu ? naoLidasChat(c.id) : 0;
+      const travado = c.soAdm || cfgCanal(c.id).travado;
       return el('button', { type: 'button', class: `ch-canal ${n ? 'tem' : ''}`, 'aria-current': String(c.id === chat.canal), onclick: () => abrirCanalChat(c.id) },
         svg(c.ico, 17), el('span', { class: 'ch-canal-nome', text: c.nome }),
-        c.soAdm ? svg(ICONE_TRAVA, 13, 'class="ch-trava"') : null,
+        travado ? svg(ICONE_TRAVA, 13, 'class="ch-trava"') : null,
         n ? el('span', { class: 'ch-badge', text: n > 99 ? '99+' : String(n) }) : null);
     }));
   }
   function desenharTopoChat() {
-    trocar($('chatTitulo'), el('span', { class: 'laranja', text: '#' }), canalChat(chat.canal).nome);
+    const cfg = cfgCanal(chat.canal);
+    trocar($('chatTitulo'), el('span', { class: 'laranja', text: '#' }), canalChat(chat.canal).nome,
+      cfg.travado ? el('span', { class: 'ch-estado', text: 'TRAVADO' }) : cfg.lento ? el('span', { class: 'ch-estado', text: `LENTO · ${tempoTxt(cfg.lento)}` }) : null);
     const ate = jogandoAte(chat.status.get(euChat()));
     const b = $('chatJogando');
     b.hidden = !chat.eu || foraDoChat();
@@ -5066,9 +5166,9 @@ ${frente}
     mod.hidden = !admChat();
     trocar(mod, svg(ICONE_MODERAR, 18), el('span', { class: 'ch-mod-rot', text: 'Moderação' }), chat.denuncias ? el('span', { class: 'ch-badge', text: String(chat.denuncias) }) : null);
   }
-  function desenharMsgsChat() {
+  function desenharMsgsChat(descer = true) {
     const box = $('chatMsgs');
-    chat.novas = 0; $('chatNovas').hidden = true;
+    if (descer) { chat.novas = 0; $('chatNovas').hidden = true; }
     if (foraDoChat()) {
       const p = punicaoAtiva();
       trocar(box, el('div', { class: 'ch-fora' }, svg(ICONE_TRAVA, 34), el('b', { text: 'VOCÊ ESTÁ FORA DO CHAT' }), el('span', { text: ateTxt(p.ate) + (p.motivo ? ` · ${p.motivo}` : '') })));
@@ -5078,6 +5178,7 @@ ${frente}
     const lista = chat.msgs[chat.canal], filhos = [];
     let ant = null, dia = null;
     if (!lista.length) filhos.push(el('div', { class: 'ch-vazio' }, svg(canalChat(chat.canal).ico, 30), el('span', { text: canalChat(chat.canal).vazio })));
+    else filhos.push(el('div', { class: 'ch-inicio', text: chat.temMais[chat.canal] ? 'Carregando as mais antigas…' : `Começo do #${canalChat(chat.canal).nome}` }));
     for (const m of lista) {
       const d = new Date(m.created_at).toDateString();
       if (d !== dia) { dia = d; ant = null; filhos.push(el('div', { class: 'ch-dia', text: rotDia(m.created_at) })); }
@@ -5085,7 +5186,7 @@ ${frente}
       ant = m;
     }
     trocar(box, filhos);
-    box.scrollTop = box.scrollHeight;
+    if (descer) box.scrollTop = box.scrollHeight;
     desenharFixadaChat();
     marcarLidoChat();
   }
@@ -5096,15 +5197,18 @@ ${frente}
     f.onclick = () => m && irParaMsg(m.id);
   }
   function desenharComporChat() {
-    const c = canalChat(chat.canal), p = punicaoAtiva();
+    const c = canalChat(chat.canal), p = punicaoAtiva(), cfg = cfgCanal(c.id);
     const trava = !chat.eu ? 'Carregando…'
       : p ? (p.tipo === 'ban' ? 'Você está fora do chat' : `Você está silenciado ${ateTxt(p.ate)}`)
       : c.soSite ? 'O site posta aqui quando alguém registra massa'
-      : c.soAdm && !admChat() ? 'Só ADM escreve em #avisos' : null;
+      : c.soAdm && !admChat() ? 'Só ADM escreve em #avisos'
+      : cfg.travado && !admChat() ? 'Canal travado pelo ADM' : null;
     $('chatCaixa').hidden = !!trava;
     $('chatTrancado').hidden = !trava;
     if (trava) trocar($('chatTrancado'), svg(p ? ICONE_MUDO : ICONE_TRAVA, 15), trava);
-    $('chatTxt').placeholder = c.id === 'avisos' ? 'Escreva um aviso pro clã' : `Mensagem em #${c.nome}`;
+    $('chatTxt').placeholder = chat.editando ? 'Edite a sua mensagem'
+      : c.id === 'avisos' ? 'Escreva um aviso pro clã'
+      : cfg.lento && !admChat() ? `Modo lento · 1 a cada ${tempoTxt(cfg.lento)}` : `Mensagem em #${c.nome}`;
     $('chatBondeBtn').hidden = c.id === 'avisos';
   }
   function desenharDigitando() {
@@ -5119,7 +5223,7 @@ ${frente}
   function membrosChat() {
     const jogP = new Map(), jogU = new Map(), onP = new Set(), semPerfil = [];
     for (const s of chat.status.values()) { const ate = jogandoAte(s); if (!ate) continue; if (s.player_id) jogP.set(s.player_id, ate); jogU.set(s.user_id, ate); }
-    for (const [u, o] of chat.online) { if (o.player_id) onP.add(o.player_id); else semPerfil.push({ user_id: u, nome: o.nome || 'ADM' }); }
+    for (const [u, o] of chat.online) { if (o.player_id) onP.add(o.player_id); else semPerfil.push({ user_id: u, nome: o.nome || 'Dono' }); }
     const lista = jogadores.filter((r) => r.ativo).map((r) => ({ nick: r.nick, k: chave(r.nick), st: jogP.has(r.id) ? 'jogo' : onP.has(r.id) ? 'on' : 'off', ate: jogP.get(r.id) }));
     for (const o of semPerfil) lista.push({ nick: o.nome, k: chave(o.nome), st: jogU.has(o.user_id) ? 'jogo' : 'on', ate: jogU.get(o.user_id), semPerfil: true });
     return lista.sort((a, b) => ptsPat(b.k) - ptsPat(a.k) || a.nick.localeCompare(b.nick, 'pt-BR'));
@@ -5169,6 +5273,7 @@ ${frente}
   // ---------- ações ----------
   async function enviarChat() {
     const campo = $('chatTxt'), txt = campo.value.trim();
+    if (chat.editando) return salvarEdicao(txt);
     if (!txt || !podeFalar(chat.canal)) return;
     const resp = chat.resp;
     campo.value = '';
@@ -5196,14 +5301,40 @@ ${frente}
       mexerReac(m.id, e, euChat(), !!ficou);
     } catch (err) { erroChat(err); }
   }
-  function responderChat(m) {
-    chat.resp = m;
-    trocar($('chatResp'), svg(ICONE_RESPONDER, 14), el('span', null, 'Respondendo ', el('b', { text: nickMsg(m) }), ` · ${resumoChat(m)}`),
-      el('button', { type: 'button', 'aria-label': 'Cancelar resposta', onclick: cancelarRespChat }, '×'));
+  function barraResp(...conteudo) {
+    trocar($('chatResp'), ...conteudo, el('button', { type: 'button', 'aria-label': 'Cancelar', onclick: cancelarRespChat }, '×'));
     $('chatResp').hidden = false;
+  }
+  function responderChat(m) {
+    if (chat.editando) cancelarRespChat();
+    chat.resp = m;
+    barraResp(svg(ICONE_RESPONDER, 14), el('span', null, 'Respondendo ', el('b', { text: nickMsg(m) }), ` · ${resumoChat(m)}`));
     $('chatTxt').focus();
   }
-  function cancelarRespChat() { chat.resp = null; $('chatResp').hidden = true; }
+  function editarChat(m) {
+    chat.resp = null;
+    chat.editando = m;
+    barraResp(svg(ICONE_LAPIS, 14), el('span', null, el('b', { text: 'Editando' }), ' a sua mensagem'));
+    const campo = $('chatTxt');
+    campo.value = m.txt;
+    $('chatEnviar').disabled = m.tipo === 'msg' && !m.txt.trim();
+    desenharComporChat();
+    campo.focus();
+  }
+  function cancelarRespChat() {
+    if (chat.editando) { chat.editando = null; $('chatTxt').value = ''; $('chatEnviar').disabled = true; desenharComporChat(); }
+    chat.resp = null;
+    $('chatResp').hidden = true;
+  }
+  async function salvarEdicao(txt) {
+    const m = chat.editando;
+    if (!m || (m.tipo === 'msg' && !txt)) return;
+    try {
+      const novo = await chatRpc('chat_editar', { p_msg: m.id, p_txt: txt });
+      cancelarRespChat();
+      atualizarMsg({ id: m.id, txt: novo ?? txt, editada: true });
+    } catch (e) { erroChat(e); }
+  }
   async function entrarNoBonde(m, entra) {
     try {
       const r = await chatRpc('chat_bonde_entrar', { p_msg: m.id, p_entrar: entra });
@@ -5227,7 +5358,8 @@ ${frente}
     } catch (e) { erroChat(e); }
   }
   function abrirBonde() {
-    if (!podeFalar(chat.canal === 'geral' ? 'geral' : 'bonde')) { toast('Você está silenciado no chat.', true); return; }
+    const canal = chat.canal === 'geral' ? 'geral' : 'bonde';
+    if (!podeFalar(canal)) { toast(punicaoAtiva() ? 'Você está silenciado no chat.' : 'Canal travado pelo ADM.', true); return; }
     $('fBondeSrv').value = $('fBondeSrv').value || 'Servidor BR';
     $('fBondeNota').value = '';
     document.querySelectorAll('[data-vagas]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.vagas === '6')));
@@ -5248,10 +5380,57 @@ ${frente}
       meuStatusChat(new Date(Date.now() + 90 * 60000).toISOString());
     } catch (e) { erroChat(e); }
   }
+  // foto: diminui no próprio celular (até 1280 px) antes de subir, pra caber no armazenamento grátis
+  function comprimirFoto(arquivo) {
+    return new Promise((ok, falha) => {
+      const img = new Image(), u = URL.createObjectURL(arquivo);
+      img.onload = () => {
+        const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(u);
+        cv.toBlob((b) => {
+          if (b && b.type === 'image/webp') ok({ blob: b, w, h });
+          else cv.toBlob((j) => (j ? ok({ blob: j, w, h }) : falha(new Error('foto'))), 'image/jpeg', 0.82);
+        }, 'image/webp', 0.8);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); falha(new Error('foto')); };
+      img.src = u;
+    });
+  }
+  async function enviarFoto(arquivo) {
+    if (!arquivo || !podeFalar(chat.canal)) return;
+    if (!/^image\//.test(arquivo.type)) { toast('Escolha uma imagem.', true); return; }
+    let path = null, subiu = false;
+    toast('Enviando foto…');
+    try {
+      const { blob, w, h } = await comprimirFoto(arquivo);
+      path = `${euChat()}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${blob.type === 'image/webp' ? 'webp' : 'jpg'}`;
+      if (!DEMO) {
+        const up = await sb.storage.from('chat').upload(path, blob, { contentType: blob.type, cacheControl: '31536000' });
+        if (up.error) throw new Error('foto: ' + up.error.message);
+        subiu = true;
+      }
+      urlsFoto.set(path, { url: URL.createObjectURL(blob), ate: Date.now() + 3600000 });
+      const resp = chat.resp;
+      const id = await chatRpc('chat_enviar', { p_canal: chat.canal, p_txt: $('chatTxt').value.trim(), p_resp: resp ? resp.id : null, p_tipo: 'foto', p_dados: { path, w, h } });
+      $('chatTxt').value = '';
+      $('chatEnviar').disabled = true;
+      cancelarRespChat();
+      await buscarMsgChat(id);
+    } catch (e) {
+      if (subiu) sb.storage.from('chat').remove([path]).catch(() => {});
+      erroChat(e);
+    }
+  }
+  const apagarFotos = (lista) => { if (!DEMO && lista && lista.length) sb.storage.from('chat').remove(lista).catch(() => {}); };
   function apagarChat(m, nick, meu) {
     confirmar('APAGAR MENSAGEM?', meu ? 'Ela some pra todo mundo.' : `Mensagem de ${nick}. Some pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
       try {
-        await chatRpc('chat_apagar', { p_msg: m.id });
+        const foto = await chatRpc('chat_apagar', { p_msg: m.id });
+        if (foto) apagarFotos([foto]);
         atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
         toast('Mensagem apagada.');
         if (admChat()) contarDenuncias();
@@ -5267,19 +5446,20 @@ ${frente}
     } catch (e) { erroChat(e); }
   }
   function denunciarChat(m, nick) {
-    confirmar('DENUNCIAR MENSAGEM?', `O ADM vai olhar essa mensagem de ${nick}.`, 'Denunciar', async () => {
-      try { await chatRpc('chat_denunciar', { p_msg: m.id, p_motivo: '' }); toast('Denúncia enviada pro ADM.'); }
+    confirmar('DENUNCIAR MENSAGEM?', `Os ADMs vão olhar essa mensagem de ${nick}.`, 'Denunciar', async () => {
+      try { await chatRpc('chat_denunciar', { p_msg: m.id, p_motivo: '' }); toast('Denúncia enviada pros ADMs.'); }
       catch (e) { erroChat(e); }
     });
   }
 
-  // ---------- moderação (só ADM) ----------
+  // ---------- moderação (ADM do chat e Dono) ----------
   let punindo = null;
   const PRAZOS = [['10 min', 10], ['1 hora', 60], ['1 dia', 1440], ['7 dias', 10080], ['Sem prazo', null]];
   function abrirPunir(alvo) {
     punindo = { ...alvo, tipo: 'silencio', min: 60 };
     $('tituloPunir').textContent = `PUNIR ${alvo.nick.toUpperCase()}`;
     $('fPunirMotivo').value = '';
+    $('fPunirLimpar').checked = false;
     desenharPunir();
     if ($('dlgModeracao').open) $('dlgModeracao').close();
     $('dlgPunir').showModal();
@@ -5298,19 +5478,34 @@ ${frente}
     try {
       const r = await chatRpc('chat_punir', { p_user: p.user_id, p_tipo: p.tipo, p_minutos: p.min, p_motivo: $('fPunirMotivo').value.trim() });
       $('dlgPunir').close();
-      if (r === 'adm') { toast('ADM não pode ser punido.', true); return; }
+      if (r === 'adm') { toast('ADM e Dono não podem ser punidos.', true); return; }
+      if ($('fPunirLimpar').checked) await limparMensagens(p.user_id, 24, false);
       const prazo = PRAZOS.find(([, v]) => v === p.min)[0].toLowerCase();
-      toast(`${p.nick} ${p.tipo === 'ban' ? 'saiu do chat' : 'foi silenciado'} · ${p.min ? prazo : 'até você liberar'}.`);
+      toast(`${p.nick} ${p.tipo === 'ban' ? 'saiu do chat' : 'foi silenciado'} · ${p.min ? prazo : 'até um ADM liberar'}.`);
     } catch (e) { erroChat(e); }
+  }
+  async function limparMensagens(user, horas, avisar = true) {
+    const r = await chatRpc('chat_limpar', { p_user: user, p_horas: horas });
+    apagarFotos(r && r.fotos);
+    for (const m of chat.porId.values()) {
+      if (m.user_id === user && !m.apagada && (horas == null || Date.now() - Date.parse(m.created_at) < horas * 3600000)) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+    }
+    if (avisar) toast(`${(r && r.qtd) || 0} mensagens apagadas.`);
   }
   let abaMod = 'denuncias';
   async function abrirModeracao(aba = abaMod) {
-    abaMod = aba;
-    document.querySelectorAll('[data-mod]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mod === abaMod)));
+    abaMod = aba === 'equipe' && !donoChat() ? 'denuncias' : aba;
+    document.querySelectorAll('[data-mod]').forEach((b) => {
+      b.setAttribute('aria-selected', String(b.dataset.mod === abaMod));
+      if (b.dataset.mod === 'equipe') b.hidden = !donoChat();
+    });
     const dlg = $('dlgModeracao');
-    if (!dlg.open) { trocar($('modCorpo'), el('p', { class: 'sec', text: 'Carregando…' })); dlg.showModal(); }
-    let d;
-    try { d = await chatRpc('chat_moderacao', {}); } catch (e) { erroChat(e); return; }
+    if (!dlg.open) { trocar($('modCorpo'), el('p', { class: 'mod-sub', text: 'Carregando…' })); dlg.showModal(); }
+    let d, equipe = null;
+    try {
+      d = await chatRpc('chat_moderacao', {});
+      if (abaMod === 'equipe') equipe = await chatRpc('dono_equipe', {});
+    } catch (e) { erroChat(e); return; }
     chat.denuncias = new Set(d.denuncias.map((x) => x.msg_id)).size;
     desenharTopoChat();
     const n = { denuncias: d.denuncias.length, punidos: d.punidos.length };
@@ -5319,6 +5514,8 @@ ${frente}
     let corpo;
     if (abaMod === 'denuncias') corpo = d.denuncias.length ? d.denuncias.map(itemDenuncia) : [vazio('Nenhuma denúncia aberta.')];
     else if (abaMod === 'punidos') corpo = d.punidos.length ? d.punidos.map(itemPunido) : [vazio('Ninguém punido agora.')];
+    else if (abaMod === 'canais') corpo = painelCanais(d);
+    else if (abaMod === 'equipe') corpo = painelEquipe(equipe || []);
     else corpo = d.historico.length ? [el('ul', { class: 'mod-hist' }, ...d.historico.map(itemHistorico))] : [vazio('Nada feito ainda.')];
     trocar($('modCorpo'), corpo);
   }
@@ -5330,14 +5527,19 @@ ${frente}
       el('div', { class: 'mod-cab' }, avatarChat(nick, 'av-p'), el('b', { text: nick }),
         el('span', { class: 'mod-sub', text: `#${x.canal} · ${haQuanto(x.created_at)}` }),
         el('span', { class: 'mod-qtd', text: `${x.qtd} ${x.qtd > 1 ? 'denúncias' : 'denúncia'}` })),
-      el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.txt || '—' }),
+      el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.tipo === 'foto' ? `[foto] ${x.txt || ''}` : x.txt || '—' }),
       el('div', { class: 'mod-sub', text: 'denunciou: ' + x.quem.map((q) => q.quem).join(', ') }),
       el('div', { class: 'linha-btns' },
         acao('Ignorar', 'btn-sec', async () => { try { await chatRpc('chat_ignorar_denuncia', { p_msg: x.msg_id }); abrirModeracao(); } catch (e) { erroChat(e); } }),
-        x.user_id ? acao('Punir', 'btn-sec', () => abrirPunir({ user_id: x.user_id, nick })) : null,
+        x.user_id && !protegido(x.user_id) ? acao('Punir', 'btn-sec', () => abrirPunir({ user_id: x.user_id, nick })) : null,
         acao('Apagar', 'btn-perigo', async () => {
-          try { await chatRpc('chat_apagar', { p_msg: x.msg_id }); if (m) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' }); toast('Mensagem apagada.'); abrirModeracao(); }
-          catch (e) { erroChat(e); }
+          try {
+            const foto = await chatRpc('chat_apagar', { p_msg: x.msg_id });
+            if (foto) apagarFotos([foto]);
+            if (m) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+            toast('Mensagem apagada.');
+            abrirModeracao();
+          } catch (e) { erroChat(e); }
         })));
   }
   function itemPunido(x) {
@@ -5348,9 +5550,77 @@ ${frente}
         el('b', { text: nick }),
         el('span', { class: `mod-pena ${x.tipo}`, text: x.tipo === 'ban' ? 'FORA DO CHAT' : 'SILENCIADO' }),
         el('span', { class: 'mod-sub', text: [ateTxt(x.ate), x.motivo, x.por ? `por ${x.por}` : null].filter(Boolean).join(' · ') })),
-      el('button', { type: 'button', class: 'btn btn-sec', text: 'Liberar', onclick: async () => {
-        try { await chatRpc('chat_perdoar', { p_user: x.user_id }); toast(`${nick} liberado no chat.`); abrirModeracao(); } catch (e) { erroChat(e); }
-      } }));
+      el('div', { class: 'mod-linha-btns' },
+        el('button', { type: 'button', class: 'btn btn-sec', text: 'Apagar msgs', title: 'Apaga as mensagens dele das últimas 24 h', onclick: async () => {
+          try { await limparMensagens(x.user_id, 24); } catch (e) { erroChat(e); }
+        } }),
+        el('button', { type: 'button', class: 'btn btn-sec', text: 'Liberar', onclick: async () => {
+          try { await chatRpc('chat_perdoar', { p_user: x.user_id }); toast(`${nick} liberado no chat.`); abrirModeracao(); } catch (e) { erroChat(e); }
+        } })));
+  }
+  // travar canal, modo lento e a lista de palavrões
+  function painelCanais(d) {
+    const linhas = CANAIS_CHAT.filter((c) => !c.soSite).map((c) => {
+      const cfg = (d.canais && d.canais[c.id]) || { travado: false, lento: 0 };
+      const salvar = async (novo) => {
+        try {
+          await chatRpc('chat_config_canal', { p_canal: c.id, p_travado: novo.travado, p_lento: novo.lento });
+          chat.cfg.set(c.id, { canal: c.id, ...novo });
+          desenharComporChat(); desenharTopoChat(); desenharCanaisChat();
+          abrirModeracao('canais');
+        } catch (e) { erroChat(e); }
+      };
+      return el('div', { class: 'mod-item mod-canal' },
+        el('div', { class: 'mod-cab' }, svg(c.ico, 16), el('b', { text: `#${c.nome}` })),
+        el('div', { class: 'mod-canal-ops' },
+          el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!cfg.travado), onclick: () => salvar({ travado: !cfg.travado, lento: cfg.lento }) },
+            el('i'), cfg.travado ? 'Travado' : 'Aberto'),
+          el('div', { class: 'abas mod-lento', role: 'radiogroup', 'aria-label': `Modo lento no #${c.nome}` },
+            ...LENTOS.map(([v, t]) => el('button', { type: 'button', class: 'aba', role: 'radio', 'aria-checked': String((cfg.lento || 0) === v), onclick: () => salvar({ travado: cfg.travado, lento: v }), text: v ? t : 'Normal' })))));
+    });
+    const caixa = el('textarea', { id: 'fPalavroes', rows: '4', placeholder: 'uma palavra por linha', 'aria-label': 'Palavrões' });
+    caixa.value = (d.palavroes || []).join('\n');
+    return [
+      el('div', { class: 'mod-rot', text: 'TRAVADO: SÓ ADM FALA · LENTO: TEMPO ENTRE MENSAGENS' }),
+      ...linhas,
+      el('div', { class: 'mod-item' },
+        el('div', { class: 'mod-cab' }, el('b', { text: 'Palavrões' }), el('span', { class: 'mod-sub', text: 'viram *** no chat' })),
+        caixa,
+        el('div', { class: 'linha-btns' }, el('button', { type: 'button', class: 'btn btn-pri', text: 'Salvar lista', onclick: async () => {
+          try {
+            const n = await chatRpc('chat_salvar_palavroes', { p_lista: caixa.value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) });
+            toast(`Lista salva: ${n} ${n === 1 ? 'palavra' : 'palavras'}.`);
+          } catch (e) { erroChat(e); }
+        } }))),
+    ];
+  }
+  // só o Dono: quem é ADM do chat, e expulsar do clã
+  function painelEquipe(lista) {
+    const linha = (x) => {
+      const nick = nickDoPlayer(x.player_id, x.nome);
+      const btn = (txt, cls, fn) => el('button', { type: 'button', class: `btn ${cls}`, text: txt, onclick: fn });
+      return el('div', { class: 'mod-item mod-linha' },
+        avatarChat(nick, 'av-p'),
+        el('div', { class: 'mod-linha-txt' }, el('b', { text: nick }), tagPapel(x.papel) || el('span', { class: 'mod-sub', text: 'Membro' })),
+        x.papel === 'dono' ? null : el('div', { class: 'mod-linha-btns' },
+          btn(x.papel === 'adm' ? 'Tirar ADM' : 'Tornar ADM', 'btn-sec', async () => {
+            try {
+              await chatRpc('dono_promover', { p_user: x.user_id, p_adm: x.papel !== 'adm' });
+              toast(x.papel === 'adm' ? `${nick} não é mais ADM.` : `${nick} agora é ADM do chat.`);
+              await recarregarEquipe();
+              abrirModeracao('equipe');
+            } catch (e) { erroChat(e); }
+          }),
+          btn('Expulsar', 'btn-perigo', () => confirmar('EXPULSAR DO CLÃ?', `${nick} perde a conta no site e vira ex-membro. As partidas continuam no ranking.`, 'Expulsar', async () => {
+            try {
+              await chatRpc('dono_expulsar', { p_user: x.user_id });
+              toast(`${nick} foi expulso do clã.`);
+              if (!DEMO) { await carregar(); render(); }
+              abrirModeracao('equipe');
+            } catch (e) { erroChat(e); }
+          }))));
+    };
+    return [el('div', { class: 'mod-rot', text: 'ADM DO CHAT: SÓ MODERA O CHAT · DONO: O SITE TODO' }), ...lista.map(linha)];
   }
   function itemHistorico(h) {
     const d = h.detalhe || {};
@@ -5360,8 +5630,90 @@ ${frente}
       chat_fixar: 'fixou uma mensagem', chat_desafixar: 'desafixou uma mensagem',
       chat_punir: `${d.tipo === 'ban' ? 'tirou do chat' : 'silenciou'} ${d.quem || '?'} · ${prazo}${d.motivo ? ` · ${d.motivo}` : ''}`,
       chat_perdoar: `liberou ${d.quem || '?'}`, chat_ignorar_denuncia: 'ignorou uma denúncia',
+      chat_limpar: `apagou as mensagens de ${d.quem || '?'}${d.horas ? ` das últimas ${d.horas} h` : ''}`,
+      chat_canal: `#${d.canal}: ${d.travado ? 'travou' : 'abriu'}${d.lento ? ` · lento ${tempoTxt(d.lento)}` : ''}`,
+      chat_palavroes: `mudou a lista de palavrões (${d.qtd || 0})`,
+      dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
+      dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
     }[h.acao] || h.acao;
     return el('li', null, el('b', { text: h.quem || 'ADM' }), ` ${txt}`, el('span', { class: 'mod-sub', text: haQuanto(h.created_at) }));
+  }
+
+  // ---------- notificações no celular e app instalado ----------
+  let pedidoInstalar = null;
+  const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const appInstalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const pushPossivel = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && location.protocol === 'https:';
+  function registrarSW() {
+    if (DEMO || !('serviceWorker' in navigator) || location.protocol !== 'https:') return;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // tocou na notificação com o site já aberto: vai pro chat
+    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.ir) irPara(e.data.ir); });
+  }
+  addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); pedidoInstalar = e; if ($('dlgAvisos').open) desenharAvisos(); });
+  addEventListener('appinstalled', () => { pedidoInstalar = null; toast('App do clã instalado!'); });
+  const b64uBytes = (s) => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+  async function minhaInscricao() {
+    if (!pushPossivel()) return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg && reg.pushManager ? reg.pushManager.getSubscription() : null;
+  }
+  async function abrirAvisos() {
+    $('dlgMais').close();
+    trocar($('avisosCorpo'), el('p', { class: 'mod-sub', text: 'Carregando…' }));
+    $('dlgAvisos').showModal();
+    desenharAvisos();
+  }
+  async function desenharAvisos() {
+    let sub = null, eu = { prefs: { mencao: true, resposta: true, aviso: true, bonde: true }, inscrito: false };
+    try { sub = await minhaInscricao(); eu = await chatRpc('push_eu', { p_endpoint: sub ? sub.endpoint : null }) || eu; } catch (e) {}
+    const ligado = !!sub && eu.inscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    let estado, botao = null;
+    if (!pushPossivel()) estado = ehIOS && !appInstalado() ? 'No iPhone, as notificações só funcionam com o app instalado (veja abaixo).' : 'Este navegador não mostra notificações.';
+    else if (Notification.permission === 'denied') estado = 'Notificações bloqueadas neste aparelho. Libere nas configurações do navegador.';
+    else if (ligado) { estado = 'Ligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-sec', text: 'Desligar', onclick: desligarPush }); }
+    else { estado = 'Desligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-pri', text: 'Ligar notificações', onclick: ligarPush }); }
+    const prefs = { ...eu.prefs };
+    const chave = (k, txt) => el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!prefs[k]), onclick: async (ev) => {
+      prefs[k] = !prefs[k];
+      ev.currentTarget.setAttribute('aria-checked', String(prefs[k]));
+      try { await chatRpc('push_salvar_prefs', { p_mencao: prefs.mencao, p_resposta: prefs.resposta, p_aviso: prefs.aviso, p_bonde: prefs.bonde }); } catch (e) { erroChat(e); }
+    } }, el('i'), txt);
+    let app;
+    if (appInstalado()) app = el('p', { class: 'av-app-ok', text: 'App instalado neste aparelho.' });
+    else if (pedidoInstalar) app = el('button', { type: 'button', class: 'btn btn-pri', text: 'Instalar o app', onclick: async () => { pedidoInstalar.prompt(); await pedidoInstalar.userChoice.catch(() => {}); pedidoInstalar = null; desenharAvisos(); } });
+    else if (ehIOS) app = el('ol', { class: 'av-passos' }, el('li', { text: 'Abra o site no Safari' }), el('li', { text: 'Toque em Compartilhar (quadrado com seta)' }), el('li', { text: 'Toque em "Adicionar à Tela de Início"' }), el('li', { text: 'Abra pelo ícone e ligue as notificações aqui' }));
+    else app = el('p', { class: 'mod-sub', text: 'No menu do navegador: "Instalar app" ou "Adicionar à tela inicial".' });
+    trocar($('avisosCorpo'),
+      el('div', { class: 'mod-rot', text: 'NESTE APARELHO' }),
+      el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
+      el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
+      el('div', { class: 'av-prefs' }, chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
+      el('div', { class: 'mod-rot', text: 'APP DO CLÃ' }),
+      app);
+  }
+  async function ligarPush() {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast('Sem a permissão, o celular não mostra as notificações.', true); desenharAvisos(); return; }
+      const chavePub = await chatRpc('push_chave', {});
+      if (!chavePub) { toast('As notificações ainda não foram ligadas no servidor.', true); return; }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(chavePub) });
+      const j = sub.toJSON();
+      await chatRpc('push_inscrever', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      toast('Notificações ligadas neste aparelho.');
+    } catch (e) { erroChat(e); }
+    desenharAvisos();
+  }
+  async function desligarPush() {
+    try {
+      const sub = await minhaInscricao();
+      if (sub) { await chatRpc('push_sair', { p_endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+      toast('Notificações desligadas neste aparelho.');
+    } catch (e) { erroChat(e); }
+    desenharAvisos();
   }
 
   // ---------- digitando, @menção e emojis ----------
@@ -5406,13 +5758,15 @@ ${frente}
 
   function ligarControlesChat() {
     $('chatBondeBtn').append(svg(ICONE_BONDE, 20));
+    $('chatFotoBtn').append(svg(ICONE_FOTO, 20));
     $('chatEmojiBtn').append(svg(ICONE_SORRISO, 20));
     $('chatEnviar').append(svg(ICONE_ENVIAR, 18));
+    $('chatAvisosBtn').append(svg(ICONE_SINO, 18));
     const campo = $('chatTxt');
-    campo.addEventListener('input', () => { $('chatEnviar').disabled = !campo.value.trim(); sugerirMencao(); if (campo.value) avisarDigitando(); });
+    campo.addEventListener('input', () => { $('chatEnviar').disabled = !campo.value.trim() && !(chat.editando && chat.editando.tipo === 'foto'); sugerirMencao(); if (campo.value) avisarDigitando(); });
     campo.addEventListener('keydown', (e) => {
       const caixa = $('chatMencoes');
-      if (caixa.hidden) { if (e.key === 'Escape' && chat.resp) cancelarRespChat(); return; }
+      if (caixa.hidden) { if (e.key === 'Escape' && (chat.resp || chat.editando)) cancelarRespChat(); return; }
       const bs = [...caixa.querySelectorAll('button')], i = bs.findIndex((b) => b.classList.contains('sel'));
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const k = (i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length; bs.forEach((b, j) => b.classList.toggle('sel', j === k)); }
       else if ((e.key === 'Enter' || e.key === 'Tab') && i >= 0) { e.preventDefault(); bs[i].click(); }
@@ -5425,6 +5779,8 @@ ${frente}
       $('chatEnviar').disabled = false;
       campo.focus();
     }));
+    $('chatFotoBtn').addEventListener('click', () => $('chatFotoArq').click());
+    $('chatFotoArq').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; enviarFoto(f); });
     $('chatBondeBtn').addEventListener('click', abrirBonde);
     $('formBonde').addEventListener('submit', (e) => { e.preventDefault(); chamarBonde(); });
     $('btnCancelarBonde').addEventListener('click', () => $('dlgBonde').close());
@@ -5433,9 +5789,15 @@ ${frente}
     }));
     $('chatJogando').addEventListener('click', alternarJogando);
     $('chatModBtn').addEventListener('click', () => abrirModeracao('denuncias'));
+    $('chatAvisosBtn').addEventListener('click', abrirAvisos);
+    $('maisApp').addEventListener('click', abrirAvisos);
+    $('btnFecharAvisos').addEventListener('click', () => $('dlgAvisos').close());
     $('chatMembrosBtn').addEventListener('click', () => $('chatMembros').classList.toggle('aberto'));
     $('chatNovas').addEventListener('click', () => descerChat(true));
-    $('chatMsgs').addEventListener('scroll', () => { if (pertoDoFimChat()) { $('chatNovas').hidden = true; chat.novas = 0; marcarLidoChat(); } });
+    $('chatMsgs').addEventListener('scroll', () => {
+      if (pertoDoFimChat()) { $('chatNovas').hidden = true; chat.novas = 0; marcarLidoChat(); }
+      if ($('chatMsgs').scrollTop < 80) carregarAntigas();
+    });
     // no celular: tocar na mensagem mostra as ações dela
     $('chatMsgs').addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
@@ -5460,28 +5822,31 @@ ${frente}
       if (!chat.eu || !chatVisivel()) return;
       desenharTopoChat(); desenharMembrosChat(); desenharComporChat();
     }, 30000);
+    registrarSW();
   }
 
   // ---------- demonstração: o chat funciona só nesta tela ----------
-  const demoChat = { id: 0, denuncias: [], punidos: [], historico: [] };
+  const demoChat = { id: 0, denuncias: [], punidos: [], historico: [], adms: new Set(['u-dj1']), palavroes: [], prefs: { mencao: true, resposta: true, aviso: true, bonde: true } };
   function demoChatSemear() {
     limparChat();
     const nomeEu = admin && !euId ? admin.nome : nickDoPlayer(euId, 'Você');
-    chat.eu = { user_id: 'eu', player_id: euId, nome: nomeEu, adm: !!admin, punicao: null };
-    const min = (m) => new Date(Date.now() - m * 60000).toISOString();
+    chat.eu = { user_id: 'eu', player_id: euId, nome: nomeEu, adm: !!admin, dono: !!admin, punicao: null };
     const u = (pid) => 'u-' + pid;
+    chat.equipe = new Map([['u-dj0', 'dono'], ...[...demoChat.adms].map((x) => [x, 'adm'])]);
+    if (admin) chat.equipe.set('eu', 'dono');
+    const min = (m) => new Date(Date.now() - m * 60000).toISOString();
     const msg = (canal, pid, txt, m, extra = {}) => {
       const r = jogPorId.get(pid);
-      const x = { id: ++demoChat.id, canal, user_id: u(pid), player_id: pid, nome: r ? r.nick : '', adm: pid === 'dj0', tipo: 'msg', txt, dados: {}, resp: null, fixada: false, apagada: false, created_at: min(m), ...extra };
+      const x = { id: ++demoChat.id, canal, user_id: u(pid), player_id: pid, nome: r ? r.nick : '', adm: false, tipo: 'msg', txt, dados: {}, resp: null, fixada: false, apagada: false, editada: false, created_at: min(m), ...extra };
       guardarMsg(x);
       return x;
     };
     const massa = (canal, p) => guardarMsg({ id: ++demoChat.id, canal, user_id: null, player_id: null, nome: 'COBR', adm: false, tipo: 'massa', txt: '', dados: { score_id: p.id, player: p.player, mass: p.mass }, resp: null, fixada: false, apagada: false, created_at: p.created_at });
     const recentes = partidas.slice(0, 6).reverse();
     for (const p of recentes) massa('recordes', p);
-    let a = msg('geral', 'dj1', 'boa noite família 🐍', 300);
+    msg('geral', 'dj1', 'boa noite família 🐍', 300);
     msg('geral', 'dj3', 'boa! hoje tem treino pra copa?', 296);
-    a = msg('geral', 'dj0', 'tem sim, 21h no servidor BR. quem for da copa cola', 290);
+    const a = msg('geral', 'dj0', 'tem sim, 21h no servidor BR. quem for da copa cola', 290);
     a.fixada = true;
     mexerReac(a.id, '🔥', u('dj1'), true, false); mexerReac(a.id, '🔥', u('dj3'), true, false); mexerReac(a.id, '👍', u('dj4'), true, false);
     const big = recentes.filter((p) => p.mass >= 100000).pop();
@@ -5491,7 +5856,7 @@ ${frente}
     mexerReac(b.id, '😂', u('dj1'), true, false);
     const bonde = msg('geral', 'dj3', '', 20, { tipo: 'bonde', dados: { srv: 'Servidor BR · 21h', max: 6 } });
     for (const pid of ['dj3', 'dj4', 'dj5']) mexerBonde({ msg_id: bonde.id, user_id: u(pid), player_id: pid, nome: jogPorId.get(pid).nick }, true, false);
-    msg('geral', 'dj5', `@${nickDoPlayer('dj3', '')} guarda vaga pra mim`, 12);
+    msg('geral', 'dj5', `@${nickDoPlayer('dj3', '')} guarda vaga pra mim`, 12, { editada: true });
     msg('bonde', 'dj6', 'alguém pra jogar de madrugada?', 50);
     msg('avisos', 'dj0', 'Copa COBR no sábado às 21h. Cada um com a tag [COBR] no nick.', 900);
     for (const pid of ['dj3', 'dj4', 'dj5']) chat.status.set(u(pid), { user_id: u(pid), player_id: pid, nome: jogPorId.get(pid).nick, jogando_ate: new Date(Date.now() + 70 * 60000).toISOString() });
@@ -5504,21 +5869,25 @@ ${frente}
     const m = a && a.p_msg ? chat.porId.get(a.p_msg) : null;
     const punicao = (u) => demoChat.punidos.find((p) => p.user_id === u && (!p.ate || Date.parse(p.ate) > Date.now()));
     const log = (acao, detalhe) => demoChat.historico.unshift({ acao, detalhe, created_at: agora, quem: eu.nome });
+    const nomeDaConta = (u) => (u === 'eu' ? meuNick() : nickDoPlayer(String(u).replace('u-', ''), '?'));
     switch (nome) {
       case 'chat_enviar': {
-        const x = { id: ++demoChat.id, canal: a.p_canal, user_id: eu.user_id, player_id: eu.player_id, nome: meuNick(), adm: eu.adm, tipo: a.p_tipo || 'msg', txt: a.p_txt || '', dados: a.p_dados || {}, resp: a.p_resp || null, fixada: false, apagada: false, created_at: agora };
+        const x = { id: ++demoChat.id, canal: a.p_canal, user_id: eu.user_id, player_id: eu.player_id, nome: meuNick(), adm: eu.adm, tipo: a.p_tipo || 'msg', txt: a.p_txt || '', dados: a.p_dados || {}, resp: a.p_resp || null, fixada: false, apagada: false, editada: false, created_at: agora };
         if (x.tipo === 'bonde') chat.bonde.set(x.id, [{ user_id: eu.user_id, player_id: eu.player_id, nome: meuNick() }]);
         chegouMsg(x);
         return x.id;
       }
+      case 'chat_editar': return a.p_txt;
       case 'chat_reagir': { const s = chat.reac.get(a.p_msg)?.get(a.p_emoji); return !(s && s.has(eu.user_id)); }
       case 'chat_bonde_entrar': return 'ok';
       case 'chat_jogando': return a.p_ligar ? new Date(Date.now() + 90 * 60000).toISOString() : null;
       case 'chat_denunciar': demoChat.denuncias.push({ msg_id: a.p_msg, user_id: eu.user_id }); return null;
       case 'chat_apagar': if (m && m.user_id !== eu.user_id) log('chat_apagar', { autor: m.nome, texto: m.txt }); demoChat.denuncias = demoChat.denuncias.filter((d) => d.msg_id !== a.p_msg); return null;
+      case 'chat_limpar': log('chat_limpar', { quem: nomeDaConta(a.p_user), horas: a.p_horas }); return { qtd: [...chat.porId.values()].filter((x) => x.user_id === a.p_user && !x.apagada).length, fotos: [] };
       case 'chat_fixar': log(a.p_fixar ? 'chat_fixar' : 'chat_desafixar', {}); return null;
       case 'chat_punir': {
-        const quem = (chat.msgs.geral.concat(...Object.values(chat.msgs)).find((x) => x.user_id === a.p_user) || {}).nome || '?';
+        if (chat.equipe.has(a.p_user)) return 'adm';
+        const quem = nomeDaConta(a.p_user);
         demoChat.punidos = demoChat.punidos.filter((p) => p.user_id !== a.p_user);
         demoChat.punidos.unshift({ user_id: a.p_user, nome: quem, player_id: a.p_user.replace('u-', ''), tipo: a.p_tipo, ate: a.p_minutos ? new Date(Date.now() + a.p_minutos * 60000).toISOString() : null, motivo: a.p_motivo, por: eu.nome, created_at: agora });
         log('chat_punir', { quem, tipo: a.p_tipo, minutos: a.p_minutos, motivo: a.p_motivo });
@@ -5526,19 +5895,29 @@ ${frente}
       }
       case 'chat_perdoar': { const p = demoChat.punidos.find((x) => x.user_id === a.p_user); demoChat.punidos = demoChat.punidos.filter((x) => x.user_id !== a.p_user); log('chat_perdoar', { quem: p && p.nome }); return null; }
       case 'chat_ignorar_denuncia': demoChat.denuncias = demoChat.denuncias.filter((d) => d.msg_id !== a.p_msg); log('chat_ignorar_denuncia', {}); return null;
+      case 'chat_config_canal': log('chat_canal', { canal: a.p_canal, travado: a.p_travado, lento: a.p_lento }); return null;
+      case 'chat_salvar_palavroes': demoChat.palavroes = [...new Set(a.p_lista.map((x) => x.toLowerCase()))]; log('chat_palavroes', { qtd: demoChat.palavroes.length }); return demoChat.palavroes.length;
       case 'chat_moderacao': {
         const grupos = new Map();
         for (const d of demoChat.denuncias) {
           const x = chat.porId.get(d.msg_id);
           if (!x) continue;
           const g = grupos.get(d.msg_id) || { msg_id: x.id, canal: x.canal, user_id: x.user_id, nome: x.nome, txt: x.txt, tipo: x.tipo, created_at: x.created_at, qtd: 0, quem: [] };
-          g.qtd++; g.quem.push({ quem: d.user_id === eu.user_id ? meuNick() : nickDoPlayer(d.user_id.replace('u-', ''), 'membro'), motivo: '' });
+          g.qtd++; g.quem.push({ quem: nomeDaConta(d.user_id), motivo: '' });
           grupos.set(d.msg_id, g);
         }
-        return { denuncias: [...grupos.values()], punidos: demoChat.punidos.filter((p) => punicao(p.user_id)), historico: demoChat.historico };
+        return { denuncias: [...grupos.values()], punidos: demoChat.punidos.filter((p) => punicao(p.user_id)), historico: demoChat.historico,
+          canais: Object.fromEntries([...chat.cfg].map(([k, v]) => [k, v])), palavroes: demoChat.palavroes };
       }
+      case 'dono_equipe': return jogadores.filter((r) => r.ativo && r.id !== 'dj7').map((r) => ({ user_id: u(r.id), player_id: r.id, nome: r.nick, papel: chat.equipe.get(u(r.id)) || 'membro' }));
+      case 'dono_promover': if (a.p_adm) { demoChat.adms.add(a.p_user); chat.equipe.set(a.p_user, 'adm'); } else { demoChat.adms.delete(a.p_user); chat.equipe.delete(a.p_user); } log(a.p_adm ? 'dono_promover' : 'dono_rebaixar', { quem: nomeDaConta(a.p_user) }); return 'ok';
+      case 'dono_expulsar': { const r = jogPorId.get(a.p_user.replace('u-', '')); if (r) r.ativo = false; log('dono_expulsar', { quem: nomeDaConta(a.p_user) }); return 'ok'; }
+      case 'push_eu': return { prefs: demoChat.prefs, inscrito: false };
+      case 'push_salvar_prefs': demoChat.prefs = { mencao: a.p_mencao, resposta: a.p_resposta, aviso: a.p_aviso, bonde: a.p_bonde }; return null;
+      case 'push_chave': return null;
     }
     return null;
+    function u(pid) { return 'u-' + pid; }
   }
 
   // regras do chat (aba "Chat" do Como funciona)
@@ -5549,19 +5928,27 @@ ${frente}
         linhaRegra('#bonde', 'chamada pra jogar junto'),
         linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
         linhaRegra('#avisos', 'só ADM escreve'),
-        linhaRegra('Massa de 100k+', 'aparece também no #geral')),
+        linhaRegra('Massa de 100k+', 'aparece também no #geral'),
+        linhaRegra('Editar', 'até 15 min depois de mandar')),
       tituloRegra('STATUS'),
       el('ul', { class: 'rg-lista' },
         linhaRegra('Online', 'com o site aberto'),
         linhaRegra('Jogando', 'tocou em "Tô jogando" ou entrou num bonde'),
         linhaRegra('Jogando some', 'sozinho depois de 90 min'),
         linhaRegra('Bonde', 'fecha 3 h depois de criado')),
+      tituloRegra('QUEM MANDA'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Dono', 'o site todo e escolhe os ADMs'),
+        linhaRegra('ADM', 'só o chat'),
+        linhaRegra('ADM e Dono', 'não podem ser punidos')),
       tituloRegra('MODERAÇÃO'),
       el('ul', { class: 'rg-lista' },
-        linhaRegra('Denunciar', 'manda a mensagem pro ADM olhar'),
+        linhaRegra('Denunciar', 'manda a mensagem pros ADMs'),
         linhaRegra('Silenciado', 'lê, mas não escreve nem reage'),
         linhaRegra('Fora do chat', 'não lê nem escreve'),
-        linhaRegra('Apagar', 'a sua mensagem, ou qualquer uma pelo ADM'),
+        linhaRegra('Canal travado', 'só ADM escreve'),
+        linhaRegra('Modo lento', 'espera entre mensagens'),
+        linhaRegra('Palavrão da lista', 'vira ***'),
         linhaRegra('Limite', '5 mensagens a cada 10 segundos')),
     ];
   }

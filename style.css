@@ -2219,3 +2219,45 @@ body[data-pag="chat"] .rodape { display: none; }
 @media (max-width: 420px) {
   .chat-jogando { padding: 0 10px; font-size: 11px; }
 }
+
+/* fotos, edição, canal travado, equipe e notificações */
+.ch-foto { display: block; width: min(320px, 100%); max-height: 420px; margin-top: 3px; padding: 0; border: 1px solid var(--linha); border-radius: 12px; overflow: hidden; background: var(--painel); cursor: zoom-in; }
+.ch-foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ch-foto img:not([src]) { visibility: hidden; }
+.ch-foto.sem { cursor: default; background: repeating-linear-gradient(45deg, var(--painel), var(--painel) 10px, var(--painel-2) 10px, var(--painel-2) 20px); }
+.ch-editada { margin-left: 6px; font-size: 11px; color: var(--texto-3); font-style: italic; }
+.ch-inicio { margin: 8px auto 4px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); text-transform: uppercase; }
+.ch-estado { margin-left: 10px; padding: 2px 8px; border-radius: 6px; vertical-align: 5px; font-family: var(--f-texto); font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--laranja-claro); border: 1px solid var(--linha-forte); }
+.ch-tag-dono { color: #3A1C00; background: linear-gradient(100deg, #FFB800, #FFF2A8 45%, #F29A00); background-size: 220% 100%; animation: ouroCorre 3s linear infinite; }
+#chatAvisosBtn { width: 36px; }
+.ch-check { display: flex; align-items: center; gap: 10px; font-size: 14px !important; letter-spacing: 0 !important; font-weight: 500 !important; cursor: pointer; }
+.ch-check input { width: 20px; height: 20px; accent-color: var(--laranja); }
+.ch-switch {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0; border: 0; background: none;
+  color: var(--texto); font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.ch-switch i { position: relative; flex: 0 0 auto; width: 40px; height: 22px; border-radius: 999px; background: var(--linha-forte); transition: background .15s; }
+.ch-switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--texto-2); transition: transform .15s, background .15s; }
+.ch-switch[aria-checked="true"] i { background: var(--laranja); }
+.ch-switch[aria-checked="true"] i::after { transform: translateX(18px); background: var(--tinta-btn); }
+.mod-abas { overflow-x: auto; scrollbar-width: none; }
+.mod-abas::-webkit-scrollbar { display: none; }
+.mod-abas .aba { flex: 1 0 auto; padding: 0 12px; }
+.mod-rot { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); padding-top: 4px; }
+.mod-canal-ops { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.mod-lento { flex-wrap: wrap; padding: 3px; }
+.mod-lento .aba { min-height: 34px; padding: 0 10px; font-size: 13px; }
+.mod-linha-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.mod-linha-btns .btn { min-height: 38px; padding: 0 12px; font-size: 13px; }
+.mod-item textarea { width: 100%; min-height: 96px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--fundo); color: var(--texto); font: inherit; font-size: 14px; resize: vertical; }
+.av-estado { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; }
+.av-estado > span:nth-child(2) { flex: 1 1 180px; color: var(--texto-2); }
+.av-estado .ch-bola { width: 10px; height: 10px; border-radius: 50%; background: var(--texto-3); flex: 0 0 auto; }
+.av-estado .ch-bola.on { background: var(--verde); box-shadow: 0 0 10px rgba(61, 220, 132, .6); }
+.av-prefs { display: flex; flex-direction: column; gap: 2px; padding: 4px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); }
+.av-passos { margin: 0; padding: 12px 14px 12px 32px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; color: var(--texto-2); display: flex; flex-direction: column; gap: 6px; }
+.av-app-ok { margin: 0; font-size: 14px; color: var(--verde); font-weight: 600; }
+@media (max-width: 520px) {
+  .mod-linha { flex-wrap: wrap; }
+  .mod-linha-btns { width: 100%; }
+}
