@@ -4748,7 +4748,7 @@ ${frente}
       for (const s of rst.data || []) chat.status.set(s.user_id, s);
       for (const e of req.data || []) chat.equipe.set(e.user_id, e.papel);
       for (const c of rcf.data || []) chat.cfg.set(c.canal, c);
-      if (admChat()) await contarDenuncias(false);
+      if (admChat()) { await contarDenuncias(false); faxinaSozinha(); }
     }
     depoisDeCarregarChat();
   }
@@ -5058,6 +5058,8 @@ ${frente}
   }
   function cartaoFoto(m) {
     const d = m.dados || {};
+    // a faxina tira o arquivo depois de 30 dias
+    if (d.expirada || !d.path) return [el('div', { class: 'ch-foto sem ch-foto-exp' }, svg(ICONE_FOTO, 18), 'foto expirada'), m.txt ? textoChat(m.txt, m.editada) : null];
     const img = el('img', { alt: m.txt ? `Foto: ${m.txt}` : 'Foto', decoding: 'async' });
     const box = el('button', { type: 'button', class: 'ch-foto', 'aria-label': 'Ver foto grande', style: `aspect-ratio:${d.w || 4} / ${d.h || 3}`,
       onclick: () => { if (img.src) abrirPrintLivre(img.src, `${nickMsg(m)} · ${horaChat(m.created_at)}${m.txt ? ' · ' + m.txt : ''}`); } }, img);
@@ -5492,6 +5494,33 @@ ${frente}
     }
     if (avisar) toast(`${(r && r.qtd) || 0} mensagens apagadas.`);
   }
+  // faxina: foto vence com 30 dias e mensagem com 90 (#avisos e fixadas ficam). O banco diz quais
+  // fotos venceram, este aparelho (de ADM) apaga os arquivos e o banco marca e apaga as linhas.
+  const FAXINA_CADA = 6 * 3600000;
+  async function faxinaChat(manual = false) {
+    const tot = { fotos: 0, msgs: 0 };
+    for (let volta = 0; volta < 10; volta++) {
+      const lista = (await chatRpc('chat_faxina_fotos', {})) || [];
+      if (lista.length && !DEMO) {
+        const r = await sb.storage.from('chat').remove(lista);
+        if (r.error) throw new Error(r.error.message);
+      }
+      const r = await chatRpc('chat_faxina', { p_fotos: lista, p_manual: manual });
+      tot.fotos += r.fotos; tot.msgs += r.msgs;
+      if (lista.length < 200) break;
+    }
+    return tot;
+  }
+  // sozinha: quando um ADM abre o chat, no máximo a cada 6 h por aparelho
+  function faxinaSozinha() {
+    if (DEMO || !admChat()) return;
+    const k = 'chat_faxina_' + euChat();
+    try {
+      if (Date.now() - Number(localStorage.getItem(k) || 0) < FAXINA_CADA) return;
+      localStorage.setItem(k, String(Date.now()));
+    } catch (e) {}
+    faxinaChat().catch((e) => console.warn('faxina:', e.message));
+  }
   let abaMod = 'denuncias';
   async function abrirModeracao(aba = abaMod) {
     abaMod = aba === 'equipe' && !donoChat() ? 'denuncias' : aba;
@@ -5592,7 +5621,30 @@ ${frente}
             toast(`Lista salva: ${n} ${n === 1 ? 'palavra' : 'palavras'}.`);
           } catch (e) { erroChat(e); }
         } }))),
+      donoChat() ? painelFaxina(d.faxina) : null,
     ];
+  }
+  // só o Dono: quanto a faxina vai levar, e o botão pra fazer na hora
+  function painelFaxina(fx) {
+    const f = fx || { fotos: 0, msgs: 0 };
+    const num = (n, um, varios, rot) => el('div', { class: 'mod-fx-num' }, el('b', { text: fmt(n) }), el('span', { text: `${n === 1 ? um : varios} ${rot}` }));
+    const bt = el('button', { type: 'button', class: 'btn btn-perigo', text: 'Limpar agora', disabled: !fx });
+    bt.addEventListener('click', () => confirmar('LIMPAR O CHAT AGORA?',
+      `Some ${f.fotos === 1 ? '1 foto' : `${fmt(f.fotos)} fotos`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #avisos e fixadas ficam. Não dá pra desfazer.`,
+      'Limpar', async () => {
+        bt.disabled = true;
+        try {
+          const r = await faxinaChat(true);
+          toast(r.fotos || r.msgs ? `Faxina feita: ${r.fotos} ${r.fotos === 1 ? 'foto' : 'fotos'} e ${r.msgs} ${r.msgs === 1 ? 'mensagem' : 'mensagens'}.` : 'Nada pra limpar. Chat em dia!');
+        } catch (e) { erroChat(e); }
+        abrirModeracao('canais');
+      }));
+    return el('div', { class: 'mod-item' },
+      el('div', { class: 'mod-cab' }, svg(ICONE_LIXO, 16), el('b', { text: 'Faxina' }),
+        el('span', { class: 'mod-sub', text: f.ultima ? `última ${haQuanto(f.ultima)}` : 'sozinha quando um ADM abre o chat' })),
+      el('div', { class: 'mod-fx' }, num(f.fotos, 'foto', 'fotos', '+30 dias'), num(f.msgs, 'mensagem', 'mensagens', '+90 dias')),
+      el('div', { class: 'mod-sub', text: '#avisos e fixadas nunca somem' }),
+      el('div', { class: 'linha-btns' }, bt));
   }
   // só o Dono: quem é ADM do chat, e expulsar do clã
   function painelEquipe(lista) {
@@ -5633,6 +5685,7 @@ ${frente}
       chat_limpar: `apagou as mensagens de ${d.quem || '?'}${d.horas ? ` das últimas ${d.horas} h` : ''}`,
       chat_canal: `#${d.canal}: ${d.travado ? 'travou' : 'abriu'}${d.lento ? ` · lento ${tempoTxt(d.lento)}` : ''}`,
       chat_palavroes: `mudou a lista de palavrões (${d.qtd || 0})`,
+      chat_faxina: `${d.manual ? 'fez a faxina' : 'faxina automática'}: ${d.fotos || 0} ${d.fotos === 1 ? 'foto' : 'fotos'} e ${d.msgs || 0} ${d.msgs === 1 ? 'mensagem' : 'mensagens'}`,
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
       dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
     }[h.acao] || h.acao;
@@ -5844,6 +5897,10 @@ ${frente}
     const massa = (canal, p) => guardarMsg({ id: ++demoChat.id, canal, user_id: null, player_id: null, nome: 'COBR', adm: false, tipo: 'massa', txt: '', dados: { score_id: p.id, player: p.player, mass: p.mass }, resp: null, fixada: false, apagada: false, created_at: p.created_at });
     const recentes = partidas.slice(0, 6).reverse();
     for (const p of recentes) massa('recordes', p);
+    // pra faxina ter o que limpar: uma mensagem de 100 dias, uma foto de 40 e uma que já expirou
+    msg('bonde', 'dj2', 'bora fechar sala de 4?', 100 * 1440);
+    msg('bonde', 'dj6', 'print da massa de ontem', 40 * 1440, { tipo: 'foto', dados: { path: 'demo/velha.webp', w: 4, h: 3 } });
+    msg('bonde', 'dj1', '', 35 * 1440, { tipo: 'foto', dados: { w: 4, h: 3, expirada: true } });
     msg('geral', 'dj1', 'boa noite família 🐍', 300);
     msg('geral', 'dj3', 'boa! hoje tem treino pra copa?', 296);
     const a = msg('geral', 'dj0', 'tem sim, 21h no servidor BR. quem for da copa cola', 290);
@@ -5870,7 +5927,21 @@ ${frente}
     const punicao = (u) => demoChat.punidos.find((p) => p.user_id === u && (!p.ate || Date.parse(p.ate) > Date.now()));
     const log = (acao, detalhe) => demoChat.historico.unshift({ acao, detalhe, created_at: agora, quem: eu.nome });
     const nomeDaConta = (u) => (u === 'eu' ? meuNick() : nickDoPlayer(String(u).replace('u-', ''), '?'));
+    // as mesmas regras de chat_foto_vencida e chat_msg_vencida
+    const velha = (x, dias) => !x.fixada && x.canal !== 'avisos' && Date.now() - Date.parse(x.created_at) > dias * 86400000;
+    const fotoVencida = (x) => x.tipo === 'foto' && !!(x.dados && x.dados.path) && velha(x, 30);
+    const msgVencida = (x) => !(x.dados && x.dados.path) && velha(x, 90);
     switch (nome) {
+      case 'chat_faxina_fotos': return [...chat.porId.values()].filter(fotoVencida).map((x) => x.dados.path);
+      case 'chat_faxina': {
+        const fotos = [...chat.porId.values()].filter((x) => fotoVencida(x) && a.p_fotos.includes(x.dados.path));
+        for (const x of fotos) { const { path, ...resto } = x.dados; atualizarMsg({ id: x.id, dados: { ...resto, expirada: true } }); }
+        const msgs = [...chat.porId.values()].filter(msgVencida);
+        for (const x of msgs) sumiuMsg(x.id);
+        const r = { fotos: fotos.length, msgs: msgs.length };
+        if (a.p_manual || r.fotos + r.msgs) { log('chat_faxina', { ...r, manual: a.p_manual }); demoChat.faxina = agora; }
+        return r;
+      }
       case 'chat_enviar': {
         const x = { id: ++demoChat.id, canal: a.p_canal, user_id: eu.user_id, player_id: eu.player_id, nome: meuNick(), adm: eu.adm, tipo: a.p_tipo || 'msg', txt: a.p_txt || '', dados: a.p_dados || {}, resp: a.p_resp || null, fixada: false, apagada: false, editada: false, created_at: agora };
         if (x.tipo === 'bonde') chat.bonde.set(x.id, [{ user_id: eu.user_id, player_id: eu.player_id, nome: meuNick() }]);
@@ -5907,7 +5978,8 @@ ${frente}
           grupos.set(d.msg_id, g);
         }
         return { denuncias: [...grupos.values()], punidos: demoChat.punidos.filter((p) => punicao(p.user_id)), historico: demoChat.historico,
-          canais: Object.fromEntries([...chat.cfg].map(([k, v]) => [k, v])), palavroes: demoChat.palavroes };
+          canais: Object.fromEntries([...chat.cfg].map(([k, v]) => [k, v])), palavroes: demoChat.palavroes,
+          faxina: { fotos: [...chat.porId.values()].filter((x) => fotoVencida(x) && !x.apagada).length, msgs: [...chat.porId.values()].filter(msgVencida).length, ultima: demoChat.faxina || null } };
       }
       case 'dono_equipe': return jogadores.filter((r) => r.ativo && r.id !== 'dj7').map((r) => ({ user_id: u(r.id), player_id: r.id, nome: r.nick, papel: chat.equipe.get(u(r.id)) || 'membro' }));
       case 'dono_promover': if (a.p_adm) { demoChat.adms.add(a.p_user); chat.equipe.set(a.p_user, 'adm'); } else { demoChat.adms.delete(a.p_user); chat.equipe.delete(a.p_user); } log(a.p_adm ? 'dono_promover' : 'dono_rebaixar', { quem: nomeDaConta(a.p_user) }); return 'ok';
@@ -5936,6 +6008,11 @@ ${frente}
         linhaRegra('Jogando', 'tocou em "Tô jogando" ou entrou num bonde'),
         linhaRegra('Jogando some', 'sozinho depois de 90 min'),
         linhaRegra('Bonde', 'fecha 3 h depois de criado')),
+      tituloRegra('FAXINA'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Foto', 'some depois de 30 dias'),
+        linhaRegra('Mensagem', 'some depois de 90 dias'),
+        linhaRegra('#avisos e fixadas', 'nunca somem')),
       tituloRegra('QUEM MANDA'),
       el('ul', { class: 'rg-lista' },
         linhaRegra('Dono', 'o site todo e escolhe os ADMs'),

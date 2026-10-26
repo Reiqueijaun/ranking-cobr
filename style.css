@@ -2225,6 +2225,7 @@ body[data-pag="chat"] .rodape { display: none; }
 .ch-foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ch-foto img:not([src]) { visibility: hidden; }
 .ch-foto.sem { cursor: default; background: repeating-linear-gradient(45deg, var(--painel), var(--painel) 10px, var(--painel-2) 10px, var(--painel-2) 20px); }
+.ch-foto-exp { display: inline-flex; align-items: center; gap: 8px; width: auto; padding: 10px 14px; font-size: 13px; font-style: italic; color: var(--texto-3); }
 .ch-editada { margin-left: 6px; font-size: 11px; color: var(--texto-3); font-style: italic; }
 .ch-inicio { margin: 8px auto 4px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); text-transform: uppercase; }
 .ch-estado { margin-left: 10px; padding: 2px 8px; border-radius: 6px; vertical-align: 5px; font-family: var(--f-texto); font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--laranja-claro); border: 1px solid var(--linha-forte); }
@@ -2250,6 +2251,10 @@ body[data-pag="chat"] .rodape { display: none; }
 .mod-linha-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .mod-linha-btns .btn { min-height: 38px; padding: 0 12px; font-size: 13px; }
 .mod-item textarea { width: 100%; min-height: 96px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--fundo); color: var(--texto); font: inherit; font-size: 14px; resize: vertical; }
+.mod-fx { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mod-fx-num { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--fundo); border: 1px solid var(--linha); }
+.mod-fx-num b { font-family: var(--f-titulo); font-size: 22px; line-height: 1.1; color: var(--texto); }
+.mod-fx-num span { font-size: 12px; color: var(--texto-3); }
 .av-estado { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; }
 .av-estado > span:nth-child(2) { flex: 1 1 180px; color: var(--texto-2); }
 .av-estado .ch-bola { width: 10px; height: 10px; border-radius: 50%; background: var(--texto-3); flex: 0 0 auto; }

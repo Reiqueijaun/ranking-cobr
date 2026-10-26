@@ -1303,7 +1303,63 @@ begin
     'historico', coalesce((select jsonb_agg(h order by h.created_at desc) from (
       select l.acao, l.detalhe, l.created_at, coalesce(a.nome, chat_nome(l.user_id), l.email) as quem
       from admin_log l left join admins a on a.user_id = l.user_id
-      where l.acao like 'chat_%' or l.acao like 'dono_%' order by l.created_at desc limit 50) h), '[]'::jsonb));
+      where l.acao like 'chat_%' or l.acao like 'dono_%' order by l.created_at desc limit 50) h), '[]'::jsonb),
+    'faxina', jsonb_build_object(
+      'fotos', (select count(*) from chat_mensagens m where chat_foto_vencida(m) and not m.apagada),
+      'msgs', (select count(*) from chat_mensagens m where chat_msg_vencida(m)),
+      'ultima', (select max(created_at) from admin_log where acao = 'chat_faxina')));
+end;
+$$;
+
+-- ---------- faxina: foto vence com 30 dias, mensagem com 90. #avisos e fixadas nunca vencem ----------
+-- O banco não apaga arquivo do Storage, então são 3 passos, feitos pelo site quando um ADM abre o chat
+-- (ou o Dono aperta "Limpar agora"): 1) chat_faxina_fotos() diz quais arquivos venceram,
+-- 2) o ADM apaga esses arquivos (a regra "dono ou adm apaga foto do chat" deixa),
+-- 3) chat_faxina() marca essas fotos como expiradas e apaga as mensagens vencidas.
+create or replace function public.chat_foto_vencida(m public.chat_mensagens)
+returns boolean
+language sql stable set search_path = public
+as $$
+  select m.tipo = 'foto' and m.dados ? 'path' and not m.fixada and m.canal <> 'avisos' and m.created_at < now() - interval '30 days';
+$$;
+-- (foto que ainda tem arquivo fica até o arquivo sair, pra nunca sobrar arquivo perdido no Storage)
+create or replace function public.chat_msg_vencida(m public.chat_mensagens)
+returns boolean
+language sql stable set search_path = public
+as $$
+  select not m.fixada and m.canal <> 'avisos' and not m.dados ? 'path' and m.created_at < now() - interval '90 days';
+$$;
+
+-- arquivos de foto vencidos (inclui foto apagada cujo arquivo pode ter ficado), de 200 em 200
+create or replace function public.chat_faxina_fotos()
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not is_chat_adm() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  return coalesce((select jsonb_agg(x.path) from (
+    select m.dados ->> 'path' as path from chat_mensagens m where chat_foto_vencida(m) order by m.id limit 200) x), '[]'::jsonb);
+end;
+$$;
+
+-- p_fotos: os arquivos que o site já apagou. p_manual: o Dono apertou "Limpar agora". Devolve { fotos, msgs }
+create or replace function public.chat_faxina(p_fotos text[] default '{}', p_manual boolean default false)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare v_fotos integer; v_msgs integer;
+begin
+  if not is_chat_adm() or (p_manual and not is_admin()) then raise exception 'acesso negado' using errcode = '42501'; end if;
+  update chat_mensagens m set dados = (m.dados - 'path') || '{"expirada": true}'::jsonb
+  where chat_foto_vencida(m) and m.dados ->> 'path' = any(coalesce(p_fotos, '{}'));
+  get diagnostics v_fotos = row_count;
+  delete from chat_mensagens m where chat_msg_vencida(m);
+  get diagnostics v_msgs = row_count;
+  if p_manual or v_fotos + v_msgs > 0 then
+    insert into admin_log (user_id, email, acao, detalhe)
+    values (auth.uid(), auth.jwt() ->> 'email', 'chat_faxina', jsonb_build_object('fotos', v_fotos, 'msgs', v_msgs, 'manual', p_manual));
+  end if;
+  return jsonb_build_object('fotos', v_fotos, 'msgs', v_msgs);
 end;
 $$;
 
@@ -1572,6 +1628,8 @@ revoke all on function public.exigir_mod(text, jsonb) from public, anon, authent
 revoke all on function public.chat_nome(uuid) from public, anon, authenticated;
 revoke all on function public.chat_filtrar(text) from public, anon, authenticated;
 revoke all on function public.chat_protegido(uuid) from public, anon, authenticated;
+revoke all on function public.chat_foto_vencida(public.chat_mensagens) from public, anon, authenticated;
+revoke all on function public.chat_msg_vencida(public.chat_mensagens) from public, anon, authenticated;
 do $$
 declare f text;
 begin
@@ -1581,6 +1639,7 @@ begin
     'chat_bonde_entrar(bigint, boolean)', 'chat_jogando(boolean)', 'chat_denunciar(bigint, text)', 'chat_apagar(bigint)',
     'chat_limpar(uuid, integer)', 'chat_fixar(bigint, boolean)', 'chat_punir(uuid, text, integer, text)', 'chat_perdoar(uuid)',
     'chat_ignorar_denuncia(bigint)', 'chat_config_canal(text, boolean, integer)', 'chat_salvar_palavroes(text[])', 'chat_moderacao()',
+    'chat_faxina_fotos()', 'chat_faxina(text[], boolean)',
     'dono_equipe()', 'dono_promover(uuid, boolean)', 'dono_expulsar(uuid)',
     'push_chave()', 'push_inscrever(text, text, text)', 'push_sair(text)', 'push_eu(text)', 'push_salvar_prefs(boolean, boolean, boolean, boolean)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
