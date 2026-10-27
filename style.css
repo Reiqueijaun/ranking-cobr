@@ -2503,3 +2503,124 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .rg-virada li { flex-wrap: wrap; }
   #tabela th:not(:first-child):not(:last-child), #tabela td:not(:first-child):not(:last-child) { padding-inline: 5px; }
 }
+
+/* ============ partidas: o feed do COBR BOT (sem horário, só o dia) ============ */
+.bot-topo { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; max-width: 760px; margin-bottom: 8px; padding: 16px 18px; border-radius: 18px; border: 1px solid var(--linha-forte);
+  background: linear-gradient(rgba(255, 122, 26, .045) 1px, transparent 1px) 0 0 / 100% 6px, linear-gradient(135deg, #1D120B, #0F0A07 70%); }
+.bot-radar { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 35%, rgba(255, 179, 71, .10) 50%, transparent 65%); transform: translateX(-100%); }
+.bot-topo.on .bot-radar { animation: botVarre 4.5s ease-in-out infinite; }
+@keyframes botVarre { 0%, 30% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.bot-id { position: relative; display: flex; align-items: center; gap: 14px; min-width: 0; }
+.bot-id-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bot-id .bot-cab b { font-size: 20px; }
+.bot-av-wrap { position: relative; display: inline-flex; }
+.bot-luz { position: absolute; left: -2px; top: -2px; width: 14px; height: 14px; border-radius: 50%; background: var(--texto-3); border: 3px solid #170F0A; }
+.bot-topo.on .bot-luz { background: var(--verde); animation: pulso 2s infinite; }
+.bot-status { font-size: 12.5px; font-weight: 600; color: var(--texto-3); }
+.bot-topo.on .bot-status { color: var(--verde); }
+.bot-status .so-on, .bot-topo.on .bot-status .so-off { display: none; }
+.bot-topo.on .bot-status .so-on { display: inline; }
+.bot-stats { position: relative; display: grid; grid-template-columns: repeat(4, auto); gap: 4px 22px; }
+.bot-st { display: flex; flex-direction: column; }
+.bot-st b { font-family: var(--f-titulo); font-size: 28px; font-weight: 600; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; }
+.bot-st:first-child b { color: var(--laranja); }
+.bot-st small { font-size: 10.5px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+
+.bot-av { position: relative; width: 36px; height: 36px; flex: 0 0 auto; display: inline-flex; }
+.bot-av img { width: 100%; height: 100%; border-radius: 50%; display: block; box-shadow: 0 0 12px rgba(255, 122, 26, .4); }
+.bot-av-ico { position: absolute; right: -4px; bottom: -3px; width: 17px; height: 17px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--laranja); color: var(--tinta-btn); border: 2px solid var(--fundo); }
+.bot-av-g { width: 56px; height: 56px; }
+.bot-av-g img { box-shadow: 0 0 22px rgba(255, 122, 26, .55); }
+.bot-av-g .bot-av-ico { width: 22px; height: 22px; border-color: #170F0A; }
+.bot-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.bot-cab b { font-size: 15px; color: var(--laranja-claro); letter-spacing: .5px; }
+.bot-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px; border-radius: 5px; background: var(--laranja); color: var(--tinta-btn); font-size: 10.5px; font-weight: 800; letter-spacing: 1px; }
+.bot-n { font-size: 11.5px; font-weight: 600; letter-spacing: 1px; color: var(--texto-3); font-variant-numeric: tabular-nums; }
+
+.bot-feed { max-width: 760px; margin-bottom: 16px; }
+.bot-feed > .vazio { margin-top: 16px; }
+.bot-dia { margin: 18px 4px 6px; }
+.bot-post { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 10px 8px; border-radius: 14px; }
+.bot-post:hover { background: rgba(255, 255, 255, .018); }
+.bot-corpo { min-width: 0; }
+.bot-post > .apagar { width: 38px; height: 38px; }
+.bot-txt { margin-top: 2px; font-size: 14.5px; color: var(--texto-2); overflow-wrap: anywhere; }
+.bot-txt b { color: var(--texto); }
+.bot-txt svg { vertical-align: -2px; margin-right: 6px; color: var(--texto-3); }
+.bot-txt.cem svg, .bot-txt.meu svg { color: var(--laranja); }
+.bot-txt.ouro svg { color: #FFD84D; }
+.bot-txt.sobe svg { color: var(--verde); }
+.bot-card { --pc: var(--laranja); position: relative; overflow: hidden; max-width: 520px; margin-top: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--linha-forte); border-left: 3px solid var(--pc); background: linear-gradient(135deg, #1A110B, #110B08); }
+.bot-card.cem { background: linear-gradient(135deg, #2A160A, #140C07); }
+.bot-card.cem::after { content: ""; position: absolute; right: -50px; top: -50px; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 122, 26, .28), transparent 65%); pointer-events: none; }
+.bot-card-in { display: flex; justify-content: space-between; gap: 12px; }
+.bot-card-esq { min-width: 0; }
+.bot-quem { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 0; border: 0; background: none; color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.bot-quem:disabled { cursor: default; }
+.bot-quem b { font-size: 15px; overflow-wrap: anywhere; }
+.bot-quem:not(:disabled):hover b { color: var(--laranja-claro); }
+.bot-quem .av { pointer-events: none; }
+.bot-num { margin-top: 8px; font-family: var(--f-titulo); font-weight: 700; font-size: 50px; line-height: .85; letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #FFF1C9, var(--laranja-claro) 45%, var(--laranja)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bot-num small { font-size: 18px; letter-spacing: 2px; margin-left: 6px; }
+.bot-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; font-size: 13px; }
+.bot-chips .cem-chip { margin-left: 0; }
+.bot-pts { font-weight: 800; color: var(--verde); }
+.bot-chip { padding: 1px 7px; border-radius: 5px; border: 1px solid var(--laranja); color: var(--laranja-claro); font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; }
+.bot-print { position: relative; z-index: 1; flex: 0 0 auto; align-self: flex-start; width: 76px; height: 76px; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--linha-forte); background: var(--painel); cursor: zoom-in; }
+.bot-print img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+.bot-print:hover img { transform: scale(1.08); }
+.bot-card .ch-sobe { margin-top: 10px; padding-top: 10px; }
+.bot-check { position: relative; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--linha-forte); font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--texto-3); }
+.bot-check span { display: inline-flex; align-items: center; gap: 4px; }
+.bot-check svg { color: var(--verde); }
+
+/* partida que acabou de chegar: entra, brilha e os checks vão ticando */
+.bot-post.novo { animation: botEntra .5s cubic-bezier(.2, 1.2, .4, 1) both; }
+.bot-post.novo .bot-card { animation: botBrilha 2.4s ease-out both; }
+.bot-post.novo .bot-check span { animation: botTica .35s ease-out both; }
+.bot-post.novo .bot-check span:nth-child(1) { animation-delay: .5s; }
+.bot-post.novo .bot-check span:nth-child(2) { animation-delay: .9s; }
+.bot-post.novo .bot-check span:nth-child(3) { animation-delay: 1.3s; }
+@keyframes botEntra { from { opacity: 0; transform: translateY(-14px) scale(.98); } }
+@keyframes botBrilha { 0% { box-shadow: 0 0 0 2px var(--laranja-claro), 0 0 40px rgba(255, 122, 26, .55); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes botTica { from { opacity: 0; transform: translateX(-6px); } }
+.bot-digitando { display: flex; align-items: center; gap: 10px; padding: 12px 8px; font-size: 13px; color: var(--texto-3); animation: chEntra .25s ease-out; }
+.bot-digitando b { color: var(--laranja-claro); }
+.bot-digitando .bot-av { width: 28px; height: 28px; }
+.bot-digitando .bot-av-ico { display: none; }
+
+/* fechamento do dia */
+.bot-resumo .bot-card { --pc: var(--laranja-claro); }
+.bot-res-rot { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--laranja-claro); }
+.bot-res-rot svg { color: var(--verde); }
+.bot-res { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px 22px; margin-top: 8px; }
+.bot-res-cx { display: flex; flex-direction: column; min-width: 0; }
+.bot-res-cx small { font-size: 10.5px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.bot-res-cx > b { font-family: var(--f-titulo); font-size: 30px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.bot-res-top { padding: 0; border: 0; background: none; color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.bot-res-top:disabled { cursor: default; }
+.bot-res-quem { display: flex; align-items: center; gap: 6px; margin-top: 2px; min-width: 0; }
+.bot-res-quem b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bot-res-quem .av { pointer-events: none; }
+.bot-res-top em { font-style: normal; font-family: var(--f-titulo); font-size: 22px; line-height: 1; color: var(--laranja); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 560px) {
+  .bot-topo { padding: 14px; gap: 14px; }
+  .bot-stats { width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 8px; padding-top: 12px; border-top: 1px solid var(--linha); }
+  .bot-st b { font-size: 24px; }
+  .bot-st small { font-size: 9.5px; letter-spacing: .5px; }
+  .bot-av-g { width: 48px; height: 48px; }
+  .bot-post { position: relative; grid-template-columns: 30px minmax(0, 1fr); column-gap: 10px; padding: 8px 2px; }
+  .bot-post > .apagar { position: absolute; right: 2px; top: 4px; width: 32px; height: 32px; }
+  .bot-card { max-width: none; }
+  .bot-post > .bot-av { width: 30px; height: 30px; }
+  .bot-post > .bot-av .bot-av-ico { width: 15px; height: 15px; }
+  .bot-card { padding: 10px 12px; }
+  .bot-num { font-size: 42px; }
+  .bot-num small { font-size: 16px; }
+  .bot-print { width: 60px; height: 60px; }
+  .bot-check { gap: 2px 10px; font-size: 9.5px; letter-spacing: .5px; }
+  .bot-res { grid-template-columns: auto minmax(0, 1fr); }
+  .bot-res-top { grid-column: 1 / -1; }
+}

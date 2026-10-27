@@ -1156,33 +1156,155 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     )));
   }
 
-  // partidas aparecem aos poucos: 12 e depois mais 24 a cada toque
+  // ---------- partidas: o COBR BOT lança cada massa no feed ----------
+  // sem horário em lugar nenhum, só o dia. 12 posts e depois mais 24 a cada toque
   const PARTIDAS_PASSO = 24;
   let partidasQtd = 12;
+  const ICONE_BOT = '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M9.5 17h5"/>';
+  const ICONE_CHECK = '<path d="M5 12.5l4.5 4.5L19 7"/>';
+  const ICONE_SOBE = '<path d="M12 19V5M6 11l6-6 6 6"/>';
+  const ICONE_ESTRELA = '<path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/>';
+  let botVistos = null;        // ids já mostrados (null = primeira vez: nada anima)
+  let botChegando = null;      // { ids, ate }: o bot "digita" antes de soltar a partida nova
+  let botNovos = new Set();
+  // número da partida, recorde do mês e recorde pessoal na hora em que ela entrou
+  let cacheBot = null;
+  function infoBot() {
+    if (cacheBot && cacheBot.n === partidas.length && cacheBot.p === partidas[0]) return cacheBot.m;
+    const m = new Map(), mes = new Map(), meu = new Map();
+    for (let i = partidas.length - 1; i >= 0; i--) {
+      const p = partidas[i], k = chave(p.player), mk = mesChave(Date.parse(p.created_at));
+      const topoMes = mes.get(mk), topoMeu = meu.get(k);
+      m.set(p.id, { n: partidas.length - i, recMes: topoMes != null && p.mass > topoMes, recMeu: topoMeu != null && p.mass > topoMeu });
+      if (topoMes == null || p.mass > topoMes) mes.set(mk, p.mass);
+      if (topoMeu == null || p.mass > topoMeu) meu.set(k, p.mass);
+    }
+    cacheBot = { n: partidas.length, p: partidas[0], m };
+    return m;
+  }
+  const diaBot = (iso) => new Date(iso).toDateString();
+  function botAvatar(g = '') {
+    return el('span', { class: `bot-av ${g}`, 'aria-hidden': 'true' }, el('img', { src: 'logo-cobr.webp', alt: '' }), el('span', { class: 'bot-av-ico' }, svg(ICONE_BOT, g ? 14 : 11)));
+  }
+  function botCab(extra) {
+    return el('div', { class: 'bot-cab' }, el('b', { text: 'COBR BOT' }), el('span', { class: 'bot-tag' }, svg(ICONE_CHECK, 11), 'BOT'), extra);
+  }
+  function fraseBot(p, nick, info, sobe) {
+    const b = el('b', { text: nick });
+    if (sobe) return ['sobe', svg(ICONE_SOBE, 15), b, ` subiu pra ${sobe.para.nome}!`];
+    if (info.recMes) return ['ouro', svg(ICONE_TROFEU, 15), 'Novo recorde da temporada: ', b, '!'];
+    if (p.mass >= MARCO) return ['cem', svg(ICONE_CHAMA, 15), b, ` passou dos ${fmtK(Math.floor(p.mass / MARCO) * MARCO)}!`];
+    if (info.recMeu) return ['meu', svg(ICONE_ESTRELA, 15), b, ' bateu o próprio recorde.'];
+    const f = [['Massa nova de ', '.'], ['Partida de ', ' lançada.'], ['Mais uma pro ranking: ', '.'], ['Entrou massa de ', '.']][info.n % 4];
+    return ['', svg(ICONE_BOT, 15), f[0], b, f[1]];
+  }
+  function postBot(p, info, novo) {
+    const k = chave(p.player), nick = nomeDe(k, p.player), pat = patenteDe(ptsPat(k)).atual;
+    const sobe = subidaDe(p.id), url = urlPrint(p), cem = p.mass >= MARCO, pts = pontosDe(p.mass);
+    const [tom, ...frase] = fraseBot(p, nick, info, sobe);
+    const num = el('span', { text: fmt(p.mass) });
+    if (novo) contarAte(num, p.mass);
+    const letra = nick.charAt(0).toUpperCase();
+    return el('article', { class: `bot-post ${novo ? 'novo' : ''}`, 'data-id': p.id },
+      botAvatar(),
+      el('div', { class: 'bot-corpo' },
+        botCab(el('span', { class: 'bot-n', text: `#${String(info.n).padStart(4, '0')}` })),
+        el('div', { class: `bot-txt ${tom}` }, ...frase),
+        el('div', { class: `bot-card ${cem ? 'cem' : ''}`, style: `--pc:${pat.cor}` },
+          el('div', { class: 'bot-card-in' },
+            el('div', { class: 'bot-card-esq' },
+              el('button', { type: 'button', class: 'bot-quem', disabled: !elenco.has(k), onclick: () => abrirPerfil(k) },
+                avatarDe(nick, ptsPat(k), 'av-p'), el('b', { text: comTag(nick) }), chipPatente(ptsPat(k))),
+              el('div', { class: 'bot-num' }, num, el('small', { text: 'MASSA' })),
+              el('div', { class: 'bot-chips' },
+                el('span', { class: 'bot-pts', text: pts ? `+${ptsTxt(pts)}` : 'sem pontos' }),
+                cem ? el('span', { class: 'cem-chip', text: marcoTxt }) : null,
+                info.recMes ? el('span', { class: 'ch-selo', text: 'RECORDE DO MÊS' }) : null,
+                !info.recMes && info.recMeu ? el('span', { class: 'bot-chip', text: 'RECORDE PESSOAL' }) : null)),
+            url ? el('button', { type: 'button', class: 'bot-print', 'aria-label': `Ver print de ${nick}`, onclick: () => abrirPrint(p) }, el('img', { src: url, alt: '', loading: 'lazy' })) : null),
+          sobe ? el('div', { class: 'ch-sobe', style: `--pc:${sobe.para.cor}` },
+            escudoDe(sobe.de, letra, 'av-p ch-sobe-de'),
+            el('span', { class: 'ch-sobe-seta' }, svg(ICONE_SETA, 18)),
+            escudoDe(sobe.para, letra, 'av-p ch-sobe-para'),
+            el('span', { class: 'ch-sobe-txt' }, 'SUBIU PRA', chipPatente(sobe.para.pontos))) : null,
+          el('div', { class: 'bot-check' }, ...['massa conferida', 'pontos somados', 'ranking atualizado'].map((t) => el('span', {}, svg(ICONE_CHECK, 12), t))))),
+      admin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null);
+  }
+  // o bot fecha cada dia que já passou com um resumo
+  function resumoBot(dia) {
+    const doDia = partidas.filter((p) => diaBot(p.created_at) === dia);
+    if (doDia.length < 2) return null; // dia de uma partida só não precisa de resumo
+    const top = doDia.reduce((a, b) => (b.mass > a.mass ? b : a));
+    const k = chave(top.player), nick = nomeDe(k, top.player);
+    const caixa = (rot, val) => el('div', { class: 'bot-res-cx' }, el('small', { text: rot }), el('b', { text: val }));
+    return el('article', { class: 'bot-post bot-resumo' },
+      botAvatar(),
+      el('div', { class: 'bot-corpo' },
+        botCab(null),
+        el('div', { class: 'bot-card' },
+          el('div', { class: 'bot-res-rot' }, svg(ICONE_OK, 14), `FECHAMENTO · ${rotDia(doDia[0].created_at)}`),
+          el('div', { class: 'bot-res' },
+            caixa(doDia.length === 1 ? 'PARTIDA' : 'PARTIDAS', fmt(doDia.length)),
+            caixa('MASSA DO DIA', fmt(doDia.reduce((s, p) => s + p.mass, 0))),
+            el('button', { type: 'button', class: 'bot-res-cx bot-res-top', disabled: !elenco.has(k), onclick: () => abrirPerfil(k) },
+              el('small', { text: 'DESTAQUE' }), el('span', { class: 'bot-res-quem' }, avatarDe(nick, ptsPat(k), 'av-p'), el('b', { text: nick })), el('em', { text: fmt(top.mass) }))))));
+  }
+  function renderBotTopo() {
+    const hoje = diaBot(Date.now()), deHoje = partidas.filter((p) => diaBot(p.created_at) === hoje);
+    const maior = deHoje.reduce((m, p) => Math.max(m, p.mass), 0);
+    const soma = deHoje.reduce((s, p) => s + p.mass, 0);
+    const st = (rot, val) => el('div', { class: 'bot-st' }, el('b', { text: val }), el('small', { text: rot }));
+    const box = $('botTopo');
+    box.classList.toggle('on', DEMO || realtimeOk);
+    box.replaceChildren(
+      el('span', { class: 'bot-radar', 'aria-hidden': 'true' }),
+      el('div', { class: 'bot-id' },
+        el('span', { class: 'bot-av-wrap' }, botAvatar('bot-av-g'), el('span', { class: 'bot-luz' })),
+        el('div', { class: 'bot-id-txt' },
+          botCab(null),
+          el('span', { class: 'bot-status' }, el('span', { class: 'so-on', text: 'online · de olho no ranking' }), el('span', { class: 'so-off', text: 'conectando…' })))),
+      el('div', { class: 'bot-stats' },
+        st('HOJE', fmt(deHoje.length)),
+        st('MASSA HOJE', soma >= 1000 ? fmtK(Math.round(soma / 1000) * 1000) : fmt(soma)),
+        st('MAIOR HOJE', maior ? fmt(maior) : '—'),
+        st('LANÇADAS', fmt(partidas.length))));
+  }
   function renderPartidas() {
-    const ul = $('listaPartidas');
+    const box = $('listaPartidas');
     $('adminTag').hidden = !admin;
-    const lista = partidas.slice(0, partidasQtd);
-    const resto = partidas.length - lista.length;
+    renderBotTopo();
+    // partida nova chegou com a página aberta: o bot "digita" um tiquinho antes de lançar
+    const ids = partidas.map((p) => p.id);
+    if (botVistos) {
+      const novas = ids.slice(0, 5).filter((id) => !botVistos.has(id));
+      if (novas.length && pagAtual === 'partidas' && !document.hidden) {
+        botChegando = { ids: new Set(novas), ate: Date.now() + 1700 };
+        botNovos = new Set(novas);
+        setTimeout(() => { botChegando = null; renderPartidas(); setTimeout(() => botNovos.clear(), 4000); }, 1750);
+      }
+    }
+    botVistos = new Set(ids);
+    const esperando = botChegando && botChegando.ate > Date.now() ? botChegando.ids : null;
+    const fila = esperando ? partidas.filter((p) => !esperando.has(p.id)) : partidas;
+    const lista = fila.slice(0, partidasQtd);
+    const resto = fila.length - lista.length;
     $('partidasMaisBox').hidden = resto <= 0;
     $('btnPartidasMais').textContent = `Ver mais ${fmt(Math.min(resto, PARTIDAS_PASSO))} ${Math.min(resto, PARTIDAS_PASSO) === 1 ? 'partida' : 'partidas'}`;
-    if (!lista.length) { ul.replaceChildren(el('li', { class: 'vazio', text: 'Nenhuma partida registrada ainda.' })); return; }
-    ul.replaceChildren(...lista.map((p) => {
-      const url = urlPrint(p);
-      const pts = pontosDe(p.mass);
-      const nome = nomeDe(chave(p.player), p.player);
-      return el('li', { class: `partida ${p.mass >= MARCO ? 'cem' : ''}` },
-        url
-          ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${nome}`, onclick: () => abrirPrint(p) },
-              el('img', { src: url, alt: '', loading: 'lazy' }))
-          : el('span', { class: 'mini mini-av' }, avatarDe(nome, ptsPat(chave(p.player)))),
-        el('div', { class: 'partida-info' },
-          el('span', { class: 'partida-nome', text: comTag(nome) }),
-          el('span', { class: 'partida-massa' }, fmt(p.mass), p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
-          el('span', { class: 'partida-data', text: `${pts ? '+' + ptsTxt(pts) : 'sem pontos'} · ${haQuanto(p.created_at)}` })),
-        admin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null
-      );
-    }));
+    const filhos = esperando ? [el('div', { class: 'bot-digitando', role: 'status' }, botAvatar(),
+      el('span', { class: 'ch-pontinhos' }, el('i'), el('i'), el('i')), el('b', { text: 'COBR BOT' }), ' está lançando uma partida…')] : [];
+    if (!lista.length) { box.replaceChildren(...filhos, el('p', { class: 'vazio', text: 'Nenhuma partida registrada ainda.' })); return; }
+    const info = infoBot(), hoje = diaBot(Date.now());
+    let dia = null;
+    for (const p of lista) {
+      const d = diaBot(p.created_at);
+      if (d !== dia) {
+        dia = d;
+        filhos.push(el('div', { class: 'ch-dia bot-dia', text: rotDia(p.created_at) }));
+        if (d !== hoje) { const r = resumoBot(d); if (r) filhos.push(r); }
+      }
+      filhos.push(postBot(p, info.get(p.id) || { n: 0 }, !esperando && botNovos.has(p.id)));
+    }
+    box.replaceChildren(...filhos);
   }
 
   function renderTabelaPontos() {
@@ -4657,6 +4779,7 @@ ${frente}
       .subscribe((status) => {
         realtimeOk = status === 'SUBSCRIBED';
         aoVivo.classList.toggle('on', realtimeOk);
+        $('botTopo').classList.toggle('on', realtimeOk);
       });
     // canal separado: se as tabelas de torneio ainda não existem, não derruba o do ranking
     if (torneiosOk) {
