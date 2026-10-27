@@ -46,6 +46,12 @@
     if (a < 86400 * 30) return rtf.format(Math.round(s / 86400), 'day');
     return dataCurta(iso);
   }
+  // dia em que a partida entrou, sem hora: o horário do registro não aparece pra ninguém
+  function diaTxt(iso) {
+    const d = new Date(iso).toDateString();
+    if (d === new Date().toDateString()) return 'hoje';
+    return d === new Date(Date.now() - 86400000).toDateString() ? 'ontem' : dataCurta(iso);
+  }
   const reTag = new RegExp('^\\[?\\s*' + TAG.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\]?\\s*', 'i');
   const limparNick = (v) => String(v || '').replace(reTag, '').replace(/\s+/g, ' ').trim().slice(0, 24);
   const chave = (nome) => limparNick(nome).toLocaleLowerCase('pt-BR');
@@ -766,7 +772,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('td', { class: 'dir', text: l.qtd ? fmt(l.recorde) : '—' }),
         el('td', { class: 'dir sec', text: l.qtd ? fmt(l.media) : '—' }),
         el('td', { class: 'dir' }, l.cem ? el('span', { class: 'cem-chip', text: `${l.cem}×` }) : el('span', { class: 'sec', text: '—' })),
-        el('td', { class: 'dir sec nowrap', text: l.ultima ? haQuanto(l.ultima) : 'nunca' }),
+        el('td', { class: 'dir sec nowrap', text: l.ultima ? diaTxt(l.ultima) : 'nunca' }),
         celEditar(l.r)
       )));
     }
@@ -896,11 +902,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function baixarPartidas() {
     if (!partidas.length) { toast('Ainda não tem partida pra baixar.', true); return; }
     baixarCsv('partidas', [
-      ['Data', 'Hora', 'Jogador', 'Massa', 'Pontos', `${marcoTxt}`],
+      ['Data', 'Jogador', 'Massa', 'Pontos', `${marcoTxt}`],
       ...partidas.map((p) => {
         const d = new Date(p.created_at);
         const k = chave(p.player);
-        return [d.toLocaleDateString('pt-BR'), d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), comTag(nomeDe(k, p.player)), p.mass, pontosDe(p.mass), p.mass >= MARCO ? 'sim' : ''];
+        return [d.toLocaleDateString('pt-BR'), comTag(nomeDe(k, p.player)), p.mass, pontosDe(p.mass), p.mass >= MARCO ? 'sim' : ''];
       }),
     ]);
   }
@@ -1152,7 +1158,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     ul.replaceChildren(...ev.map((e) => el('li', null,
       el('span', { class: `bola ${e.tipo}`, 'aria-hidden': 'true' }),
       el('span', { class: 'txt' }, e.partes),
-      el('span', { class: 'quando', text: haQuanto(e.quando) })
+      el('span', { class: 'quando', text: diaTxt(e.quando) })
     )));
   }
 
@@ -2374,7 +2380,7 @@ ${frente}
     const minhas = partidas.filter((p) => chave(p.player) === k); // mais novas primeiro
     const media = Math.round(minhas.reduce((s, p) => s + p.mass, 0) / Math.max(1, minhas.length));
     const numeros = el('div', { class: 'perfil-stats' },
-      ...[['PONTOS', fmt(pts), 'laranja'], ['RECORDE', fmt(j.melhor.mass), ''], ['MÉDIA', fmt(media), ''], ['PARTIDAS', fmt(j.qtd), ''], [marcoTxt, `${j.cem}×`, j.cem ? 'laranja' : ''], ['ÚLTIMA', haQuanto(j.ultima), 'pstat-txt']]
+      ...[['PONTOS', fmt(pts), 'laranja'], ['RECORDE', fmt(j.melhor.mass), ''], ['MÉDIA', fmt(media), ''], ['PARTIDAS', fmt(j.qtd), ''], [marcoTxt, `${j.cem}×`, j.cem ? 'laranja' : ''], ['ÚLTIMA', diaTxt(j.ultima), 'pstat-txt']]
         .map(([rot, v, c]) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: rot }), el('span', { class: `pstat-num ${c}`, text: v }))));
 
     // medalhas: conquistadas primeiro; as trancadas mostram quanto falta
@@ -2387,7 +2393,7 @@ ${frente}
         el('span', { class: 'med-ic', 'aria-hidden': 'true' }, svg(m.icone, 20)),
         el('span', { class: 'med-txt' },
           el('b', { text: m.nome }),
-          el('span', { text: m.ok ? (m.quando ? `conquistada ${haQuanto(m.quando)}` : 'conquistada') : m.como }),
+          el('span', { text: m.ok ? (m.quando ? `conquistada ${diaTxt(m.quando)}` : 'conquistada') : m.como }),
           !m.ok && m.prog ? el('span', { class: 'med-prog', 'aria-label': `${m.prog[0]} de ${m.prog[1]}` },
             el('span', { class: 'med-prog-barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(progMed(m) * 100)}%` })),
             el('span', { class: 'med-prog-txt', text: progTxt(m.prog) })) : null)))));
@@ -2423,7 +2429,7 @@ ${frente}
             el('span', { class: 'partida-massa' }, fmt(p.mass),
               p.id === recordeId ? el('span', { class: 'chip', text: 'RECORDE' }) : null,
               p.mass >= MARCO ? el('span', { class: 'cem-chip', text: marcoTxt }) : null),
-            el('span', { class: 'partida-data', text: new Date(p.created_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(/\./g, '') })),
+            el('span', { class: 'partida-data', text: new Date(p.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/\./g, '') })),
           el('span', { class: 'pp-hist-pts', text: pp ? `+${ptsTxt(pp)}` : '0 pts' }));
       })),
       minhas.length > mostrar.length ? el('button', { type: 'button', class: 'btn btn-sec pp-mais', onclick: () => { perfilMais = true; renderPerfil(); } }, `Ver todas as ${fmt(minhas.length)} partidas`) : null);
@@ -3150,7 +3156,7 @@ ${frente}
         const conta = (porJog.get(e.k) || { contadas: new Set() }).contadas.has(e.id);
         const fonte = e.partida || e.lanc;
         const url = urlPrint(fonte);
-        const detalhe = [haQuanto(e.quando), e.partida ? 'do ranking' : e.lanc.nota, t.metrica === 'pontos' ? `${fmt(e.bruto)} de massa` : null].filter(Boolean).join(' · ');
+        const detalhe = [diaTxt(e.quando), e.partida ? 'do ranking' : e.lanc.nota, t.metrica === 'pontos' ? `${fmt(e.bruto)} de massa` : null].filter(Boolean).join(' · ');
         return el('li', { class: `pp-hist-item ${conta ? '' : 'nao-conta'}` },
           url
             ? el('button', { type: 'button', class: 'mini', 'aria-label': `Ver print de ${e.nome}`, onclick: () => abrirPrintLivre(url, `${comTag(e.nome)} · ${valorTn(t, e.valor)} · ${t.nome}`) }, el('img', { src: url, alt: '', loading: 'lazy' }))
@@ -3537,7 +3543,7 @@ ${frente}
   }
 
   function pedirApagarLanc(t, e) {
-    confirmar('APAGAR RESULTADO?', `${comTag(e.nome)} · ${valorTn(t, e.valor)} no torneio "${t.nome}" (${haQuanto(e.quando)}). Isso não pode ser desfeito.`, 'Apagar', async () => {
+    confirmar('APAGAR RESULTADO?', `${comTag(e.nome)} · ${valorTn(t, e.valor)} no torneio "${t.nome}" (${diaTxt(e.quando)}). Isso não pode ser desfeito.`, 'Apagar', async () => {
       try {
         if (DEMO) lancamentos = lancamentos.filter((l) => l.id !== e.lanc.id);
         else {
@@ -3875,7 +3881,7 @@ ${frente}
     const url = urlPrint(p);
     if (!url) return;
     $('imgPrint').src = url;
-    $('legendaPrint').textContent = `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa · ${new Date(p.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`;
+    $('legendaPrint').textContent = `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa · ${new Date(p.created_at).toLocaleDateString('pt-BR')}`;
     $('dlgPrint').showModal();
   }
 
@@ -4046,7 +4052,7 @@ ${frente}
   }
 
   function pedirApagar(p) {
-    confirmar('APAGAR PONTUAÇÃO?', `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa (${haQuanto(p.created_at)}). Isso não pode ser desfeito.`, 'Apagar', () => apagarPartida(p.id));
+    confirmar('APAGAR PONTUAÇÃO?', `${comTag(limparNick(p.player))} · ${fmt(p.mass)} de massa (${diaTxt(p.created_at)}). Isso não pode ser desfeito.`, 'Apagar', () => apagarPartida(p.id));
   }
 
   async function apagarPartida(id) {
@@ -5285,7 +5291,7 @@ ${frente}
       const temPerfil = nick !== 'COBR' && elenco.has(chave(nick));
       corpo.append(el('div', { class: 'ch-m-cab' },
         el('button', { type: 'button', class: `ch-nick ${brabo ? 'lider-nick' : ''}`, disabled: !temPerfil, style: `--pc:${nick === 'COBR' ? 'var(--laranja-claro)' : patenteDe(ptsPat(chave(nick))).atual.cor}`, onclick: () => abrirPerfil(chave(nick)), text: nick }),
-        ...tagsChat(m, nick), el('span', { class: 'ch-hora', text: horaChat(m.created_at) })));
+        ...tagsChat(m, nick), m.tipo === 'massa' ? null : el('span', { class: 'ch-hora', text: horaChat(m.created_at) })));
     }
     if (m.resp) {
       const r = chat.porId.get(m.resp);
