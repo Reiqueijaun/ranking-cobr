@@ -1470,8 +1470,44 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
 </svg>`;
     return w;
   }
+  // ---------- foguinho do top 3 da temporada que está rolando ----------
+  // muda sozinho quando entra massa nova (mesma chave do top 1)
+  let cacheTop3 = null;
+  function top3Temp() {
+    const k = `${partidas.length}:${mesChave(Date.now())}`;
+    if (cacheTop3 && cacheTop3.k === k) return cacheTop3.v;
+    const top = montarRanking('mes', 'pontos').filter((j) => j.pontos > 0 && !exMembro(j.chave)).slice(0, 3);
+    cacheTop3 = { k, v: new Map(top.map((j, i) => [j.chave, i + 1])) };
+    return cacheTop3.v;
+  }
+  let numFogo = 0;
+  function fogoSVG(pos) {
+    const id = 'fg' + (++numFogo);
+    const chama = 'M20 58C9 58 3 50 3 40C3 30 10 25 12 16C15 22 17 25 19 27C19 18 22 9 28 2C28 12 37 20 37 38C37 50 30 58 20 58Z';
+    const miolo = 'M20 58C14 58 10 53 10 47C10 41 14 38 16 33C18 37 20 39 21 40C22 35 24 31 27 28C28 34 31 39 31 46C31 53 26 58 20 58Z';
+    const lingua = (x, y, e, cls) => `<g transform="translate(${x} ${y}) scale(${e})"><g class="fg-ch ${cls}"><path d="${chama}" fill="url(#${id}a)"/><path d="${miolo}" fill="url(#${id}b)"/></g></g>`;
+    const w = el('span', { class: `fogo-cab fogo-${pos}`, 'aria-hidden': 'true' });
+    w.innerHTML = `<svg viewBox="0 0 100 70">
+<defs>
+<linearGradient id="${id}a" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFB800"/><stop offset=".45" stop-color="#FF6A00"/><stop offset="1" stop-color="#E0200A"/></linearGradient>
+<linearGradient id="${id}b" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFFBE0"/><stop offset=".5" stop-color="#FFE066"/><stop offset="1" stop-color="#FFB000"/></linearGradient>
+</defs>
+${lingua(4, 26, 0.7, 'fg-e')}${lingua(68, 26, 0.7, 'fg-d')}${lingua(30, 6, 1, 'fg-m')}
+${pos === 1 ? '<circle class="fg-faisca" cx="22" cy="20" r="2.2"/><circle class="fg-faisca f2" cx="78" cy="14" r="1.8"/><circle class="fg-faisca f3" cx="52" cy="4" r="1.6"/>' : ''}
+</svg>`;
+    return w;
+  }
+  // o top 3 da temporada pega fogo na "cabeça" (quem também é rei fica com a coroa pegando fogo)
+  function pegarFogo(a, k) {
+    const pos = top3Temp().get(k);
+    if (!pos) return;
+    a.classList.add('av-fogo');
+    a.append(fogoSVG(pos));
+    a.title = `${pos}º da ${nomeTemp(Date.now())}`;
+  }
   // põe a coroa na "cabeça" do avatar de quem é o rei
   function coroar(a, k) {
+    pegarFogo(a, k);
     if (!ehRei(k)) return a;
     a.classList.add('av-rei');
     a.append(coroaSVG());
