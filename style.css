@@ -2394,3 +2394,61 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .pd-barras li { grid-template-columns: 7.5em minmax(0, 1fr) auto; }
   .pd-coluna { grid-template-rows: 18px 110px 20px; }
 }
+
+/* ---------- o brabo: 1º da temporada no chat ---------- */
+.lider-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; border-radius: 999px; white-space: nowrap;
+  font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #fff; text-shadow: 0 1px 2px rgba(90, 10, 0, .7);
+  background: linear-gradient(100deg, #C81E00, #FF4D12 30%, #FFB547 50%, #FF4D12 70%, #C81E00); background-size: 220% 100%;
+  animation: ouroCorre 2.2s linear infinite, braboPulsa 1.6s ease-in-out infinite;
+}
+.lider-tag svg { fill: #FFE7A3; stroke: none; }
+@keyframes braboPulsa { 0%, 100% { box-shadow: 0 0 8px rgba(255, 77, 18, .55); } 50% { box-shadow: 0 0 18px rgba(255, 122, 26, .95), 0 0 4px rgba(255, 220, 140, .8); } }
+.lider-nick {
+  background: linear-gradient(90deg, #FF5A1F, #FFD36B 35%, #FF7A1A 60%, #FF3D00) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text;
+  color: transparent !important; animation: ouroCorre 2.6s linear infinite; filter: drop-shadow(0 0 6px rgba(255, 90, 31, .5));
+}
+.ch-m.lider { background: linear-gradient(90deg, rgba(255, 77, 18, .11), rgba(255, 122, 26, .02) 55%, transparent); box-shadow: inset 3px 0 0 #FF5A1F; border-radius: 0 10px 10px 0; }
+.ch-m.lider.mencao { background: linear-gradient(90deg, rgba(255, 122, 26, .2), rgba(255, 122, 26, .04)); }
+.ch-m.lider .ch-m-av { position: relative; }
+.ch-m.lider:not(.cont) .ch-m-av > .av { animation: braboAura 1.8s ease-in-out infinite; }
+@keyframes braboAura { 0%, 100% { filter: drop-shadow(0 0 4px rgba(255, 77, 18, .8)); } 50% { filter: drop-shadow(0 0 11px rgba(255, 122, 26, 1)) drop-shadow(0 0 3px rgba(255, 220, 140, .9)); } }
+.ch-m.lider:not(.cont) .ch-m-av::after {
+  content: "1º"; position: absolute; left: 50%; top: 30px; z-index: 2; padding: 0 5px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 900; line-height: 15px; letter-spacing: .5px; color: #fff; white-space: nowrap; transform: translateX(-50%);
+  background: linear-gradient(180deg, #FF8A2B, #D42800); box-shadow: 0 0 0 1.5px var(--fundo), 0 0 8px rgba(255, 77, 18, .8);
+}
+.ch-membro.lider { background: linear-gradient(90deg, rgba(255, 77, 18, .12), transparent 80%); box-shadow: inset 3px 0 0 #FF5A1F; }
+.ch-membro.lider .ch-membro-av > .av { animation: braboAura 1.8s ease-in-out infinite; }
+.ch-membro.lider .ch-membro-sub { color: #FF9A4D; font-weight: 700; }
+.ch-membro.lider.off { opacity: .75; }
+
+.chat-brabo {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 9px; margin: 8px 12px 0; padding: 6px 12px 6px 8px; min-width: 0;
+  border-radius: 10px; border: 1px solid rgba(255, 90, 31, .55); color: var(--texto); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  background: linear-gradient(100deg, rgba(200, 30, 0, .3), rgba(255, 122, 26, .12) 45%, var(--painel) 85%);
+  box-shadow: 0 0 18px rgba(255, 77, 18, .18), inset 0 0 22px rgba(255, 77, 18, .12);
+}
+.chat-brabo[hidden] { display: none; }
+.chat-brabo::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 220, 140, .22) 50%, transparent 70%) 0 0 / 250% 100%; animation: ouroCorre 3.4s linear infinite;
+}
+.chat-brabo:hover { border-color: #FF7A1A; }
+.ch-brabo-av { display: inline-flex; flex: 0 0 auto; }
+.ch-brabo-av > .av { animation: braboAura 1.8s ease-in-out infinite; }
+.ch-brabo-av .av-rei { margin-top: 0; }
+.ch-brabo-av .coroa-rei { display: none; }
+.ch-brabo-rot { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: #FFB27A; }
+.ch-brabo-rot svg { fill: #FF7A1A; stroke: none; }
+.ch-brabo-nick {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 800;
+  background: linear-gradient(90deg, #FF5A1F, #FFD36B 35%, #FF7A1A 60%, #FF3D00) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text;
+  color: transparent; animation: ouroCorre 2.6s linear infinite;
+}
+.ch-brabo-pts { margin-left: auto; flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+.chat-brabo.eu { border-color: #FFB547; }
+.chat-brabo.eu .ch-brabo-rot { color: #FFD36B; }
+@media (max-width: 420px) {
+  .ch-brabo-pts { display: none; }
+}

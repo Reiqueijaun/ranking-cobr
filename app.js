@@ -1344,6 +1344,23 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
     return el('span', { class: 'rei-tag', title: `Dono da coroa · campeão da ${nomeTemp(reiAtual().ms)}` }, svg(ICONE_COROA, 12), n >= 1 ? `REI T${n}` : 'REI');
   }
 
+  // ---------- o brabo: 1º em pontos da temporada que está rolando ----------
+  // muda sozinho quando entra massa nova (a chave olha quantas partidas tem)
+  let cacheLider = null;
+  function liderTemp() {
+    const k = `${partidas.length}:${mesChave(Date.now())}`;
+    if (cacheLider && cacheLider.k === k) return cacheLider.v;
+    const top = montarRanking('mes', 'pontos').find((j) => j.pontos > 0 && !exMembro(j.chave));
+    cacheLider = { k, v: top ? { chave: top.chave, nome: top.nome, pontos: top.pontos } : null };
+    return cacheLider.v;
+  }
+  const ehLider = (k) => { const l = liderTemp(); return !!l && l.chave === k; };
+  function chipLider(k) {
+    if (!ehLider(k)) return null;
+    const n = numTemp(Date.now());
+    return el('span', { class: 'lider-tag', title: `O brabo · 1º lugar da ${nomeTemp(Date.now())}` }, svg(ICONE_CHAMA, 12), n >= 1 ? `1º DA T${n}` : '1º DA TEMPORADA');
+  }
+
   // ---------- escudo de cada patente ----------
   // sobe de enfeite a cada patente: divisas, filete, asas, estrela e coroa; Diamantes é de cristal
   const tom = (hex, t) => { // t > 0 clareia, t < 0 escurece
@@ -4970,7 +4987,7 @@ ${frente}
   function tagsChat(m, nick) {
     if (nick === 'COBR') return [el('span', { class: 'ch-tag ch-tag-bot', text: 'AUTOMÁTICO' })];
     const k = chave(nick);
-    return [chipPatente(ptsPat(k)), chipRei(k), tagPapel(papelDe(m.user_id))];
+    return [chipLider(k), chipPatente(ptsPat(k)), chipRei(k), tagPapel(papelDe(m.user_id))];
   }
   function textoChat(txt, editada = false) {
     const s = el('div', { class: 'ch-txt' });
@@ -5095,13 +5112,14 @@ ${frente}
     const nick = nickMsg(m), meu = !!m.user_id && m.user_id === euChat();
     const cont = !!ant && !!m.user_id && ant.user_id === m.user_id && m.tipo === 'msg' && ant.tipo === 'msg' && m.canal !== 'avisos'
       && !m.resp && Date.parse(m.created_at) - Date.parse(ant.created_at) < 4 * 60000;
-    const n = el('div', { class: `ch-m ${cont ? 'cont' : ''} ${!m.apagada && !meu && meMarcou(m) ? 'mencao' : ''}`, 'data-id': m.id });
+    const brabo = !!m.user_id && ehLider(chave(nick));
+    const n = el('div', { class: `ch-m ${cont ? 'cont' : ''} ${brabo ? 'lider' : ''} ${!m.apagada && !meu && meMarcou(m) ? 'mencao' : ''}`, 'data-id': m.id });
     n.append(el('div', { class: 'ch-m-av' }, cont ? el('span', { class: 'ch-hora-lado', text: horaChat(m.created_at) }) : avatarChat(nick)));
     const corpo = el('div', { class: 'ch-m-corpo' });
     if (!cont) {
       const temPerfil = nick !== 'COBR' && elenco.has(chave(nick));
       corpo.append(el('div', { class: 'ch-m-cab' },
-        el('button', { type: 'button', class: 'ch-nick', disabled: !temPerfil, style: `--pc:${nick === 'COBR' ? 'var(--laranja-claro)' : patenteDe(ptsPat(chave(nick))).atual.cor}`, onclick: () => abrirPerfil(chave(nick)), text: nick }),
+        el('button', { type: 'button', class: `ch-nick ${brabo ? 'lider-nick' : ''}`, disabled: !temPerfil, style: `--pc:${nick === 'COBR' ? 'var(--laranja-claro)' : patenteDe(ptsPat(chave(nick))).atual.cor}`, onclick: () => abrirPerfil(chave(nick)), text: nick }),
         ...tagsChat(m, nick), el('span', { class: 'ch-hora', text: horaChat(m.created_at) })));
     }
     if (m.resp) {
@@ -5153,7 +5171,7 @@ ${frente}
   function desenharChat() {
     if (!chat.eu) { trocar($('chatMsgs'), el('div', { class: 'ch-vazio', text: 'Carregando o chat…' })); return; }
     if (cfgCanal(chat.canal).desligado) chat.canal = 'geral';
-    desenharCanaisChat(); desenharTopoChat(); desenharMsgsChat(); desenharComporChat(); desenharMembrosChat(); desenharDigitando();
+    desenharCanaisChat(); desenharTopoChat(); desenharBraboChat(); desenharMsgsChat(); desenharComporChat(); desenharMembrosChat(); desenharDigitando();
   }
   function desenharCanaisChat() {
     trocar($('chatCanais'), el('div', { class: 'ch-lado-rot', text: 'CANAIS' }), ...canaisChat().map((c) => {
@@ -5178,6 +5196,19 @@ ${frente}
     const mod = $('chatModBtn');
     mod.hidden = !admChat();
     trocar(mod, svg(ICONE_MODERAR, 18), el('span', { class: 'ch-mod-rot', text: 'Moderação' }), chat.denuncias ? el('span', { class: 'ch-badge', text: String(chat.denuncias) }) : null);
+  }
+  // faixa do 1º da temporada no topo do chat, em todo canal
+  function desenharBraboChat() {
+    const f = $('chatBrabo'), l = foraDoChat() ? null : liderTemp();
+    f.hidden = !l;
+    if (!l) return;
+    const n = numTemp(Date.now()), eu = l.chave === chave(meuNick());
+    f.classList.toggle('eu', eu);
+    trocar(f, el('span', { class: 'ch-brabo-av' }, avatarChat(l.nome, 'av-p')),
+      el('span', { class: 'ch-brabo-rot' }, svg(ICONE_CHAMA, 13), eu ? 'VOCÊ É O BRABO' : n >= 1 ? `O BRABO DA T${n}` : 'O BRABO DA TEMPORADA'),
+      el('b', { class: 'ch-brabo-nick', text: l.nome }),
+      el('span', { class: 'ch-brabo-pts', text: `1º · ${ptsTxt(l.pontos)}` }));
+    f.onclick = () => abrirPerfil(l.chave);
   }
   function desenharMsgsChat(descer = true) {
     const box = $('chatMsgs');
@@ -5239,7 +5270,7 @@ ${frente}
     for (const [u, o] of chat.online) { if (o.player_id) onP.add(o.player_id); else semPerfil.push({ user_id: u, nome: o.nome || 'Dono' }); }
     const lista = jogadores.filter((r) => r.ativo).map((r) => ({ nick: r.nick, k: chave(r.nick), st: jogP.has(r.id) ? 'jogo' : onP.has(r.id) ? 'on' : 'off', ate: jogP.get(r.id) }));
     for (const o of semPerfil) lista.push({ nick: o.nome, k: chave(o.nome), st: jogU.has(o.user_id) ? 'jogo' : 'on', ate: jogU.get(o.user_id), semPerfil: true });
-    return lista.sort((a, b) => ptsPat(b.k) - ptsPat(a.k) || a.nick.localeCompare(b.nick, 'pt-BR'));
+    return lista.sort((a, b) => ehLider(b.k) - ehLider(a.k) || ptsPat(b.k) - ptsPat(a.k) || a.nick.localeCompare(b.nick, 'pt-BR'));
   }
   function desenharMembrosChat() {
     const lista = membrosChat();
@@ -5253,11 +5284,11 @@ ${frente}
     trocar($('chatMembrosBtn'), svg(ICONE_GENTE, 18), el('span', { text: String(lista.filter((x) => x.st !== 'off').length) }));
   }
   function membroChat(x) {
-    const p = patenteDe(ptsPat(x.k)).atual;
-    return el('button', { type: 'button', class: `ch-membro ${x.st}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
+    const p = patenteDe(ptsPat(x.k)).atual, brabo = !x.semPerfil && ehLider(x.k);
+    return el('button', { type: 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
       el('span', { class: 'ch-membro-av' }, avatarChat(x.nick), el('span', { class: `ch-st ${x.st}` })),
-      el('span', { class: 'ch-membro-txt' }, el('b', { style: `--pc:${p.cor}`, text: x.nick }),
-        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : p.nome })));
+      el('span', { class: 'ch-membro-txt' }, el('b', { class: brabo ? 'lider-nick' : '', style: `--pc:${p.cor}`, text: x.nick }),
+        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `o brabo · 1º da ${nomeTemp(Date.now()).toLowerCase()}` : p.nome })));
   }
 
   // ---------- página ----------
