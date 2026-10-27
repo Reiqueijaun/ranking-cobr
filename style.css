@@ -269,7 +269,6 @@ input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px
 
 /* ---------- celular ---------- */
 @media (max-width: 760px) {
-  .menu { display: none; }
   .topo .btn { padding: 0 14px; }
   .hero { padding-block: 28px 8px; gap: 24px; }
   .hero-logo img { width: 160px; height: 160px; }
@@ -280,7 +279,7 @@ input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px
   .marca-sub { display: none; }
   .topo .btn-txt { display: none; }
   .abas { width: 100%; }
-  .aba { flex: 1 1 0; padding: 0 8px; }
+  .aba { flex: 1 1 0; padding: 0 8px; white-space: nowrap; }
 }
 
 /* ---------- pontos ---------- */
@@ -1506,19 +1505,8 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   #tabela td { padding-block: 11px; }
 }
 
-/* tablet / notebook pequeno: o menu cabe sem empurrar o nome do clã */
 @media (min-width: 761px) { .destaques { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
 .dlg:focus { outline: none; }
-@media (max-width: 1100px) and (min-width: 761px) {
-  .topo-in { gap: 10px; }
-  .menu { gap: 0; }
-  .menu a { padding: 10px 10px; font-size: 13.5px; }
-}
-@media (max-width: 960px) and (min-width: 761px) {
-  .marca-txt { display: none; }
-  .marca { flex-grow: 0; }
-  .menu { flex-grow: 1; justify-content: center; }
-}
 @media (min-width: 761px) {
   .podio { flex-wrap: nowrap; }
   .podio .lugar { flex: 1 1 0; }
@@ -2393,4 +2381,67 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .pd-kpi .stat-num { font-size: 32px; }
   .pd-barras li { grid-template-columns: 7.5em minmax(0, 1fr) auto; }
   .pd-coluna { grid-template-rows: 18px 110px 20px; }
+}
+
+/* ---------- navegação no celular e tablet ----------
+   O menu vira uma faixa de abas embaixo da logo (todas as páginas, sem virar o celular).
+   Rolando pra baixo a linha da logo sobe e só as abas ficam. */
+.menu { min-width: 0; }
+.topo .btn { white-space: nowrap; }
+.fade-x { --fe: 0px; --fd: 0px; }
+.fade-x.f-esq { --fe: 36px; }
+.fade-x.f-dir { --fd: 36px; }
+.fade-x.f-esq, .fade-x.f-dir {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fe), #000 calc(100% - var(--fd)), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--fe), #000 calc(100% - var(--fd)), transparent);
+}
+@media (max-width: 1100px) {
+  .topo-in { flex-wrap: wrap; row-gap: 4px; padding-bottom: 0; }
+  .menu {
+    order: 10; flex: 1 0 100%; gap: 0; margin-inline: -16px; padding-inline: 6px;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  }
+  .menu::-webkit-scrollbar { display: none; }
+  .menu::before, .menu::after { content: ""; margin: auto; } /* centraliza quando cabe tudo */
+  .menu a {
+    position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 13px 2px;
+    border-radius: 0; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+  }
+  .menu a:hover { background: none; }
+  .menu a::after {
+    content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0;
+    background: var(--laranja); transform: scaleX(0); transition: transform .2s ease;
+  }
+  .menu a.ativo { color: var(--texto); background: none; box-shadow: none; }
+  .menu a.ativo::after { transform: none; }
+}
+@media (max-width: 760px) {
+  .topo-in { padding-top: 8px; }
+  .menu a { padding-inline: 12px; }
+  section[id], .painel[id], aside[id], form[id] { scroll-margin-top: 64px; }
+  /* chat ocupa a tela: no topo só as abas */
+  body[data-pag="chat"]:not(.vendo-perfil) .topo-in { padding-top: 0; row-gap: 0; }
+  body[data-pag="chat"]:not(.vendo-perfil) .topo-in > :not(.menu) { display: none; }
+}
+@media (max-width: 760px), (max-width: 1100px) and (max-height: 520px) {
+  .topo { transition: transform .22s ease; }
+  body.topo-sobe .topo { transform: translateY(calc(-1 * var(--topo-sobe, 0px))); }
+}
+
+/* moderação: as 5 abas sempre à vista (3 em cima, 2 embaixo) */
+@media (max-width: 520px) {
+  .mod-abas { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); overflow: visible; width: auto !important; }
+  .mod-abas .aba { grid-column: span 2; padding: 0 6px; white-space: nowrap; font-size: 13.5px; }
+  .mod-abas .aba:nth-child(n+4), .mod-abas:has(> .aba[hidden]) .aba { grid-column: span 3; }
+}
+@media (max-width: 420px) {
+  .pd-abas .aba { flex: 1 1 auto; gap: 4px; padding: 0 6px; font-size: 12px; }
+}
+@media (max-width: 420px) {
+  .regras-abas { display: flex; }
+  .regras-abas .aba { flex: 1 1 auto; padding: 0 6px; }
+}
+@media (max-width: 360px) {
+  .rg-virada li { flex-wrap: wrap; }
+  #tabela th:not(:first-child):not(:last-child), #tabela td:not(:first-child):not(:last-child) { padding-inline: 5px; }
 }
