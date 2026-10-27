@@ -1344,7 +1344,7 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
     return el('span', { class: 'rei-tag', title: `Dono da coroa · campeão da ${nomeTemp(reiAtual().ms)}` }, svg(ICONE_COROA, 12), n >= 1 ? `REI T${n}` : 'REI');
   }
 
-  // ---------- o brabo: 1º em pontos da temporada que está rolando ----------
+  // ---------- top 1: 1º em pontos da temporada que está rolando ----------
   // muda sozinho quando entra massa nova (a chave olha quantas partidas tem)
   let cacheLider = null;
   function liderTemp() {
@@ -1357,8 +1357,7 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
   const ehLider = (k) => { const l = liderTemp(); return !!l && l.chave === k; };
   function chipLider(k) {
     if (!ehLider(k)) return null;
-    const n = numTemp(Date.now());
-    return el('span', { class: 'lider-tag', title: `O brabo · 1º lugar da ${nomeTemp(Date.now())}` }, svg(ICONE_CHAMA, 12), n >= 1 ? `1º DA T${n}` : '1º DA TEMPORADA');
+    return el('span', { class: 'lider-tag', title: `Top 1 da ${nomeTemp(Date.now())}` }, svg(ICONE_CHAMA, 12), 'TOP 1');
   }
 
   // ---------- escudo de cada patente ----------
@@ -5205,9 +5204,9 @@ ${frente}
     const n = numTemp(Date.now()), eu = l.chave === chave(meuNick());
     f.classList.toggle('eu', eu);
     trocar(f, el('span', { class: 'ch-brabo-av' }, avatarChat(l.nome, 'av-p')),
-      el('span', { class: 'ch-brabo-rot' }, svg(ICONE_CHAMA, 13), eu ? 'VOCÊ É O BRABO' : n >= 1 ? `O BRABO DA T${n}` : 'O BRABO DA TEMPORADA'),
+      el('span', { class: 'ch-brabo-rot' }, svg(ICONE_CHAMA, 13), n >= 1 ? `TOP 1 · T${n}` : 'TOP 1'),
       el('b', { class: 'ch-brabo-nick', text: l.nome }),
-      el('span', { class: 'ch-brabo-pts', text: `1º · ${ptsTxt(l.pontos)}` }));
+      el('span', { class: 'ch-brabo-pts', text: ptsTxt(l.pontos) }));
     f.onclick = () => abrirPerfil(l.chave);
   }
   function desenharMsgsChat(descer = true) {
@@ -5288,7 +5287,7 @@ ${frente}
     return el('button', { type: 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
       el('span', { class: 'ch-membro-av' }, avatarChat(x.nick), el('span', { class: `ch-st ${x.st}` })),
       el('span', { class: 'ch-membro-txt' }, el('b', { class: brabo ? 'lider-nick' : '', style: `--pc:${p.cor}`, text: x.nick }),
-        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `o brabo · 1º da ${nomeTemp(Date.now()).toLowerCase()}` : p.nome })));
+        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `top 1 · ${nomeTemp(Date.now()).toLowerCase()}` : p.nome })));
   }
 
   // ---------- página ----------
