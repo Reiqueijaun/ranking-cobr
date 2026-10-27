@@ -558,6 +558,49 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       if (sim && !a.hidden && a.closest('#barraBaixo')) naBarra = true;
     });
     $('bbMais').classList.toggle('ativo', !!pag && !naBarra && pag !== PAG_INICIO);
+    const ativo = document.querySelector('.menu a.ativo');
+    if (ativo !== menuCentrado) { menuCentrado = ativo; centrarNaFaixa(ativo); }
+  }
+  let menuCentrado = null;
+
+  // faixas que rolam pro lado (menu no celular, canais do chat...): sombra na ponta que tem mais coisa
+  function ligarFaixa(box) {
+    box.classList.add('fade-x');
+    const medir = () => {
+      const resto = box.scrollWidth - box.clientWidth - box.scrollLeft;
+      box.classList.toggle('f-esq', box.scrollLeft > 2);
+      box.classList.toggle('f-dir', resto > 2);
+    };
+    box.addEventListener('scroll', medir, { passive: true });
+    new ResizeObserver(medir).observe(box);
+    new MutationObserver(medir).observe(box, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    medir();
+  }
+  // traz o item escolhido pro meio da faixa, sem mexer na rolagem da página
+  function centrarNaFaixa(item) {
+    const box = item && item.parentElement;
+    if (!box || box.scrollWidth <= box.clientWidth) return;
+    const rb = box.getBoundingClientRect(), ri = item.getBoundingClientRect();
+    box.scrollTo({ left: box.scrollLeft + ri.left - rb.left - (box.clientWidth - ri.width) / 2, behavior: 'smooth' });
+  }
+  // celular: rolando pra baixo a linha da logo sobe e só as abas ficam; rolando pra cima ela volta
+  function ligarTopoRecolhe() {
+    const topo = document.querySelector('.topo'), menu = topo.querySelector('.menu');
+    const mq = matchMedia('(max-width: 760px), (max-width: 1100px) and (max-height: 520px)');
+    const medir = () => {
+      const sobe = menu.getBoundingClientRect().top - topo.getBoundingClientRect().top - parseFloat(getComputedStyle(topo).paddingTop);
+      topo.style.setProperty('--topo-sobe', Math.max(0, Math.round(sobe)) + 'px');
+    };
+    let ultY = scrollY;
+    addEventListener('scroll', () => {
+      const y = scrollY;
+      if (!mq.matches || y <= topo.offsetHeight) { document.body.classList.remove('topo-sobe'); ultY = y; return; }
+      if (Math.abs(y - ultY) < 8) return;
+      document.body.classList.toggle('topo-sobe', y > ultY);
+      ultY = y;
+    }, { passive: true });
+    new ResizeObserver(medir).observe(topo);
+    medir();
   }
   // abre uma página do site (vale também de dentro do perfil ou do torneio)
   function irPara(hash) {
@@ -5301,6 +5344,7 @@ ${frente}
     cancelarRespChat();
     $('chatMencoes').hidden = true;
     desenharChat();
+    centrarNaFaixa(document.querySelector('#chatCanais [aria-current="true"]'));
   }
   // o chat ocupa a tela toda entre o topo e a barra de baixo
   function ajustarChat() {
@@ -6458,6 +6502,8 @@ ${frente}
 
     renderTabelaPontos();
     ligarControlesChat();
+    document.querySelectorAll('.menu, #chatCanais, .busca-atalhos, .sugestoes').forEach(ligarFaixa);
+    ligarTopoRecolhe();
     $('stCemRot').textContent = `PARTIDAS ${marcoTxt}`;
     $('thCem').textContent = marcoTxt;
 
