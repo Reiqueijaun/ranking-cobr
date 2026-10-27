@@ -2625,37 +2625,36 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .bot-res-top { grid-column: 1 / -1; }
 }
 
-/* ---------- foguinho na cabeça do top 3 da temporada ---------- */
-.av-fogo { position: relative; overflow: visible; }
-.fogo-cab {
-  position: absolute; left: 50%; bottom: 70%; width: 96%; aspect-ratio: 100 / 70; z-index: 1; pointer-events: none;
-  transform: translateX(-50%); filter: drop-shadow(0 0 4px rgba(255, 106, 0, .85));
-}
+/* ---------- cabeça em chamas do top 3 da temporada ---------- */
+/* o fogo fica atrás do escudo (z-index -1 dentro do próprio avatar) e sobe bem acima da cabeça */
+.av-fogo { position: relative; overflow: visible; isolation: isolate; }
+.fogo-cab { position: absolute; left: 50%; bottom: 6%; width: 150%; aspect-ratio: 100 / 120; z-index: -1; pointer-events: none; transform: translateX(-50%); }
+.fogo-1 { width: 172%; }
+.av-rei .fogo-cab { width: 176%; }
+.av-p .fogo-cab { width: 122%; }
+.av-p .fogo-1, .av-p.av-rei .fogo-cab { width: 132%; }
+.ch-membro .fogo-cab, .ch-m-av .fogo-cab { width: 124%; }
+.ch-membro .fogo-1, .ch-m-av .fogo-1, .ch-membro .av-rei .fogo-cab, .ch-m-av .av-rei .fogo-cab { width: 134%; }
 .fogo-cab svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.fogo-2, .fogo-3 { width: 80%; bottom: 74%; }
-.fogo-1 { width: 108%; filter: drop-shadow(0 0 6px rgba(255, 106, 0, .95)) drop-shadow(0 0 14px rgba(255, 60, 0, .45)); }
-.av-esc .fogo-cab, .avatar-esc .fogo-cab { bottom: 68%; }
-/* rei no top 3: a coroa fica na frente e o fogo sobe por trás dela */
-.av-rei .fogo-cab { width: 124%; bottom: 84%; }
-.fg-ch { transform-box: fill-box; transform-origin: 50% 100%; animation: fgDanca 1.1s ease-in-out infinite alternate; }
-.fg-e { animation-duration: .9s; animation-delay: -.3s; }
-.fg-d { animation-duration: 1s; animation-delay: -.6s; }
+.fg-l { transform-box: fill-box; transform-origin: 50% 100%; animation: fgDanca .9s ease-in-out infinite alternate; }
+.fg-l2 { animation-duration: .7s; animation-delay: -.25s; }
+.fg-l3 { animation-duration: .5s; animation-delay: -.4s; }
 @keyframes fgDanca {
   0% { transform: scale(1, 1) skewX(0); }
-  35% { transform: scale(.94, 1.1) skewX(-4deg); }
-  70% { transform: scale(1.04, .94) skewX(3deg); }
-  100% { transform: scale(.97, 1.06) skewX(-2deg); }
+  30% { transform: scale(.95, 1.12) skewX(-5deg); }
+  65% { transform: scale(1.05, .93) skewX(4deg); }
+  100% { transform: scale(.97, 1.08) skewX(-2deg); }
 }
-.fg-faisca { fill: #FFE066; transform-box: fill-box; transform-origin: center; animation: fgSobe 1.6s ease-out infinite; }
-.fg-faisca.f2 { animation-delay: -.55s; }
-.fg-faisca.f3 { animation-delay: -1.1s; }
-@keyframes fgSobe { 0% { opacity: 0; transform: translateY(14px) scale(.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px) scale(1.1); } }
-.av-p .fg-faisca { display: none; }
-/* espaço pro fogo caber em cima dos avatares grandes */
-.av-g.av-fogo, .av-xg.av-fogo, .avatar.av-fogo { margin-top: 24px; }
-.av-g.av-fogo.av-rei, .av-xg.av-fogo.av-rei, .avatar.av-fogo.av-rei { margin-top: 44px; }
-.lugar .coroa + .avatar.av-fogo { margin-top: 18px; }
-.ch-m:has(.ch-m-av .av-fogo) { padding-top: 14px; }
-.ch-m:has(.ch-m-av .av-fogo.av-rei) { padding-top: 26px; }
-.ch-membro:has(.av-fogo) { padding-top: 12px; }
+.fg-brilho { transform-box: fill-box; transform-origin: 50% 80%; animation: fgBrilho 1.3s ease-in-out infinite alternate; }
+@keyframes fgBrilho { from { opacity: .65; transform: scale(.92); } to { opacity: 1; transform: scale(1.08); } }
+.fg-brasa { fill: #FFD36A; transform-box: fill-box; transform-origin: center; animation: fgBrasa 1.7s ease-out infinite; }
+@keyframes fgBrasa { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), -92px) scale(.3); } }
+/* espaço pro fogo caber em cima */
+.av-g.av-fogo, .av-xg.av-fogo, .avatar.av-fogo { margin-top: 40px; }
+.av-g.av-fogo.av-rei, .av-xg.av-fogo.av-rei, .avatar.av-fogo.av-rei { margin-top: 48px; }
+.lugar .coroa { position: relative; z-index: 3; }
+.lugar .coroa + .avatar.av-fogo { margin-top: 20px; }
+.ch-m:has(.ch-m-av .av-fogo) { padding-top: 22px; }
+.ch-m:has(.ch-m-av .av-fogo.av-rei) { padding-top: 28px; }
+.ch-membro:has(.av-fogo) { padding-top: 18px; }
 .ch-brabo-av .fogo-cab { display: none; }
