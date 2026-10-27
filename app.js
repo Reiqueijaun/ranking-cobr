@@ -1470,57 +1470,8 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
 </svg>`;
     return w;
   }
-  // ---------- foguinho do top 3 da temporada que está rolando ----------
-  // muda sozinho quando entra massa nova (mesma chave do top 1)
-  let cacheTop3 = null;
-  function top3Temp() {
-    const k = `${partidas.length}:${mesChave(Date.now())}`;
-    if (cacheTop3 && cacheTop3.k === k) return cacheTop3.v;
-    const top = montarRanking('mes', 'pontos').filter((j) => j.pontos > 0 && !exMembro(j.chave)).slice(0, 3);
-    cacheTop3 = { k, v: new Map(top.map((j, i) => [j.chave, i + 1])) };
-    return cacheTop3.v;
-  }
-  let numFogo = 0;
-  const FOGO_PARADO = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // cabeça em chamas: 3 camadas de fogo (vermelho, laranja, miolo quase branco) atrás do escudo,
-  // borda "fervendo" por um ruído que muda o tempo todo e brasas subindo
-  function fogoSVG(pos) {
-    const id = 'fg' + (++numFogo);
-    const chama = 'M8 112C0 92 4 72 12 58C14 70 18 76 22 78C18 58 22 40 32 22C32 38 36 48 40 52C38 32 44 14 52 0C56 18 62 32 62 50C66 42 68 34 66 22C76 36 84 54 82 72C86 68 90 62 90 54C98 72 100 94 92 112Z';
-    const camada = (e, cor, cls) => `<g transform="translate(50 112) scale(${e}) translate(-50 -112)"><g class="fg-l ${cls}"><path d="${chama}" fill="url(#${id}${cor})"/></g></g>`;
-    const brasas = [[30, 92, -8, 0], [70, 88, 7, -.5], [48, 80, 2, -1], [20, 98, -12, -1.4], [82, 96, 10, -.8], [58, 94, -4, -1.8], [40, 86, 5, -.3]]
-      .slice(0, pos === 1 ? 7 : 4)
-      .map(([x, y, dx, at], i) => `<circle class="fg-brasa" cx="${x}" cy="${y}" r="${i % 3 ? 1.4 : 2}" style="--dx:${dx}px;animation-delay:${at}s"/>`).join('');
-    const ferve = FOGO_PARADO ? '' : '<animate attributeName="baseFrequency" dur="1.4s" values="0.045 0.11;0.06 0.16;0.045 0.11" repeatCount="indefinite"/>';
-    const w = el('span', { class: `fogo-cab fogo-${pos}`, 'aria-hidden': 'true' });
-    w.innerHTML = `<svg viewBox="0 0 100 120">
-<defs>
-<radialGradient id="${id}g" cx=".5" cy=".7" r=".5"><stop offset="0" stop-color="#FF7A00" stop-opacity=".75"/><stop offset=".6" stop-color="#FF3D00" stop-opacity=".25"/><stop offset="1" stop-color="#FF3D00" stop-opacity="0"/></radialGradient>
-<linearGradient id="${id}a" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FF8A00"/><stop offset=".45" stop-color="#F02A00"/><stop offset=".8" stop-color="#9E0A00" stop-opacity=".85"/><stop offset="1" stop-color="#5A0000" stop-opacity="0"/></linearGradient>
-<linearGradient id="${id}b" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFD000"/><stop offset=".5" stop-color="#FF7A00"/><stop offset="1" stop-color="#FF3D00" stop-opacity="0"/></linearGradient>
-<linearGradient id="${id}c" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".35" stop-color="#FFF3B0"/><stop offset=".75" stop-color="#FFD24A"/><stop offset="1" stop-color="#FFB000" stop-opacity="0"/></linearGradient>
-<filter id="${id}t" x="-25%" y="-25%" width="150%" height="150%">
-<feTurbulence type="fractalNoise" baseFrequency="0.045 0.11" numOctaves="2" seed="${numFogo % 9}" result="n">${ferve}</feTurbulence>
-<feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"/>
-</filter>
-</defs>
-<ellipse class="fg-brilho" cx="50" cy="84" rx="50" ry="40" fill="url(#${id}g)"/>
-<g filter="url(#${id}t)">${camada(1, 'a', 'fg-l1')}${camada(.78, 'b', 'fg-l2')}${camada(.52, 'c', 'fg-l3')}</g>
-${brasas}
-</svg>`;
-    return w;
-  }
-  // o top 3 da temporada pega fogo na "cabeça" (quem também é rei fica com a coroa pegando fogo)
-  function pegarFogo(a, k) {
-    const pos = top3Temp().get(k);
-    if (!pos) return;
-    a.classList.add('av-fogo');
-    a.append(fogoSVG(pos));
-    a.title = `${pos}º da ${nomeTemp(Date.now())}`;
-  }
   // põe a coroa na "cabeça" do avatar de quem é o rei
   function coroar(a, k) {
-    pegarFogo(a, k);
     if (!ehRei(k)) return a;
     a.classList.add('av-rei');
     a.append(coroaSVG());
