@@ -391,6 +391,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     $('formCadastro').hidden = !admin || !elencoOk;
     $('avisoElenco').hidden = !admin || elencoOk;
     document.body.classList.toggle('modo-dono', !!admin);
+    $('painel').hidden = !admin;
+    $('menuPainel').hidden = !admin;
+    $('maisPainel').hidden = !admin;
 
     // página que ficou vazia (ex.: o único torneio foi apagado) volta pro ranking
     $('menuTrofeus').hidden = $('temporadas').hidden && $('hall').hidden;
@@ -509,7 +512,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // sem # (ou com um # que não existe) abre o ranking. #hall, #tabela etc. abrem a
   // página de quem eles fazem parte e rolam até lá.
   const PAG_INICIO = 'ranking';
-  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'chat']); // abrem no topo da página
+  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'chat', 'painel']); // abrem no topo da página
   let pagAtual = null;
   function alvoDoEndereco(hash) {
     const id = decodeURIComponent(String(hash || '').slice(1));
@@ -535,6 +538,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     document.body.dataset.pag = pag;
     marcarMenu();
     if (pag === 'chat') abrirChatPagina();
+    if (pag === 'painel' && mudou) abrirPainel();
     if (mudou) {
       const m = $('principal');
       m.classList.remove('pag-entra');
@@ -2071,6 +2075,7 @@ ${frente}
       if ((antes || antesTn) && voltar) { mostrarPagina(false); rolarJa(rolagemAntes); }
       else mostrarPagina(true);
     }
+    contarTela();
   }
 
   async function compartilharPerfil(nome) {
@@ -4069,6 +4074,7 @@ ${frente}
     aplicarAdmin(admin);
     mostrarRota();
     ligarChat();
+    ligarUso();
     if (!siteAberto) {
       siteAberto = true;
       cerimoniaAutomatica();
@@ -4083,6 +4089,8 @@ ${frente}
     contaSemJogador = false;
     logins = new Map();
     pedidos = [];
+    pd.dados = null;
+    usoTela = null;
     await desligarChat();
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
     if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
@@ -5695,9 +5703,30 @@ ${frente}
     return [el('div', { class: 'mod-rot', text: 'ADM DO CHAT: SÓ MODERA O CHAT · DONO: O SITE TODO' }), ...lista.map(linha)];
   }
   function itemHistorico(h) {
+    return el('li', null, el('b', { text: h.quem || 'ADM' }), ` ${textoHistorico(h)}`, el('span', { class: 'mod-sub', text: haQuanto(h.created_at) }));
+  }
+  // o que ficou no admin_log, em português de gente
+  function textoHistorico(h) {
     const d = h.detalhe || {};
     const prazo = d.minutos ? (PRAZOS.find(([, v]) => v === d.minutos) || [`${d.minutos} min`])[0] : 'sem prazo';
-    const txt = {
+    const jog = (id) => (jogPorId.get(id) || {}).nick || 'um jogador';
+    const tn = (id) => { const t = torneios.find((x) => x.id === id); return t ? t.nome : 'um torneio'; };
+    return {
+      registrar: `registrou ${fmt(d.massa || 0)} de massa de ${d.jogador || '?'}`,
+      'apagar partida': `apagou ${fmt(d.massa || 0)} de massa de ${d.jogador || '?'}`,
+      'cadastrar jogadores': `cadastrou ${(d.nicks || []).join(', ') || 'jogadores'}`,
+      'editar jogador': `editou o jogador ${d.nick || ''}`.trim(),
+      'apagar jogador': 'apagou um jogador do elenco',
+      'criar torneio': `criou o torneio ${d.nome || ''}`.trim(),
+      'editar torneio': `editou o torneio ${d.nome || ''}`.trim(),
+      chaveamento: `mexeu no chaveamento de ${tn(d.torneio)}`,
+      'apagar torneio': `apagou o torneio ${d.nome || ''}`.trim(),
+      'lançar resultado': `lançou ${fmt(d.valor || 0)} pra ${jog(d.jogador)} em ${tn(d.torneio)}`,
+      'apagar resultado': `apagou um resultado de ${jog(d.jogador)}`,
+      'prêmios': 'mudou os prêmios',
+      'tirar login': `tirou o login de ${d.nick || '?'}`,
+      'aprovar pedido': `aprovou a entrada de ${d.nick || '?'}`,
+      'recusar pedido': `recusou a entrada de ${d.nick || '?'}`,
       chat_apagar: `apagou mensagem de ${d.autor || '?'}${d.texto ? `: "${String(d.texto).slice(0, 60)}"` : ''}`,
       chat_fixar: 'fixou uma mensagem', chat_desafixar: 'desafixou uma mensagem',
       chat_punir: `${d.tipo === 'ban' ? 'tirou do chat' : 'silenciou'} ${d.quem || '?'} · ${prazo}${d.motivo ? ` · ${d.motivo}` : ''}`,
@@ -5709,8 +5738,336 @@ ${frente}
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
       dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
       dono_canal: `${d.ligado ? 'ligou' : 'desligou'} o #${d.canal || 'recordes'}`,
-    }[h.acao] || h.acao;
-    return el('li', null, el('b', { text: h.quem || 'ADM' }), ` ${txt}`, el('span', { class: 'mod-sub', text: haQuanto(h.created_at) }));
+    }[h.acao] || 'fez uma alteração';
+  }
+
+  // ---------- painel do dono ----------
+  // O site de cada membro avisa o banco quando abre, quando troca de tela e a cada minuto aberto
+  // na tela (site_marcar, passo 8 do SQL). O Dono vê tudo junto no #painel (dono_painel).
+  const NOMES_TELA = {
+    ranking: 'Ranking', chat: 'Chat', torneios: 'Torneios', trofeus: 'Troféus', jogadores: 'Jogadores', partidas: 'Partidas',
+    patentes: 'Patentes', perfil: 'Perfil de jogador', torneio: 'Página de torneio', painel: 'Painel do dono', outra: 'Outras',
+  };
+  const LIMITE_BANCO = 500 * 1048576;       // plano grátis do Supabase
+  const LIMITE_ARQUIVOS = 1024 * 1048576;
+  const VS_PERIODO = { 1: 'que ontem', 7: 'que os 7 dias antes', 30: 'que os 30 dias antes' };
+  const ICONE_CELULAR = '<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/>';
+  const ICONE_PC = '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>';
+  const ICONE_OK = '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-5.5"/>';
+  const ICONE_ALERTA = '<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/>';
+  let usoTela = null, usoTimer = 0, usoEscondido = 0;
+  const pd = { dias: 7, dados: null, erro: false, carregando: false, aba: 'ativos', histTodo: false };
+  const telaAtual = () => (perfilAtual ? 'perfil' : torneioAtual ? 'torneio' : pagAtual || PAG_INICIO);
+  const aparelho = () => (ehIOS || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'celular' : 'computador');
+
+  function marcarUso(tipo) {
+    if (DEMO || !sb || !podeVer()) return;
+    if (tipo !== 'ping') usoTela = telaAtual();
+    sb.rpc('site_marcar', { p_tela: telaAtual(), p_tipo: tipo, p_aparelho: aparelho(), p_app: appInstalado() }).then(() => {}, () => {});
+  }
+  function ligarUso() {
+    marcarUso('abriu');
+    if (usoTimer) return;
+    usoTimer = setInterval(() => { if (!document.hidden) marcarUso('ping'); }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { usoEscondido = Date.now(); return; }
+      // voltou depois de muito tempo (celular no bolso): conta como outra visita
+      if (usoEscondido && Date.now() - usoEscondido > 30 * 60000) marcarUso('abriu');
+      usoEscondido = 0;
+      if (painelVisivel()) carregarPainel();
+    });
+  }
+  // trocou de tela (mostrarRota chama sempre; só conta quando muda mesmo)
+  function contarTela() {
+    if (usoTela && telaAtual() !== usoTela) marcarUso('tela');
+  }
+
+  const painelVisivel = () => !!admin && pagAtual === 'painel' && !perfilAtual && !torneioAtual && !document.hidden;
+  function abrirPainel() {
+    desenharPainel();
+    carregarPainel();
+  }
+  async function carregarPainel() {
+    if (!admin || pd.carregando) return;
+    pd.carregando = true;
+    const dias = pd.dias;
+    try {
+      let dados;
+      if (DEMO) dados = demoPainel(dias);
+      else {
+        const r = await sb.rpc('dono_painel', { p_dias: dias });
+        if (r.error) throw new Error(r.error.message);
+        dados = r.data;
+      }
+      if (dias === pd.dias) { pd.dados = { ...dados, periodo: dias }; pd.erro = false; }
+    } catch (e) {
+      console.warn('painel:', e.message);
+      pd.erro = true;
+    }
+    pd.carregando = false;
+    if (dias !== pd.dias) { carregarPainel(); return; }
+    if (pagAtual === 'painel') desenharPainel();
+  }
+
+  const somaDe = (l, k) => l.reduce((s, x) => s + Number(x[k] || 0), 0);
+  function horasTxt(min) {
+    min = Math.round(min || 0);
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60), m = min % 60;
+    return h >= 10 || !m ? `${fmt(h)} h` : `${h} h ${m}`;
+  }
+  function tamanhoTxt(b) {
+    b = Number(b || 0);
+    if (b < 1048576) return `${Math.max(1, Math.round(b / 1024))} KB`;
+    if (b < 1073741824) return `${(b / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: b < 10485760 ? 1 : 0 })} MB`;
+    return `${(b / 1073741824).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB`;
+  }
+  const diaDe = (iso) => new Date(`${iso}T12:00:00`);
+  const cartaoPd = (titulo, extra, ...filhos) => el('section', { class: 'painel pd-card' },
+    el('div', { class: 'pd-card-topo' }, el('h3', { class: 'painel-h3', text: titulo }), extra || null), ...filhos);
+
+  function desenharPainel() {
+    const box = $('pdCorpo');
+    document.querySelectorAll('[data-pd]').forEach((b) => b.setAttribute('aria-selected', String(Number(b.dataset.pd) === pd.dias)));
+    const d = pd.dados && pd.dados.periodo === pd.dias ? pd.dados : null;
+    $('pdSub').textContent = d && d.desde ? `Atualiza sozinho · contando desde ${dataCurta(`${d.desde}T12:00:00`)}` : 'O site na sua mão.';
+    if (!d) {
+      trocar(box, el('p', { class: 'pd-carregando', text: pd.erro ? 'Não deu pra carregar o painel agora. Tenta de novo daqui a pouco.' : 'Carregando…' }));
+      return;
+    }
+    const dias = d.dias || [];
+    const atual = dias.slice(-pd.dias), antes = dias.slice(0, -pd.dias);
+    // uso do site só compara quando já contava no período anterior inteiro
+    const usoAntesOk = !!(d.desde && antes.length && d.desde <= antes[0].dia);
+    const membros = (d.membros || []).map((m) => ({ ...m, nick: nickDoPlayer(m.player_id, m.nome) }));
+    trocar(box,
+      el('div', { class: 'pd-duas pd-topo' }, cartaoAgora(d), cartaoAtencao(d, membros)),
+      el('div', { class: 'pd-kpis' },
+        kpi('PESSOAS', d.pessoas || 0, usoAntesOk ? d.pessoas_antes || 0 : null, fmt, pd.dias === 1 ? 'entraram hoje' : 'entraram no site'),
+        kpi('VISITAS', somaDe(atual, 'visitas'), usoAntesOk ? somaDe(antes, 'visitas') : null, fmt, 'vezes que abriram'),
+        kpi('TEMPO NO SITE', somaDe(atual, 'minutos'), usoAntesOk ? somaDe(antes, 'minutos') : null, horasTxt, 'somando todo mundo'),
+        kpi('MASSAS', somaDe(atual, 'massas'), somaDe(antes, 'massas'), fmt),
+        kpi('MENSAGENS', somaDe(atual, 'msgs'), somaDe(antes, 'msgs'), fmt),
+        kpi('CONTAS NOVAS', somaDe(atual, 'contas'), somaDe(antes, 'contas'), fmt)),
+      pd.dias > 1 ? cartaoPd('PESSOAS POR DIA', null, colunasPd(atual.map((x, i) => {
+        const dt = diaDe(x.dia), ult = i === atual.length - 1;
+        const rot = atual.length > 10 ? ((atual.length - 1 - i) % 5 ? '' : String(dt.getDate())) : dt.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+        return {
+          v: x.pessoas, rot, destaque: ult,
+          tip: `${dt.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}|${x.pessoas} ${x.pessoas === 1 ? 'pessoa' : 'pessoas'} · ${fmt(x.visitas)} ${x.visitas === 1 ? 'visita' : 'visitas'} · ${horasTxt(x.minutos)}`,
+        };
+      }), 'pd-graf-dias')) : null,
+      el('div', { class: 'pd-duas' },
+        cartaoPd('TELAS MAIS ABERTAS', null, barrasTelas(d.telas || {})),
+        el('div', { class: 'pd-pilha' }, cartaoHoras(d.horas || {}), cartaoAparelhos(d))),
+      cartaoMembros(membros),
+      el('div', { class: 'pd-duas' }, cartaoHistorico(d.historico || []), cartaoEspaco(d.espaco || {})));
+  }
+
+  function kpi(rot, num, antes, formato, sub = '') {
+    const dif = antes == null ? null : num - antes;
+    return el('div', { class: 'stat pd-kpi' },
+      el('span', { class: 'stat-rot', text: rot }),
+      el('span', { class: 'stat-num', text: formato(num) }),
+      dif == null ? el('span', { class: 'stat-sub', text: sub })
+        : el('span', { class: 'stat-sub' },
+          el('span', { class: `pd-dif ${dif > 0 ? 'sobe' : dif < 0 ? 'desce' : ''}`, text: dif > 0 ? `▲ ${formato(dif)}` : dif < 0 ? `▼ ${formato(-dif)}` : '= igual' }),
+          dif ? ` ${dif > 0 ? 'a mais' : 'a menos'} ${VS_PERIODO[pd.dias]}` : ` ${VS_PERIODO[pd.dias]}`));
+  }
+
+  // colunas: [{ v, rot, tip: 'título|linha', destaque }]; o número aparece no maior e no destacado
+  function colunasPd(itens, classe = '', numeros = true) {
+    const max = Math.max(1, ...itens.map((x) => x.v));
+    const iMax = itens.findIndex((x) => x.v === max);
+    return el('div', { class: `pd-graf ${classe}`, style: `--n:${itens.length}`, role: 'list' },
+      ...itens.map((x, i) => {
+        const [t1, t2] = x.tip.split('|');
+        return el('div', { class: `pd-coluna ${x.destaque ? 'destaque' : ''}`, role: 'listitem', tabindex: '0', 'data-tip': x.tip, 'aria-label': `${t1}: ${t2}` },
+          el('span', { class: 'pd-coluna-val', text: numeros && x.v && (i === iMax || x.destaque) ? fmt(x.v) : '' }),
+          el('span', { class: 'pd-coluna-area' }, el('span', { class: 'pd-coluna-barra', style: `height:${x.v ? Math.max(3, (x.v / max) * 100) : 0}%` })),
+          el('span', { class: 'pd-coluna-rot', text: x.rot }));
+      }));
+  }
+
+  function cartaoAgora(d) {
+    const l = d.agora || [];
+    return el('section', { class: 'painel pd-card pd-agora' },
+      el('div', { class: 'pd-agora-topo' },
+        el('span', { class: `pd-pulso ${l.length ? 'on' : ''}`, 'aria-hidden': 'true' }),
+        el('b', { class: 'pd-agora-num', text: String(l.length) }),
+        el('span', { class: 'pd-agora-rot', text: l.length === 1 ? 'PESSOA NO SITE AGORA' : 'PESSOAS NO SITE AGORA' })),
+      l.length
+        ? el('ul', { class: 'pd-agora-lista' }, ...l.map((a) => {
+          const nick = nickDoPlayer(a.player_id, a.nome);
+          return el('li', null, avatarChat(nick, 'av-p'), el('b', { text: nick }),
+            el('span', { class: 'pd-chip', text: NOMES_TELA[a.tela] || 'Site' }),
+            el('span', { class: 'pd-aparelho', title: a.aparelho === 'computador' ? 'Computador' : 'Celular' }, svg(a.aparelho === 'computador' ? ICONE_PC : ICONE_CELULAR, 16)));
+        }))
+        : el('p', { class: 'pd-nada', text: 'Ninguém com o site aberto agora.' }));
+  }
+
+  function cartaoAtencao(d, membros) {
+    const comConta = new Set(membros.map((m) => m.player_id).filter(Boolean));
+    const semConta = jogadores.filter((r) => r.ativo && !comConta.has(r.id)).length;
+    const esp = d.espaco || {};
+    const cheio = Math.max(Number(esp.banco || 0) / LIMITE_BANCO, somaArquivos(esp) / LIMITE_ARQUIVOS);
+    const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+    // forte = precisa de uma ação do Dono; o resto é só pra saber
+    const itens = [
+      d.pedidos > 0 && { forte: true, txt: plural(d.pedidos, 'pedido pra entrar no clã', 'pedidos pra entrar no clã'), botao: 'Aprovar', acao: () => irPara('#pedidos') },
+      d.denuncias > 0 && { forte: true, txt: plural(d.denuncias, 'denúncia no chat', 'denúncias no chat'), botao: 'Ver', acao: () => { irPara('#chat'); abrirModeracao('denuncias'); } },
+      cheio >= 0.8 && { forte: true, txt: 'Espaço do site quase cheio', botao: 'Ver', acao: () => $('pdEspaco').scrollIntoView({ block: 'center' }) },
+      semConta > 0 && { txt: plural(semConta, 'jogador do elenco sem conta', 'jogadores do elenco sem conta'), botao: 'Ver', acao: () => { pd.aba = 'semconta'; desenharPainel(); $('pdMembros').scrollIntoView({ block: 'start' }); } },
+      d.punidos > 0 && { txt: plural(d.punidos, 'pessoa punida no chat', 'pessoas punidas no chat'), botao: 'Ver', acao: () => { irPara('#chat'); abrirModeracao('punidos'); } },
+    ].filter(Boolean);
+    return cartaoPd('PRECISA DE VOCÊ', null,
+      itens.length
+        ? el('ul', { class: 'pd-alertas' }, ...itens.map((x) => el('li', { class: x.forte ? 'forte' : '' },
+          svg(x.forte ? ICONE_ALERTA : ICONE_OK, 18), el('span', { text: x.txt }), el('button', { type: 'button', class: 'btn btn-sec pd-btn', onclick: x.acao, text: x.botao }))))
+        : el('p', { class: 'pd-tudo-ok' }, svg(ICONE_OK, 22), 'Tudo em dia.'));
+  }
+
+  function barrasTelas(telas) {
+    const lista = Object.entries(telas).map(([k, n]) => [k, Number(n)]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    if (!lista.length) return el('p', { class: 'pd-nada', text: 'Ainda sem dados.' });
+    const total = lista.reduce((s, [, n]) => s + n, 0), max = lista[0][1];
+    return el('ul', { class: 'pd-barras' }, ...lista.map(([k, n]) => el('li', null,
+      el('span', { class: 'pd-barras-nome', text: NOMES_TELA[k] || NOMES_TELA.outra }),
+      el('span', { class: 'pd-barras-trilho' }, el('span', { class: 'pd-barras-fill', style: `width:${Math.max(2, (n / max) * 100)}%` })),
+      el('span', { class: 'pd-barras-num' }, el('b', { text: fmt(n) }), ` · ${Math.round((n / total) * 100)}%`))));
+  }
+
+  function cartaoHoras(horas) {
+    const v = Array.from({ length: 24 }, (_, h) => Number(horas[h] || 0));
+    const pico = v.some(Boolean) ? v.indexOf(Math.max(...v)) : -1;
+    return cartaoPd('HORÁRIO DE MOVIMENTO', pico >= 0 ? el('span', { class: 'pd-pico' }, 'Pico ', el('b', { text: `${pico}h` })) : null,
+      pico < 0 ? el('p', { class: 'pd-nada', text: 'Ainda sem dados.' })
+        : colunasPd(v.map((n, h) => ({ v: n, rot: h % 6 ? '' : `${h}h`, destaque: h === pico, tip: `${h}h às ${(h + 1) % 24}h|${horasTxt(n)} de site aberto` })), 'pd-graf-horas', false));
+  }
+
+  function cartaoAparelhos(d) {
+    const ap = d.aparelhos || {};
+    const cel = Number(ap.celular || 0), pc = Number(ap.computador || 0), tot = cel + pc;
+    if (!tot) return cartaoPd('CELULAR OU COMPUTADOR', null, el('p', { class: 'pd-nada', text: 'Ainda sem dados.' }));
+    const pCel = Math.round((cel / tot) * 100);
+    const lado = (ico, nome, n, p, cls) => el('div', { class: `pd-ap ${cls}` }, svg(ico, 20), el('span', null, el('b', { text: `${p}%` }), ` ${nome}`, el('small', { text: `${n} ${n === 1 ? 'pessoa' : 'pessoas'}` })));
+    return cartaoPd('CELULAR OU COMPUTADOR', null,
+      el('div', { class: 'pd-divisao', role: 'img', 'aria-label': `Celular ${pCel}%, computador ${100 - pCel}%` },
+        cel ? el('span', { class: 'pd-div-cel', style: `flex:${cel}` }) : null, pc ? el('span', { class: 'pd-div-pc', style: `flex:${pc}` }) : null),
+      el('div', { class: 'pd-ap-linha' }, lado(ICONE_CELULAR, 'celular', cel, pCel, 'cel'), lado(ICONE_PC, 'computador', pc, 100 - pCel, 'pc')),
+      d.app ? el('p', { class: 'pd-nota', text: `${d.app} ${d.app === 1 ? 'pessoa usa' : 'pessoas usam'} o app instalado` }) : null);
+  }
+
+  function cartaoMembros(membros) {
+    const comConta = new Set(membros.map((m) => m.player_id).filter(Boolean));
+    const limite = Date.now() - 7 * 86400000;
+    const ms = (m) => (m.ultimo ? Date.parse(m.ultimo) : 0);
+    const listas = {
+      ativos: membros.filter((m) => m.dias > 0).sort((a, b) => b.dias - a.dias || b.minutos - a.minutos),
+      sumidos: membros.filter((m) => ms(m) < limite).sort((a, b) => ms(a) - ms(b)),
+      semconta: jogadores.filter((r) => r.ativo && !comConta.has(r.id)).sort((a, b) => a.nick.localeCompare(b.nick, 'pt-BR')),
+    };
+    const abas = [['ativos', 'Mais ativos'], ['sumidos', 'Sumidos'], ['semconta', 'Sem conta']];
+    const linha = (nick, papel, forte, sub, temPerfil) => el(temPerfil ? 'button' : 'div', { type: temPerfil ? 'button' : null, class: 'pd-membro', onclick: temPerfil ? () => abrirPerfil(chave(nick)) : null },
+      avatarChat(nick, 'av-p'),
+      el('span', { class: 'pd-membro-nome' }, el('b', { text: nick }), tagPapel(papel)),
+      el('span', { class: 'pd-membro-num' }, el('b', { text: forte }), el('small', { text: sub })));
+    const itens = {
+      ativos: (m) => linha(m.nick, m.papel, pd.dias === 1 ? horasTxt(m.minutos) : `${m.dias} de ${pd.dias} dias`,
+        pd.dias === 1 ? `${m.visitas} ${m.visitas === 1 ? 'visita' : 'visitas'}` : `${horasTxt(m.minutos)} no site`, !!m.player_id),
+      sumidos: (m) => linha(m.nick, m.papel, m.ultimo ? haQuanto(m.ultimo) : 'nunca entrou', m.ultimo ? 'última vez' : `conta desde ${dataCurta(m.conta_desde)}`, !!m.player_id),
+      semconta: (r) => linha(r.nick, null, 'sem conta', r.cargo || 'no elenco', true),
+    };
+    const vazio = { ativos: 'Ninguém entrou nesse período.', sumidos: 'Ninguém sumido: todo mundo entrou nos últimos 7 dias.', semconta: 'Todo o elenco tem conta.' };
+    const lista = listas[pd.aba];
+    return el('section', { class: 'painel pd-card', id: 'pdMembros' },
+      el('div', { class: 'pd-card-topo' }, el('h3', { class: 'painel-h3', text: `MEMBROS · ${membros.length} ${membros.length === 1 ? 'CONTA' : 'CONTAS'}` }),
+        el('div', { class: 'abas pd-abas', role: 'tablist', 'aria-label': 'Membros' }, ...abas.map(([id, nome]) => el('button', {
+          type: 'button', role: 'tab', class: 'aba', 'aria-selected': String(pd.aba === id),
+          onclick: () => { pd.aba = id; desenharPainel(); },
+        }, nome, el('span', { class: 'pd-qtd', text: String(listas[id].length) }))))),
+      lista.length ? el('div', { class: 'pd-membros' }, ...lista.map(itens[pd.aba])) : el('p', { class: 'pd-nada', text: vazio[pd.aba] }));
+  }
+
+  function cartaoHistorico(hist) {
+    const mostra = pd.histTodo ? hist : hist.slice(0, 8);
+    return cartaoPd('O QUE A EQUIPE FEZ', null,
+      hist.length ? el('ul', { class: 'pd-hist' }, ...mostra.map((h) => el('li', null,
+        el('span', null, el('b', { text: h.quem || 'Admin' }), ` ${textoHistorico(h)}`),
+        el('span', { class: 'pd-hist-quando', text: haQuanto(h.created_at) })))) : el('p', { class: 'pd-nada', text: 'Nada ainda.' }),
+      hist.length > 8 ? el('button', { type: 'button', class: 'link-btn pd-mais', onclick: () => { pd.histTodo = !pd.histTodo; desenharPainel(); }, text: pd.histTodo ? 'Mostrar menos' : 'Ver mais' }) : null);
+  }
+
+  const somaArquivos = (esp) => Object.values(esp.arquivos || {}).reduce((s, n) => s + Number(n || 0), 0);
+  function cartaoEspaco(esp) {
+    const medidor = (nome, usado, limite) => {
+      const p = Math.min(100, (usado / limite) * 100);
+      const nivel = p >= 90 ? 'cheio' : p >= 70 ? 'meio' : 'ok';
+      return el('div', { class: `pd-medidor ${nivel}` },
+        el('div', { class: 'pd-medidor-txt' }, el('b', { text: nome }), el('span', { text: `${tamanhoTxt(usado)} de ${tamanhoTxt(limite)}` })),
+        el('div', { class: 'pd-medidor-trilho', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(p)), 'aria-label': nome },
+          el('span', { style: `width:${Math.max(1, p)}%` })),
+        el('small', { text: p >= 90 ? `${Math.round(p)}% usado · quase cheio` : `${p < 1 ? 'menos de 1' : Math.round(p)}% usado` }));
+    };
+    return el('section', { class: 'painel pd-card', id: 'pdEspaco' },
+      el('div', { class: 'pd-card-topo' }, el('h3', { class: 'painel-h3', text: 'ESPAÇO DO SITE' }), el('span', { class: 'pd-pico', text: 'plano grátis' })),
+      medidor('Dados do site', Number(esp.banco || 0), LIMITE_BANCO),
+      medidor('Fotos e prints', somaArquivos(esp), LIMITE_ARQUIVOS));
+  }
+
+  // dica que aparece ao passar o dedo/mouse numa coluna dos gráficos
+  function ligarDicasPainel() {
+    const box = $('pdCorpo');
+    const dica = el('div', { class: 'pd-dica', role: 'tooltip', hidden: true });
+    document.body.append(dica);
+    const mostrar = (alvo) => {
+      const [t1, t2] = alvo.dataset.tip.split('|');
+      trocar(dica, el('b', { text: t1 }), el('span', { text: t2 }));
+      dica.hidden = false;
+      const r = alvo.getBoundingClientRect(), w = dica.offsetWidth, h = dica.offsetHeight;
+      dica.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2))}px`;
+      dica.style.top = `${Math.max(8, r.top - h - 8)}px`;
+    };
+    const esconder = () => { dica.hidden = true; };
+    box.addEventListener('pointerover', (e) => { const a = e.target.closest('[data-tip]'); if (a) mostrar(a); });
+    box.addEventListener('pointerout', (e) => { if (e.target.closest('[data-tip]') && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tip]'))) esconder(); });
+    box.addEventListener('focusin', (e) => { const a = e.target.closest('[data-tip]'); if (a) mostrar(a); });
+    box.addEventListener('focusout', esconder);
+    addEventListener('scroll', esconder, { passive: true });
+  }
+
+  // demonstração: números inventados, com o elenco de exemplo
+  function demoPainel(n) {
+    const iso = (dt) => dt.toLocaleDateString('sv-SE');
+    const dias = [];
+    for (let i = 2 * n - 1; i >= 0; i--) {
+      const dt = new Date(Date.now() - i * 86400000);
+      const p = Math.min(6, 2 + Math.round(3 * Math.abs(Math.sin(i * 1.3))) + ([0, 6].includes(dt.getDay()) ? 1 : 0));
+      dias.push({ dia: iso(dt), pessoas: p, visitas: p * 2 + (i % 3), minutos: p * 24 + ((i * 7) % 40), massas: (i * 5) % 4, msgs: p * 7 + (i % 5) * 3, contas: i % 9 === 4 ? 1 : 0 });
+    }
+    const ativos = jogadores.filter((r) => r.ativo);
+    const dh = (d) => new Date(Date.now() - d * 86400000).toISOString();
+    const membros = ativos.slice(0, ativos.length - 1).map((r, i) => {
+      const sumido = i === 4 || i === 5;
+      return { user_id: `u${i}`, player_id: r.id, nome: r.nick, papel: i === 0 ? 'dono' : i === 2 ? 'adm' : 'membro', conta_desde: dh(30 - i),
+        ultimo: i === 5 ? null : dh(sumido ? 12 : i * 0.08), dias: sumido ? 0 : Math.max(1, Math.min(n, n - i)), minutos: sumido ? 0 : Math.max(5, Math.round((260 - i * 45) * Math.min(n, 7) / 7)), visitas: sumido ? 0 : 14 - i * 2 };
+    });
+    const k = Math.max(1, n) / 7;
+    const telas = Object.fromEntries(Object.entries({ ranking: 140, chat: 118, perfil: 64, torneios: 31, jogadores: 22, trofeus: 16, partidas: 12, patentes: 8, painel: 5 }).map(([t, v]) => [t, Math.max(1, Math.round(v * k))]));
+    const horas = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [h, Math.round(k * (h < 7 ? (h < 2 ? 18 - h * 8 : 1) : 6 + 70 * Math.exp(-((h - 21) ** 2) / 10) + 20 * Math.exp(-((h - 13) ** 2) / 6)))]));
+    return {
+      hoje: iso(new Date()), desde: iso(new Date(Date.now() - 40 * 86400000)), pessoas: Math.min(membros.length, 3 + n), pessoas_antes: Math.min(membros.length, 2 + n),
+      agora: membros.slice(0, 3).map((m, i) => ({ ...m, tela: ['chat', 'ranking', 'perfil'][i], aparelho: i === 1 ? 'computador' : 'celular', ultimo: dh(0) })),
+      dias, telas, horas, aparelhos: { celular: 5, computador: 2 }, app: 3, membros, pedidos: 1, denuncias: 2, punidos: 0,
+      espaco: { banco: 13.6 * 1048576, arquivos: { prints: 4.2 * 1048576, chat: 22528 } },
+      historico: [
+        { quem: 'VENO', acao: 'registrar', detalhe: { jogador: 'Shawdow', massa: 104210 }, created_at: dh(0.02) },
+        { quem: 'VENO', acao: 'aprovar pedido', detalhe: { nick: 'Cascavel' }, created_at: dh(0.3) },
+        { quem: 'Kaiser', acao: 'chat_punir', detalhe: { quem: 'Naja', tipo: 'silencio', minutos: 60, motivo: 'flood' }, created_at: dh(1.2) },
+        { quem: 'VENO', acao: 'criar torneio', detalhe: { nome: 'Copa COBR' }, created_at: dh(2) },
+        { quem: 'VENO', acao: 'chat_faxina', detalhe: { fotos: 2, msgs: 14, manual: false }, created_at: dh(3) },
+      ],
+    };
   }
 
   // ---------- notificações no celular e app instalado ----------
@@ -6174,6 +6531,15 @@ ${frente}
     $('fBuscaGlobal').addEventListener('keydown', (e) => { if (e.key === 'Enter' && achados[0]) { e.preventDefault(); irPerfil(achados[0].r.chave); } });
     $('buscaAtalhos').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgBusca').close(); });
     $('bbMais').addEventListener('click', abrirMais);
+    // painel do dono: período, dicas dos gráficos e atualização sozinha a cada 30 s
+    document.querySelectorAll('[data-pd]').forEach((b) => b.addEventListener('click', () => {
+      pd.dias = Number(b.dataset.pd);
+      pd.histTodo = false;
+      desenharPainel();
+      carregarPainel();
+    }));
+    ligarDicasPainel();
+    setInterval(() => { if (painelVisivel()) carregarPainel(); }, 30000);
     $('btnTabelaToda').addEventListener('click', () => {
       tabelaToda = !tabelaToda;
       render();

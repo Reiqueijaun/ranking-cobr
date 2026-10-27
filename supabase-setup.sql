@@ -1681,6 +1681,146 @@ begin
 end;
 $$;
 
+-- 8) Painel do Dono: quantas pessoas usam o site, quais telas, que horas e em que aparelho.
+--    O site de cada membro avisa quando abre, quando troca de tela e a cada minuto que fica aberto
+--    na tela. Uma linha por pessoa por dia (horário de Brasília). Só o Dono lê (dono_painel).
+create table if not exists public.site_uso (
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  dia         date not null,
+  aberturas   integer not null default 0,
+  minutos     integer not null default 0,
+  telas       jsonb not null default '{}'::jsonb,   -- tela -> vezes que abriu
+  horas       jsonb not null default '{}'::jsonb,   -- hora do dia (0 a 23) -> minutos com o site aberto
+  aparelho    text not null default '' check (aparelho in ('', 'celular', 'computador')),
+  app         boolean not null default false,       -- abriu pelo app instalado
+  tela_atual  text not null default '',
+  ultimo      timestamptz not null default now(),
+  ultimo_ping timestamptz,
+  primary key (user_id, dia)
+);
+create index if not exists site_uso_dia on public.site_uso (dia);
+create index if not exists site_uso_ultimo on public.site_uso (ultimo desc);
+alter table public.site_uso enable row level security;
+revoke all on public.site_uso from anon, authenticated;
+-- (sem políticas = ninguém lê direto; o Dono vê tudo pelo dono_painel)
+
+-- p_tipo: abriu (abriu o site) | tela (trocou de tela) | ping (mais um minuto com o site aberto)
+create or replace function public.site_marcar(p_tela text, p_tipo text, p_aparelho text default '', p_app boolean default false)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_agora timestamp := now() at time zone 'America/Sao_Paulo';
+  v_tipo text := case when p_tipo in ('abriu', 'tela', 'ping') then p_tipo else 'ping' end;
+  v_tela text := case when p_tela in ('ranking', 'chat', 'torneios', 'trofeus', 'jogadores', 'partidas', 'patentes',
+                                       'perfil', 'torneio', 'painel') then p_tela else 'outra' end;
+  v_hora text := extract(hour from v_agora)::int::text;
+  v_aparelho text := case when p_aparelho in ('celular', 'computador') then p_aparelho else '' end;
+begin
+  if auth.uid() is null or not is_membro() then return; end if;
+  insert into site_uso as s (user_id, dia, aberturas, minutos, telas, horas, aparelho, app, tela_atual, ultimo, ultimo_ping)
+  values (auth.uid(), v_agora::date, (v_tipo = 'abriu')::int, (v_tipo = 'ping')::int,
+          case when v_tipo = 'ping' then '{}'::jsonb else jsonb_build_object(v_tela, 1) end,
+          case when v_tipo = 'tela' then '{}'::jsonb else jsonb_build_object(v_hora, 1) end,
+          v_aparelho, coalesce(p_app, false), v_tela, now(), case when v_tipo = 'ping' then now() end)
+  on conflict (user_id, dia) do update set
+    aberturas = s.aberturas + excluded.aberturas,
+    -- minuto só conta 1 vez por minuto (duas abas abertas não contam em dobro)
+    minutos = s.minutos + case when v_tipo = 'ping' and (s.ultimo_ping is null or s.ultimo_ping < now() - interval '45 seconds') then 1 else 0 end,
+    ultimo_ping = case when v_tipo = 'ping' and (s.ultimo_ping is null or s.ultimo_ping < now() - interval '45 seconds') then now() else s.ultimo_ping end,
+    telas = case when v_tipo = 'ping' then s.telas
+                 else s.telas || jsonb_build_object(v_tela, coalesce((s.telas ->> v_tela)::int, 0) + 1) end,
+    horas = case when v_tipo = 'tela' or (v_tipo = 'ping' and s.ultimo_ping >= now() - interval '45 seconds') then s.horas
+                 else s.horas || jsonb_build_object(v_hora, coalesce((s.horas ->> v_hora)::int, 0) + 1) end,
+    aparelho = coalesce(nullif(excluded.aparelho, ''), s.aparelho),
+    app = s.app or excluded.app,
+    tela_atual = v_tela,
+    ultimo = now();
+  -- guarda pouco mais de 1 ano
+  if v_tipo = 'abriu' then
+    delete from site_uso where user_id = auth.uid() and dia < v_agora::date - 400;
+  end if;
+end;
+$$;
+
+-- tudo do painel de uma vez. p_dias: 1 (hoje), 7 ou 30. Os dias voltam em dobro pra comparar com o período anterior.
+create or replace function public.dono_painel(p_dias integer default 7)
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  v_hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_dias integer := least(greatest(coalesce(p_dias, 7), 1), 90);
+  v_ini date := v_hoje - (v_dias - 1);
+  v_de date := v_hoje - (2 * v_dias - 1);
+  v_arquivos jsonb := '{}'::jsonb;
+begin
+  if not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  begin
+    select coalesce(jsonb_object_agg(bucket_id, total), '{}'::jsonb) into v_arquivos
+    from (select bucket_id, sum(coalesce((metadata ->> 'size')::bigint, 0)) as total from storage.objects group by bucket_id) x;
+  exception when others then v_arquivos := '{}'::jsonb;
+  end;
+  return jsonb_build_object(
+    'hoje', v_hoje,
+    'desde', (select min(dia) from site_uso),
+    'pessoas', (select count(distinct user_id) from site_uso where dia >= v_ini),
+    'pessoas_antes', (select count(distinct user_id) from site_uso where dia >= v_de and dia < v_ini),
+    'agora', coalesce((select jsonb_agg(a order by a.ultimo desc) from (
+        select distinct on (s.user_id) s.user_id, c.player_id, chat_nome(s.user_id) as nome, s.tela_atual as tela, s.aparelho, s.ultimo
+        from site_uso s left join player_contas c on c.user_id = s.user_id
+        where s.ultimo > now() - interval '3 minutes'
+        order by s.user_id, s.ultimo desc) a), '[]'::jsonb),
+    'dias', (select jsonb_agg(jsonb_build_object(
+        'dia', d.dia,
+        'pessoas', (select count(*) from site_uso s where s.dia = d.dia),
+        'visitas', (select coalesce(sum(s.aberturas), 0) from site_uso s where s.dia = d.dia),
+        'minutos', (select coalesce(sum(s.minutos), 0) from site_uso s where s.dia = d.dia),
+        'massas', (select count(*) from scores x where (x.created_at at time zone 'America/Sao_Paulo')::date = d.dia),
+        'msgs', (select count(*) from chat_mensagens m where m.user_id is not null and m.tipo <> 'massa'
+                   and (m.created_at at time zone 'America/Sao_Paulo')::date = d.dia),
+        'contas', (select count(*) from auth.users u where (u.created_at at time zone 'America/Sao_Paulo')::date = d.dia)
+      ) order by d.dia)
+      from (select generate_series(v_de, v_hoje, interval '1 day')::date as dia) d),
+    'telas', coalesce((select jsonb_object_agg(k, n) from (
+        select t.key as k, sum(t.value::int) as n from site_uso s, jsonb_each_text(s.telas) t
+        where s.dia >= v_ini group by t.key) x), '{}'::jsonb),
+    'horas', coalesce((select jsonb_object_agg(k, n) from (
+        select t.key as k, sum(t.value::int) as n from site_uso s, jsonb_each_text(s.horas) t
+        where s.dia >= v_ini group by t.key) x), '{}'::jsonb),
+    'aparelhos', coalesce((select jsonb_object_agg(a, n) from (
+        select coalesce(nullif(aparelho, ''), 'outro') as a, count(distinct user_id) as n
+        from site_uso where dia >= v_ini group by 1) x), '{}'::jsonb),
+    'app', (select count(distinct user_id) from site_uso where dia >= v_ini and app),
+    'membros', coalesce((select jsonb_agg(m) from (
+        select c.user_id, c.player_id, chat_nome(c.user_id) as nome,
+               case when exists (select 1 from admins a where a.user_id = c.user_id) then 'dono'
+                    when exists (select 1 from chat_adms d where d.user_id = c.user_id) then 'adm' else 'membro' end as papel,
+               u.created_at as conta_desde,
+               greatest((select max(s.ultimo) from site_uso s where s.user_id = c.user_id), u.last_sign_in_at) as ultimo,
+               (select count(*) from site_uso s where s.user_id = c.user_id and s.dia >= v_ini) as dias,
+               (select coalesce(sum(s.minutos), 0) from site_uso s where s.user_id = c.user_id and s.dia >= v_ini) as minutos,
+               (select coalesce(sum(s.aberturas), 0) from site_uso s where s.user_id = c.user_id and s.dia >= v_ini) as visitas
+        from (select user_id, player_id from player_contas
+              union
+              select a.user_id, null::uuid from admins a where not exists (select 1 from player_contas p where p.user_id = a.user_id)) c
+        join auth.users u on u.id = c.user_id) m), '[]'::jsonb),
+    'pedidos', (select count(*) from player_pedidos),
+    'denuncias', (select count(distinct msg_id) from chat_denuncias),
+    'punidos', (select count(*) from chat_punicoes where ate is null or ate > now()),
+    'espaco', jsonb_build_object('banco', pg_database_size(current_database()), 'arquivos', v_arquivos),
+    'historico', coalesce((select jsonb_agg(h order by h.created_at desc) from (
+        select l.acao, l.detalhe, l.created_at, coalesce(nullif(btrim(a.nome), ''), chat_nome(l.user_id), l.email) as quem
+        from admin_log l left join admins a on a.user_id = l.user_id
+        order by l.created_at desc limit 40) h), '[]'::jsonb));
+end;
+$$;
+
+revoke all on function public.site_marcar(text, text, text, boolean) from public, anon;
+revoke all on function public.dono_painel(integer) from public, anon;
+grant execute on function public.site_marcar(text, text, text, boolean) to authenticated;
+grant execute on function public.dono_painel(integer) to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --
 -- Pra dar acesso de admin a alguém (depois de criar a conta em
