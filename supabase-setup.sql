@@ -754,6 +754,36 @@ create policy "membros veem resultados" on public.torneio_lancamentos
   using ((select public.is_membro()) and exists (select 1 from public.torneios t where t.id = torneio_id));
 
 
+-- 5f) Avatar: cada jogador monta a cobrinha dele no site (só as peças, o desenho é feito no site).
+--     Quem muda: o próprio jogador (pelo login) ou um admin. Ninguém grava direto na tabela.
+alter table public.players add column if not exists avatar jsonb
+  check (avatar is null or (jsonb_typeof(avatar) = 'object' and length(avatar::text) <= 400));
+
+-- p_avatar null = tira o avatar. Devolve: ok | sem_jogador | sem_permissao | invalido | nao_existe
+create or replace function public.jogador_avatar(p_avatar jsonb, p_player uuid default null)
+returns text
+language plpgsql security definer set search_path = public
+as $
+declare
+  v_meu uuid := (select player_id from player_contas where user_id = auth.uid());
+  v_player uuid := coalesce(p_player, v_meu);
+begin
+  if v_player is null then return 'sem_jogador'; end if;
+  if v_player is distinct from v_meu and not is_admin() then return 'sem_permissao'; end if;
+  if p_avatar is not null and (jsonb_typeof(p_avatar) <> 'object' or length(p_avatar::text) > 400
+     or exists (select 1 from jsonb_each(p_avatar) e
+                where length(e.key) > 12 or jsonb_typeof(e.value) <> 'string' or length(e.value #>> '{}') > 16)) then
+    return 'invalido';
+  end if;
+  update players set avatar = p_avatar where id = v_player;
+  if not found then return 'nao_existe'; end if;
+  return 'ok';
+end;
+$;
+revoke all on function public.jogador_avatar(jsonb, uuid) from public, anon;
+grant execute on function public.jogador_avatar(jsonb, uuid) to authenticated;
+
+
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin

@@ -1067,6 +1067,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function avatarPodio(j) {
     const { atual } = patenteDe(geralPts(j));
     const letra = j.nome.charAt(0).toUpperCase();
+    const av = avatarDoElenco(j.nome);
+    if (av) return coroar(avatarFoto(av, atual, 'avatar'), j.chave);
     if (!atual.nivel) return coroar(el('div', { class: 'avatar', 'aria-hidden': 'true', text: letra }), j.chave);
     const a = el('div', { class: `avatar avatar-esc ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
     a.innerHTML = escudoSVG(atual, letra);
@@ -1415,10 +1417,13 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   const ICONE_PATENTE = '<path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/>';
   const ICONE_DIAMANTE = '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M10 3 8 9l4 12 4-12-2-6"/>';
-  // quem tem patente ganha o escudo dela no lugar da bolinha (Recruta continua com a bolinha)
+  // quem tem patente ganha o escudo dela no lugar da bolinha (Recruta continua com a bolinha);
+  // quem montou o avatar aparece com ele, na moldura da patente
   function avatarDe(nome, pontos, tam = '') {
     const { atual } = patenteDe(pontos);
     const letra = nome.charAt(0).toUpperCase();
+    const av = avatarDoElenco(nome);
+    if (av) return coroar(avatarFoto(av, atual, `av ${tam}`), chave(nome));
     if (!atual.nivel) return coroar(el('span', { class: `av ${tam}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true', text: letra }), chave(nome));
     const a = el('span', { class: `av av-esc ${tam} ${atual.diamante ? 'esc-dia' : ''}`, style: `--pc:${atual.cor}`, 'aria-hidden': 'true' });
     a.innerHTML = escudoSVG(atual, letra);
@@ -1675,6 +1680,348 @@ ${frente}
 <path class="gd-faisca f3" d="M70 60l1.2 3.3 3.3 1.2-3.3 1.2L70 69l-1.2-3.3-3.3-1.2 3.3-1.2z" fill="#fff"/>
 </svg>`;
     return w;
+  }
+  // ---------- avatar do jogador ----------
+  // a cobrinha montada peça por peça (pele, desenho, olhos, boca, cabeça, rosto, fundo).
+  // Tudo desenhado aqui em SVG: fica nítido em qualquer tamanho e não ocupa armazenamento
+  const AV_CORES = {
+    verde: '#22E07A', lima: '#A6F03C', ciano: '#2FE3F2', azul: '#3B82F6', roxo: '#8B5CF6', rosa: '#FF5FB7',
+    vermelho: '#F23B3B', laranja: '#FF7A1A', amarelo: '#FFD23F', dourado: '#E0A526', branco: '#E9ECF4', preto: '#424857',
+  };
+  const AV_FUNDOS = {
+    brasa: ['#6A2A0A', '#150703'], noite: ['#1B3A72', '#060B18'], roxo: ['#47207A', '#0D0518'], mata: ['#12583A', '#03120B'],
+    sangue: ['#6E1220', '#140306'], gelo: ['#0F5E6E', '#031317'], ouro: ['#7A5512', '#170F03'], aco: ['#424A58', '#0C0E12'],
+  };
+  const AV_PARTES = {
+    padrao: ['lisa', 'listras', 'pintas', 'losango', 'raio', 'chamas', 'faixa'],
+    olhos: ['normal', 'bravo', 'sono', 'feliz', 'fenda', 'neon', 'estrela', 'fofo'],
+    boca: ['sorriso', 'lingua', 'presas', 'deboche', 'serio', 'aberta'],
+    cabeca: ['nada', 'bone', 'headset', 'bandana', 'gorro', 'chifres', 'aureola', 'cowboy', 'viking'],
+    rosto: ['nada', 'escuros', 'visor', 'redondo', 'tapa', 'cicatriz', 'mascara'],
+    estampa: ['liso', 'hex', 'raios', 'bolinhas', 'grade'],
+  };
+  const AV_PADRAO = { pele: 'verde', cor2: 'amarelo', padrao: 'lisa', olhos: 'normal', boca: 'sorriso', cabeca: 'nada', rosto: 'nada', cor3: 'laranja', fundo: 'brasa', estampa: 'hex' };
+  // o que veio do banco passa por aqui: valor que não existe vira o padrão
+  function avLimpo(a) {
+    if (!a || typeof a !== 'object') return null;
+    const o = {};
+    for (const [k, v] of Object.entries(AV_PADRAO)) {
+      const ok = k === 'pele' || k === 'cor2' || k === 'cor3' ? AV_CORES[a[k]] : k === 'fundo' ? AV_FUNDOS[a[k]] : AV_PARTES[k].includes(a[k]);
+      o[k] = ok ? a[k] : v;
+    }
+    return o;
+  }
+  const avSorteia = (l) => l[Math.floor(Math.random() * l.length)];
+  function avAleatorio() {
+    const cores = Object.keys(AV_CORES);
+    const pele = avSorteia(cores);
+    return {
+      pele, cor2: avSorteia(cores.filter((c) => c !== pele)), cor3: avSorteia(cores),
+      padrao: avSorteia(AV_PARTES.padrao), olhos: avSorteia(AV_PARTES.olhos), boca: avSorteia(AV_PARTES.boca),
+      cabeca: Math.random() < .3 ? 'nada' : avSorteia(AV_PARTES.cabeca), rosto: Math.random() < .55 ? 'nada' : avSorteia(AV_PARTES.rosto),
+      fundo: avSorteia(Object.keys(AV_FUNDOS)), estampa: avSorteia(AV_PARTES.estampa),
+    };
+  }
+  let numAv = 0;
+  function avatarSVG(av, zoom = false) {
+    const a = avLimpo(av) || AV_PADRAO;
+    const id = 'av' + (++numAv);
+    const c = AV_CORES[a.pele], c2 = AV_CORES[a.cor2], c3 = AV_CORES[a.cor3];
+    const [f1, f2] = AV_FUNDOS[a.fundo];
+    const linha = tom(c, -.68);
+    const tr = (cor = linha, w = 1.6) => `stroke="${cor}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+    const grad = (gid, cor, cx = .36, cy = .3) => `<radialGradient id="${id}${gid}" cx="${cx}" cy="${cy}" r=".75"><stop offset="0" stop-color="${tom(cor, .45)}"/><stop offset=".55" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -.42)}"/></radialGradient>`;
+    const lin = (gid, cor) => `<linearGradient id="${id}${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${tom(cor, .35)}"/><stop offset=".5" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -.4)}"/></linearGradient>`;
+    const CAB = 'M50 21C67 21 79 32 79 46C79 61 66 72 50 72C34 72 21 61 21 46C21 32 33 21 50 21Z';
+    const OL = [[38.5, 45], [61.5, 45]]; // centro dos olhos
+    let defs = grad('p', c) + grad('q', c2) + lin('x', c3) + grad('y', c3)
+      + `<radialGradient id="${id}h" gradientUnits="userSpaceOnUse" cx="42" cy="32" r="44"><stop offset="0" stop-color="${tom(c, .5)}"/><stop offset=".5" stop-color="${c}"/><stop offset="1" stop-color="${tom(c, -.45)}"/></radialGradient>`
+      + `<radialGradient id="${id}f" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="${f1}"/><stop offset="1" stop-color="${f2}"/></radialGradient>`
+      + `<clipPath id="${id}k"><path d="${CAB}"/></clipPath>`;
+
+    // fundo + estampa
+    let fundo = `<rect width="100" height="100" fill="url(#${id}f)"/>`;
+    const claro = tom(f1, .55);
+    if (a.estampa === 'hex') {
+      defs += `<pattern id="${id}e" width="14" height="24.25" patternUnits="userSpaceOnUse" patternTransform="translate(3 2)"><path d="M7 0L14 4V12.1L7 16.2L0 12.1V4ZM7 16.2V24.25M0 4L-7 0M14 4L21 0" fill="none" stroke="${claro}" stroke-opacity=".22" stroke-width="1"/></pattern>`;
+      fundo += `<rect width="100" height="100" fill="url(#${id}e)"/>`;
+    } else if (a.estampa === 'raios') {
+      fundo += `<g fill="${claro}" fill-opacity=".14">${Array.from({ length: 12 }, (_, i) => {
+        const g = Math.PI * 2 * i / 12, p = (d) => `${(50 + 90 * Math.cos(g + d)).toFixed(1)},${(46 + 90 * Math.sin(g + d)).toFixed(1)}`;
+        return `<polygon points="50,46 ${p(-.13)} ${p(.13)}"/>`;
+      }).join('')}</g>`;
+    } else if (a.estampa === 'bolinhas') {
+      defs += `<pattern id="${id}e" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="2.5" cy="2.5" r="1.4" fill="${claro}" fill-opacity=".25"/><circle cx="7.5" cy="7.5" r="1.4" fill="${claro}" fill-opacity=".25"/></pattern>`;
+      fundo += `<rect width="100" height="100" fill="url(#${id}e)"/>`;
+    } else if (a.estampa === 'grade') {
+      const neon = tom(c3, .2);
+      fundo += `<g stroke="${neon}" stroke-width=".8" fill="none" opacity=".55">${[60, 66, 74, 84, 97].map((y) => `<path d="M0 ${y}H100"/>`).join('')}`
+        + `${[-60, -30, -10, 10, 30, 50, 70, 90, 110, 130, 160].map((x) => `<path d="M50 54L${x} 100"/>`).join('')}</g>`
+        + `<path d="M0 54H100" stroke="${neon}" stroke-width="1.2" opacity=".8"/>`;
+    }
+    // luz atrás da cabeça
+    fundo += `<circle cx="50" cy="44" r="40" fill="${c}" fill-opacity=".16"/>`;
+
+    // corpo: gomos (como no jogo) vindo do rabo, embaixo à esquerda, e subindo até o pescoço
+    const bz = (u, p0, p1, p2, p3) => (1 - u) ** 3 * p0 + 3 * (1 - u) ** 2 * u * p1 + 3 * (1 - u) * u * u * p2 + u ** 3 * p3;
+    const gomos = Array.from({ length: 9 }, (_, i) => {
+      const u = i / 8;
+      return [+bz(u, -4, 26, 82, 56).toFixed(1), +bz(u, 100, 80, 112, 76).toFixed(1), +(11 + 5 * Math.min(1, u * 1.6)).toFixed(1)];
+    });
+    const corGomo = (i) => (a.padrao === 'listras' && (gomos.length - 1 - i) % 2 ? 'q' : 'p');
+    let corpo = gomos.map(([x, y, r], i) => {
+      let s = `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${id}${corGomo(i)})" ${tr(linha, 1.3)}/>`;
+      if (a.padrao === 'pintas') s += `<circle cx="${x - r * .2}" cy="${y - r * .3}" r="${r * .22}" fill="${c2}"/><circle cx="${x + r * .38}" cy="${y + r * .15}" r="${r * .13}" fill="${c2}"/>`;
+      if (a.padrao === 'losango' || a.padrao === 'faixa') s += `<path d="${gema(x, y - r * .1, r * .42)}" fill="${c2}" ${tr(tom(c2, -.5), 1)}/>`;
+      if (a.padrao === 'raio' || a.padrao === 'chamas') s += `<circle cx="${x}" cy="${y}" r="${(r * .42).toFixed(1)}" fill="${c2}"/>`;
+      const hx = (x - r * .32).toFixed(1), hy = (y - r * .48).toFixed(1);
+      return s + `<ellipse cx="${hx}" cy="${hy}" rx="${(r * .38).toFixed(1)}" ry="${(r * .18).toFixed(1)}" transform="rotate(-25 ${hx} ${hy})" fill="#fff" fill-opacity=".3"/>`;
+    }).join('');
+    // sombra da cabeça no pescoço
+    corpo += `<ellipse cx="52" cy="72" rx="22" ry="5.5" fill="#000" fill-opacity=".32"/>`;
+
+    // desenho na cabeça (cortado no formato dela)
+    const desenhos = {
+      lisa: '',
+      listras: `<g fill="${c2}" ${tr(tom(c2, -.5), 1)}><path d="M50 18L54 19.5L52 33L48 33L46 19.5Z"/><path d="M35 23L40 21L41.5 32L37.5 33Z"/><path d="M65 23L60 21L58.5 32L62.5 33Z"/><path d="M21 44L30 46L21 50Z"/><path d="M79 44L70 46L79 50Z"/></g>`,
+      pintas: `<g fill="${c2}">${[[30, 31, 3.4], [70, 30, 3], [50, 26, 2.6], [25, 52, 2.4], [76, 53, 2.8], [33, 64, 2], [68, 65, 2.2], [43, 30, 1.6], [58, 29, 1.8]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join('')}</g>`,
+      losango: `<g fill="${c2}" ${tr(tom(c2, -.5), 1)}><path d="${gema(50, 27, 6)}"/><path d="${gema(50, 37.5, 4.2)}"/><path d="${gema(30, 32, 3.6)}"/><path d="${gema(70, 32, 3.6)}"/></g>`,
+      raio: `<path d="M53 18L42 36H49L45 47L58 29H51L55 18Z" fill="${c2}" ${tr(tom(c2, -.5), 1.1)}/>`,
+      chamas: `<path d="M14 14H86V30C82 34 80 30 78 37C75 31 72 35 69 30C67 37 63 34 61 39C58 33 55 36 52 31C50 36 47 33 45 39C42 33 39 36 36 30C33 35 31 31 28 36C26 30 22 33 20 38C18 32 16 31 14 34Z" fill="${c2}" ${tr(tom(c2, -.5), 1)}/>`,
+      faixa: `<path d="M18 36C30 32 40 34 50 37C60 34 70 32 82 36L82 53C70 51 60 54 50 56C40 54 30 51 18 53Z" fill="${c2}" ${tr(tom(c2, -.5), 1.2)}/>`,
+    };
+    const cabeca = `<path d="${CAB}" fill="url(#${id}h)" ${tr(linha, 1.8)}/>`
+      + `<g clip-path="url(#${id}k)">${desenhos[a.padrao]}<path d="M18 60C30 74 70 74 82 60V80H18Z" fill="#000" fill-opacity=".14"/></g>`
+      + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".28"/>`
+      + `<path d="${CAB}" fill="none" ${tr(linha, 1.8)}/>`;
+
+    // olhos
+    const pupila = (x, y, r = 4.6) => `<circle cx="${x + .8}" cy="${y + .9}" r="${r}" fill="#0B0B10"/><circle cx="${x - .6}" cy="${y - 1}" r="${(r * .36).toFixed(2)}" fill="#fff"/>`;
+    const branco = (x, y, r = 8.6) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#FDFDFD" ${tr(linha, 1.6)}/>`;
+    const palpebra = (x, y, lado, tipo) => {
+      // lado: -1 olho esquerdo, 1 direito. Bravo: o canto de dentro (perto do nariz) desce
+      const pts = tipo === 'bravo'
+        ? [[x + 11 * lado, y - 13], [x - 11 * lado, y - 13], [x - 11 * lado, y - 1.5], [x + 10 * lado, y - 8]]
+        : [[x - 11, y - 13], [x + 11, y - 13], [x + 11, y - .5], [x - 11, y - .5]];
+      const [, , p3, p4] = pts;
+      return `<polygon points="${pts.map((p) => p.join(',')).join(' ')}" fill="url(#${id}h)"/><path d="M${p4.join(' ')}L${p3.join(' ')}" ${tr(linha, 2)}/>`;
+    };
+    const olhos = OL.map(([x, y], i) => {
+      const lado = i ? 1 : -1;
+      switch (a.olhos) {
+        case 'bravo': return `<g clip-path="url(#${id}o${i})">${branco(x, y)}${pupila(x - lado * .6, y + 1.4)}${palpebra(x, y, lado, 'bravo')}</g>`;
+        case 'sono': return `<g clip-path="url(#${id}o${i})">${branco(x, y)}${pupila(x, y + 2.6, 4.2)}${palpebra(x, y, lado, 'sono')}</g>`;
+        case 'feliz': return `<path d="M${x - 6.5} ${y + 2.5}Q${x} ${y - 7.5} ${x + 6.5} ${y + 2.5}" fill="none" ${tr(linha, 3)}/>`;
+        case 'fenda': return `<circle cx="${x}" cy="${y}" r="8.6" fill="url(#${id}g)" ${tr(linha, 1.6)}/><ellipse cx="${x}" cy="${y}" rx="1.9" ry="6.6" fill="#0B0B10"/><circle cx="${x - 3}" cy="${y - 3.4}" r="1.6" fill="#fff" fill-opacity=".9"/>`;
+        case 'neon': return `<circle cx="${x}" cy="${y}" r="8.6" fill="#0A0A12" ${tr(linha, 1.6)}/><circle cx="${x}" cy="${y}" r="5.4" fill="${c3}" filter="url(#${id}n)"/><circle cx="${x}" cy="${y}" r="2.4" fill="#fff"/>`;
+        case 'estrela': return `${branco(x, y)}<polygon points="${estrela(x + .4, y + .6, 6.4)}" fill="${tom(c3, -.1)}" ${tr(tom(c3, -.6), 1)}/><circle cx="${x - 1.4}" cy="${y - 1.6}" r="1.3" fill="#fff"/>`;
+        case 'fofo': return `${branco(x, y, 9)}<circle cx="${x + .6}" cy="${y + .8}" r="6.6" fill="#0B0B10"/><circle cx="${x - 1.8}" cy="${y - 1.8}" r="2.4" fill="#fff"/><circle cx="${x + 2.6}" cy="${y + 3.2}" r="1.1" fill="#fff"/>`;
+        default: return branco(x, y) + pupila(x, y);
+      }
+    }).join('');
+    defs += OL.map(([x, y], i) => `<clipPath id="${id}o${i}"><circle cx="${x}" cy="${y}" r="9.4"/></clipPath>`).join('')
+      + `<radialGradient id="${id}g" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#F6FF9A"/><stop offset=".6" stop-color="#C8F02A"/><stop offset="1" stop-color="#5E8F00"/></radialGradient>`
+      + `<filter id="${id}n" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="1.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+    // contorno de fora dos olhos com pálpebra (o recorte comeu o traço)
+    const aro = a.olhos === 'bravo' || a.olhos === 'sono' ? OL.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="8.6" fill="none" ${tr(linha, 1.6)}/>`).join('') : '';
+
+    // focinho e boca
+    const narinas = `<ellipse cx="46" cy="56" rx="1.3" ry="1" fill="${linha}" fill-opacity=".75"/><ellipse cx="54" cy="56" rx="1.3" ry="1" fill="${linha}" fill-opacity=".75"/>`;
+    const lingua = `<path d="M48.2 62.5H51.8V70.5L55 77L51.4 73.3L50 76.2L48.6 73.3L45 77L48.2 70.5Z" fill="#F0244F" ${tr('#7A0A22', 1)}/>`;
+    const bocas = {
+      sorriso: `<path d="M40 60.5Q50 68.5 60 60.5" fill="none" ${tr(linha, 2.4)}/>`,
+      lingua: `${lingua}<path d="M40 60.5Q50 67 60 60.5" fill="none" ${tr(linha, 2.4)}/>`,
+      presas: `<path d="M38.5 59.5Q50 72 61.5 59.5Q50 63.5 38.5 59.5Z" fill="#2A0710" ${tr(linha, 1.8)}/><path d="M43 61.2L45 67.5L47 62.2Z M57 61.2L55 67.5L53 62.2Z" fill="#fff" ${tr(linha, .9)}/>`,
+      deboche: `<path d="M41 62.5Q51 65 59.5 58" fill="none" ${tr(linha, 2.4)}/><path d="M58 56.5L61 59.5" ${tr(linha, 2)}/>`,
+      serio: `<path d="M42.5 62.5H57.5" ${tr(linha, 2.4)}/>`,
+      aberta: `<path d="M40 59.5Q50 58 60 59.5Q59 70 50 70Q41 70 40 59.5Z" fill="#2A0710" ${tr(linha, 1.8)}/><path d="M43.5 66.5Q50 62.5 56.5 66.5Q53 69.5 50 69.5Q47 69.5 43.5 66.5Z" fill="#F0244F"/>`,
+    };
+
+    // cabeça (o que vai por cima): atrás = desenhado antes da cabeça
+    let atras = '', topo = '';
+    const tc3 = tom(c3, -.62);
+    switch (a.cabeca) {
+      case 'bone':
+        topo = `<path d="M21.5 38C21.5 15 78.5 15 78.5 38Z" fill="url(#${id}y)" ${tr(tc3, 1.6)}/>`
+          + `<path d="M50 17.5V38M35 21C33 27 32.5 32 33 38M65 21C67 27 67.5 32 67 38" fill="none" stroke="${tc3}" stroke-opacity=".45" stroke-width="1"/>`
+          + `<path d="M18 39.5C30 33.5 70 33.5 82 39.5C80 43 70 41.5 50 41.5C30 41.5 20 43 18 39.5Z" fill="${tom(c3, -.25)}" ${tr(tc3, 1.6)}/>`
+          + `<circle cx="50" cy="17.6" r="2.4" fill="${tom(c3, -.2)}" ${tr(tc3, 1)}/><circle cx="50" cy="29" r="4.8" fill="#fff" ${tr(tc3, 1)}/><path d="M48 27.4Q50 25.6 52 27.4Q48.4 29.2 51.6 31" fill="none" stroke="${tc3}" stroke-width="1.4" stroke-linecap="round"/>`;
+        break;
+      case 'headset':
+        atras = `<path d="M20 47C18 16 82 16 80 47" fill="none" stroke="#1C1F27" stroke-width="7" stroke-linecap="round"/><path d="M20 47C18 16 82 16 80 47" fill="none" stroke="${c3}" stroke-width="2" stroke-linecap="round" stroke-dasharray="0 12 60 200"/>`;
+        topo = `<rect x="13" y="38" width="12" height="20" rx="5" fill="#23262F" ${tr('#0A0B0F', 1.4)}/><rect x="75" y="38" width="12" height="20" rx="5" fill="#23262F" ${tr('#0A0B0F', 1.4)}/>`
+          + `<rect x="15.5" y="41" width="4" height="14" rx="2" fill="${c3}" filter="url(#${id}n)"/><rect x="80.5" y="41" width="4" height="14" rx="2" fill="${c3}" filter="url(#${id}n)"/>`
+          + `<path d="M19 57C19 66 26 67 35 66" fill="none" stroke="#1C1F27" stroke-width="2.4" stroke-linecap="round"/><rect x="33" y="63.5" width="7" height="5" rx="2.5" fill="#23262F" ${tr('#0A0B0F', 1)}/>`;
+        break;
+      case 'bandana':
+        atras = `<path d="M76 30C84 31 90 34 95 42C88 40 84 38 79 37ZM76 31C83 27 89 27 96 30C89 32 84 34 78 35Z" fill="url(#${id}x)" ${tr(tc3, 1.3)}/>`;
+        topo = `<path d="M22.5 37C30 27 70 27 77.5 37L78.5 29.5C70 21 30 21 21.5 29.5Z" fill="url(#${id}x)" ${tr(tc3, 1.5)}/>`
+          + `<circle cx="78.5" cy="33" r="3.6" fill="${tom(c3, -.15)}" ${tr(tc3, 1.3)}/>`
+          + `<g fill="#fff" fill-opacity=".8"><circle cx="37" cy="29" r="1"/><circle cx="50" cy="27.4" r="1"/><circle cx="63" cy="29" r="1"/><circle cx="43.5" cy="30.6" r=".7"/><circle cx="56.5" cy="30.6" r=".7"/></g>`;
+        break;
+      case 'gorro':
+        topo = `<path d="M21 36C21 12 79 12 79 36Z" fill="url(#${id}y)" ${tr(tc3, 1.6)}/>`
+          + `<g stroke="${tc3}" stroke-opacity=".35" stroke-width="1.1">${[28, 34, 40, 46, 54, 60, 66, 72].map((x) => `<path d="M${x} ${x < 50 ? 18 + (50 - x) * .25 : 18 + (x - 50) * .25}V32"/>`).join('')}</g>`
+          + `<rect x="18.5" y="31.5" width="63" height="9" rx="4.5" fill="${tom(c3, -.2)}" ${tr(tc3, 1.5)}/>`
+          + `<g stroke="${tc3}" stroke-opacity=".5" stroke-width="1.2">${Array.from({ length: 14 }, (_, i) => `<path d="M${23 + i * 4.1} 33V39"/>`).join('')}</g>`
+          + `<circle cx="50" cy="12" r="6" fill="url(#${id}q)" ${tr(tom(c2, -.6), 1.4)}/>`;
+        break;
+      case 'chifres':
+        atras = `<path d="M31 29C26 20 25 11 29 3C30 13 35 19 42 23Z" fill="url(#${id}y)" ${tr(tc3, 1.5)}/><path d="M69 29C74 20 75 11 71 3C70 13 65 19 58 23Z" fill="url(#${id}y)" ${tr(tc3, 1.5)}/>`;
+        break;
+      case 'aureola':
+        atras = `<ellipse cx="50" cy="12" rx="19" ry="5" fill="none" stroke="#FFE58A" stroke-width="3.4" filter="url(#${id}n)"/>`;
+        topo = `<path d="M31 12.6A19 5 0 0 0 69 12.6" fill="none" stroke="#FFF6C9" stroke-width="2.6" filter="url(#${id}n)"/>`;
+        break;
+      case 'cowboy':
+        topo = `<path d="M34 27C33 15 36 6 42 6C45 6 47 9 50 9C53 9 55 6 58 6C64 6 67 15 66 27Z" fill="url(#${id}y)" ${tr(tc3, 1.6)}/>`
+          + `<path d="M34.5 22.5C44 25 56 25 65.5 22.5L66 27C56 29 44 29 34 27Z" fill="${tc3}" fill-opacity=".85"/>`
+          + `<path d="M10 22C14 30 26 34 50 34C74 34 86 30 90 22C86 25 76 27 66 26.5C58 28.5 42 28.5 34 26.5C24 27 14 25 10 22Z" fill="${tom(c3, -.2)}" ${tr(tc3, 1.6)}/>`;
+        break;
+      case 'viking':
+        atras = `<path d="M24 32C14 30 8 22 7 10C13 18 19 22 27 23Z" fill="#F3E7C9" ${tr('#6B5A33', 1.4)}/><path d="M76 32C86 30 92 22 93 10C87 18 81 22 73 23Z" fill="#F3E7C9" ${tr('#6B5A33', 1.4)}/>`;
+        topo = `<path d="M21 38C21 13 79 13 79 38Z" fill="url(#${id}m)" ${tr('#22262E', 1.6)}/>`
+          + `<path d="M50 14V38" stroke="#5B6372" stroke-width="5"/><path d="M50 14V38" stroke="#C9D0DA" stroke-width="1.4"/>`
+          + `<rect x="19" y="33" width="62" height="7" rx="3" fill="${tom(c3, -.1)}" ${tr(tc3, 1.4)}/>`
+          + `<g fill="#F4F6FA">${[26, 34, 42, 58, 66, 74].map((x) => `<circle cx="${x}" cy="36.5" r="1.2"/>`).join('')}</g>`;
+        defs += `<radialGradient id="${id}m" cx=".35" cy=".25" r=".8"><stop offset="0" stop-color="#F2F5F9"/><stop offset=".5" stop-color="#9AA3B2"/><stop offset="1" stop-color="#454C59"/></radialGradient>`;
+        break;
+    }
+
+    // rosto (por cima dos olhos)
+    let rosto = '';
+    switch (a.rosto) {
+      case 'escuros': {
+        const lente = (x) => `<path d="M${x - 11} 39H${x + 11}C${x + 11} 48 ${x + 7} 53 ${x} 53C${x - 7} 53 ${x - 11} 48 ${x - 11} 39Z" fill="url(#${id}l)" stroke="#050506" stroke-width="1.8" stroke-linejoin="round"/>`
+          + `<path d="M${x - 7} 42L${x - 2} 42L${x - 8} 49Z" fill="#fff" fill-opacity=".5"/>`;
+        rosto = `<path d="M18 41L27 40M73 40L82 41" stroke="#050506" stroke-width="2.4" stroke-linecap="round"/><path d="M27 39.4H73" stroke="#050506" stroke-width="3"/>${lente(38.5)}${lente(61.5)}`;
+        defs += `<linearGradient id="${id}l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3F4B"/><stop offset="1" stop-color="#050506"/></linearGradient>`;
+        break;
+      }
+      case 'visor':
+        rosto = `<path d="M19 38.5C34 35 66 35 81 38.5L80 52C66 55 34 55 20 52Z" fill="#05060A" ${tr('#000', 1.6)}/>`
+          + `<path d="M23 40.5C36 38 64 38 77 40.5L76.5 49.5C64 52 36 52 23.5 49.5Z" fill="url(#${id}x)" fill-opacity=".9" filter="url(#${id}n)"/>`
+          + `<g stroke="#fff" stroke-opacity=".35" stroke-width=".6">${[42.5, 45, 47.5].map((y) => `<path d="M25 ${y}H75"/>`).join('')}</g>`
+          + `<path d="M28 42L44 41" stroke="#fff" stroke-opacity=".85" stroke-width="1.6" stroke-linecap="round"/>`;
+        break;
+      case 'redondo':
+        rosto = OL.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="11" fill="#fff" fill-opacity=".1" stroke="${tom(c3, -.2)}" stroke-width="2.6"/><path d="M${x - 6} ${y - 5}A8 8 0 0 1 ${x + 1} ${y - 8}" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.3" stroke-linecap="round"/>`).join('')
+          + `<path d="M47.5 44Q50 41.5 52.5 44M27.5 43L21 41M72.5 43L79 41" fill="none" stroke="${tom(c3, -.2)}" stroke-width="2.4" stroke-linecap="round"/>`;
+        break;
+      case 'tapa':
+        rosto = `<path d="M24 29L78 55" stroke="#0E0E12" stroke-width="2"/><path d="M52 36C56 34 70 34 72 39C73 47 68 54 61.5 55C55 54 51 47 52 36Z" fill="#14141A" ${tr('#000', 1.4)}/>`
+          + `<path d="M55 39Q61 37 68 39.5" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="1.2"/>`;
+        break;
+      case 'cicatriz':
+        rosto = `<path d="M29 28Q37 44 45.5 61" fill="none" stroke="${tom(c, -.6)}" stroke-width="4" stroke-linecap="round"/><path d="M29 28Q37 44 45.5 61" fill="none" stroke="#FF9AA8" stroke-width="2" stroke-linecap="round"/>`
+          + `<path d="M28.5 35L36.5 32M32 42.5L40 39.5M35.5 50L43.5 47M39 57L46.5 54" stroke="#F7F2EA" stroke-width="1.5" stroke-linecap="round"/>`;
+        break;
+      case 'mascara':
+        rosto = `<path d="M20 52C32 50 42 50.5 50 52C58 50.5 68 50 80 52C79 62 68 71 50 72C32 71 21 62 20 52Z" fill="url(#${id}x)" ${tr(tc3, 1.6)}/>`
+          + `<path d="M28 58C38 56.5 62 56.5 72 58M33 64C42 63 58 63 67 64" fill="none" stroke="${tc3}" stroke-opacity=".5" stroke-width="1.1"/>`;
+        break;
+    }
+    const temMascara = a.rosto === 'mascara';
+    // o bicho cresce um pouco a partir da testa pra encher o círculo.
+    // zoom: só a cara (nos botões do editor, pra ver a diferença de olho, boca...)
+    return `<svg class="av-arte" viewBox="${zoom ? '14 6 72 72' : '0 0 100 100'}" aria-hidden="true"><defs>${defs}<clipPath id="${id}c"><circle cx="50" cy="50" r="50"/></clipPath></defs>`
+      + `<g clip-path="${zoom ? 'none' : `url(#${id}c)`}">${fundo}`
+      + `<g transform="translate(50 32) scale(1.14) translate(-50 -32)">${corpo}${atras}${cabeca}${olhos}${aro}${temMascara ? '' : narinas + bocas[a.boca]}${topo}${rosto}</g></g></svg>`;
+  }
+  // o avatar no lugar da bolinha / do escudo: moldura da cor da patente e o escudo dela no cantinho
+  function avatarFoto(av, p, cls) {
+    const anel = p.diamante ? 'anel-dia' : p.nivel >= ESC_NIVEIS.length - 1 ? 'anel-len' : '';
+    const a = el(cls === 'avatar' ? 'div' : 'span', { class: `${cls} av-img ${anel}`, style: `--pc:${p.cor}`, 'aria-hidden': 'true' });
+    a.innerHTML = avatarSVG(av) + (p.nivel ? `<span class="av-selo ${p.diamante ? 'esc-dia' : ''}">${escudoSVG(p, '')}</span>` : '');
+    return a;
+  }
+  const avatarDoElenco = (nome) => { const r = elenco.get(chave(nome)); return r && r.avatar ? r.avatar : null; };
+
+  // ---------- editor do avatar ----------
+  const AV_NOMES = {
+    lisa: 'Lisa', listras: 'Listras', pintas: 'Pintas', losango: 'Losango', raio: 'Raio', chamas: 'Chamas', faixa: 'Faixa',
+    normal: 'Normal', bravo: 'Bravo', sono: 'Sono', feliz: 'Feliz', fenda: 'Cobra', neon: 'Neon', estrela: 'Estrela', fofo: 'Fofo',
+    sorriso: 'Sorriso', lingua: 'Língua', presas: 'Presas', deboche: 'Deboche', serio: 'Sério', aberta: 'Gritando',
+    nada: 'Nada', bone: 'Boné', headset: 'Headset', bandana: 'Bandana', gorro: 'Gorro', chifres: 'Chifres', aureola: 'Auréola', cowboy: 'Cowboy', viking: 'Viking',
+    escuros: 'Óculos escuros', visor: 'Visor', redondo: 'Óculos', tapa: 'Tapa-olho', cicatriz: 'Cicatriz', mascara: 'Máscara',
+    liso: 'Liso', hex: 'Colmeia', raios: 'Raios', bolinhas: 'Bolinhas', grade: 'Grade neon',
+  };
+  // cada aba: [rótulo, campo, tipo] (tipo: partes = botões com a cobra, cor = bolinhas de cor, fundo = cores do fundo)
+  const AV_ABAS = {
+    cobra: [['PELE', 'pele', 'cor'], ['DESENHO', 'padrao', 'partes'], ['COR DO DESENHO', 'cor2', 'cor']],
+    olhos: [['OLHOS', 'olhos', 'partes'], ['COR DO BRILHO', 'cor3', 'cor']],
+    boca: [['BOCA', 'boca', 'partes']],
+    cabeca: [['NA CABEÇA', 'cabeca', 'partes'], ['COR', 'cor3', 'cor']],
+    rosto: [['NO ROSTO', 'rosto', 'partes'], ['COR', 'cor3', 'cor']],
+    fundo: [['FUNDO', 'fundo', 'fundo'], ['ESTAMPA', 'estampa', 'partes']],
+  };
+  const ICONE_DADO = '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/>';
+  const ICONE_AVATAR = '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10.5" r="1.4"/><circle cx="15" cy="10.5" r="1.4"/><path d="M8.5 15c2 1.8 5 1.8 7 0"/>';
+  let avd = null; // { k, av, aba }
+  const podeMudarAvatar = (k) => !!k && (lerEu() === k || !!admin);
+  function abrirAvatar(k) {
+    const r = elenco.get(k);
+    if (!r || !podeMudarAvatar(k)) return;
+    avd = { k, av: avLimpo(r.avatar) || avAleatorio(), aba: 'cobra', tinha: !!r.avatar };
+    $('tituloAvatar').replaceChildren(lerEu() === k ? 'SEU ' : `${r.nick.toUpperCase()} · `, el('span', { class: 'laranja', text: 'AVATAR' }));
+    $('btnAvTirar').hidden = !avd.tinha;
+    desenharAvatarEditor();
+    $('dlgAvatar').showModal();
+    $('dlgAvatar').focus();
+  }
+  function mudarAvatar(campo, valor) {
+    avd.av = { ...avd.av, [campo]: valor };
+    desenharAvatarEditor(true);
+  }
+  function desenharAvatarEditor(manterRolagem = false) {
+    const { av, aba } = avd;
+    const p = patenteDe(ptsPat(avd.k)).atual;
+    trocar($('avdPreview'), avatarFoto(av, p, 'av av-xg'));
+    document.querySelectorAll('.aba[data-avaba]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.avaba === aba)));
+    const corpo = $('avdCorpo');
+    const rol = corpo.scrollTop;
+    const zoom = aba === 'olhos' || aba === 'boca' || aba === 'rosto';
+    trocar(corpo, AV_ABAS[aba].map(([rot, campo, tipo]) => {
+      let itens;
+      if (tipo === 'partes') {
+        itens = el('div', { class: 'avd-grade', role: 'radiogroup', 'aria-label': rot }, ...AV_PARTES[campo].map((v) => {
+          const b = el('button', { type: 'button', class: 'avd-op', role: 'radio', 'aria-checked': String(av[campo] === v), onclick: () => mudarAvatar(campo, v) });
+          b.innerHTML = avatarSVG({ ...av, [campo]: v }, zoom);
+          b.append(el('span', { text: AV_NOMES[v] }));
+          return b;
+        }));
+      } else {
+        const lista = tipo === 'fundo' ? Object.entries(AV_FUNDOS).map(([v, [c1, c2]]) => [v, `radial-gradient(circle at 50% 38%, ${tom(c1, .25)}, ${c2} 78%)`])
+          : Object.entries(AV_CORES).map(([v, c]) => [v, `radial-gradient(circle at 35% 30%, ${tom(c, .5)}, ${c} 55%, ${tom(c, -.45)})`]);
+        itens = el('div', { class: 'avd-cores', role: 'radiogroup', 'aria-label': rot }, ...lista.map(([v, fundo]) => el('button', {
+          type: 'button', class: 'avd-cor', role: 'radio', 'aria-checked': String(av[campo] === v), 'aria-label': v, title: v, style: `background:${fundo}`, onclick: () => mudarAvatar(campo, v),
+        })));
+      }
+      return el('section', { class: 'avd-sec' }, el('h3', { class: 'avd-rot', text: rot }), itens);
+    }));
+    corpo.scrollTop = manterRolagem ? rol : 0;
+  }
+  async function salvarAvatar(novo) {
+    const r = elenco.get(avd.k);
+    const btns = [$('btnAvSalvar'), $('btnAvTirar')];
+    btns.forEach((b) => { b.disabled = true; });
+    try {
+      if (!DEMO) {
+        const res = await sb.rpc('jogador_avatar', { p_avatar: novo, p_player: r.id });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data !== 'ok') throw new Error(res.data);
+      }
+      r.avatar = novo;
+      $('dlgAvatar').close();
+      render();
+      if (chat.eu && chatVisivel()) desenharChat();
+      toast(novo ? 'Avatar salvo! Já aparece pro clã todo.' : 'Avatar tirado.');
+    } catch (e) {
+      console.error(e);
+      toast('Não deu pra salvar o avatar agora. Tenta de novo.', true);
+    } finally {
+      btns.forEach((b) => { b.disabled = false; });
+    }
   }
   function btnPerfil(j, classe, conteudo) {
     return el('button', { type: 'button', class: classe, onclick: () => abrirPerfil(j.chave), 'aria-label': `Ver perfil de ${comTag(j.nome)}` }, conteudo || comTag(j.nome));
@@ -2292,6 +2639,8 @@ ${frente}
     const barra = el('div', { class: 'pp-barra' },
       el('button', { type: 'button', class: 'btn btn-sec pp-voltar', onclick: fecharPerfil }, svg(ICONE_VOLTAR, 18), 'Ranking'),
       nome ? el('div', { class: 'pp-acoes' },
+        r && podeMudarAvatar(k) ? el('button', { type: 'button', class: `btn ${r.avatar ? 'btn-sec' : 'btn-pri btn-avatar-novo'}`, onclick: () => abrirAvatar(k) },
+          svg(ICONE_AVATAR, 18), el('span', { class: 'btn-txt', text: r.avatar ? 'Avatar' : 'Criar avatar' })) : null,
         lerEu() === k ? el('button', { type: 'button', class: 'btn btn-sec', 'aria-label': 'Sair da conta', onclick: () => sairConta() }, svg(ICONE_SAIR, 18), el('span', { class: 'btn-txt', text: 'Sair' })) : null,
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
 
@@ -2314,7 +2663,10 @@ ${frente}
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
       el('div', { class: 'pp-id' },
-        avatarDe(nome, ptsP, 'av-xg'),
+        r && podeMudarAvatar(k)
+          ? el('button', { type: 'button', class: 'pp-av-btn', 'aria-label': 'Mudar o avatar', title: 'Mudar o avatar', onclick: () => abrirAvatar(k) },
+            avatarDe(nome, ptsP, 'av-xg'), el('span', { class: 'pp-av-lapis', 'aria-hidden': 'true' }, svg(ICONE_LAPIS, 16)))
+          : avatarDe(nome, ptsP, 'av-xg'),
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
@@ -4699,7 +5051,7 @@ ${frente}
     if (DEMO) return;
     const [r, rj, rt, rl] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, created_at').order('nick').order('id')),
+      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
     ]);
@@ -4737,8 +5089,14 @@ ${frente}
     return [
       ['VENO', 'Líder', true, 60], ['Shawdow', 'Vice-líder', true, 55], ['VETERANO', 'Membro', true, 50], ['Kaiser', 'Membro', true, 40],
       ['Mamba', 'Membro', true, 30], ['Naja', 'Membro', true, 6], ['Cascavel', 'Membro', true, 2], ['Sucuri', 'Membro', false, 45],
-    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, created_at: d(dias) }));
+    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, avatar: AVATARES_DEMO[nick] || null, created_at: d(dias) }));
   }
+  const AVATARES_DEMO = {
+    Shawdow: { pele: 'preto', cor2: 'ciano', padrao: 'raio', olhos: 'neon', boca: 'presas', cabeca: 'headset', rosto: 'nada', cor3: 'ciano', fundo: 'noite', estampa: 'grade' },
+    Kaiser: { pele: 'vermelho', cor2: 'amarelo', padrao: 'chamas', olhos: 'bravo', boca: 'deboche', cabeca: 'bone', rosto: 'escuros', cor3: 'preto', fundo: 'brasa', estampa: 'raios' },
+    VETERANO: { pele: 'verde', cor2: 'amarelo', padrao: 'losango', olhos: 'fenda', boca: 'lingua', cabeca: 'viking', rosto: 'cicatriz', cor3: 'laranja', fundo: 'mata', estampa: 'hex' },
+    Mamba: { pele: 'rosa', cor2: 'branco', padrao: 'pintas', olhos: 'fofo', boca: 'sorriso', cabeca: 'gorro', rosto: 'nada', cor3: 'roxo', fundo: 'roxo', estampa: 'bolinhas' },
+  };
   // dj0 VENO · dj1 Shawdow · dj2 VETERANO · dj3 Kaiser · dj4 Mamba · dj5 Naja · dj6 Cascavel
   function torneiosDemo() {
     const h = (horas) => new Date(Date.now() + horas * 3600 * 1000).toISOString();
@@ -6763,6 +7121,21 @@ ${frente}
     });
     document.querySelectorAll('.aba[data-regra]').forEach((a) => a.addEventListener('click', () => abrirRegras(a.dataset.regra)));
     $('btnFecharRegras').addEventListener('click', () => $('dlgRegras').close());
+    // editor do avatar
+    document.querySelectorAll('.aba[data-avaba]').forEach((b) => b.addEventListener('click', () => { avd.aba = b.dataset.avaba; desenharAvatarEditor(); }));
+    $('btnAvDado').addEventListener('click', () => {
+      avd.av = avAleatorio();
+      desenharAvatarEditor(true);
+      const pv = $('avdPreview');
+      pv.classList.remove('avd-pula');
+      void pv.offsetWidth; // reinicia a animação
+      pv.classList.add('avd-pula');
+    });
+    $('btnFecharAvatar').addEventListener('click', () => $('dlgAvatar').close());
+    $('btnAvCancelar').addEventListener('click', () => $('dlgAvatar').close());
+    $('btnAvSalvar').addEventListener('click', () => salvarAvatar(avd.av));
+    $('btnAvTirar').addEventListener('click', () => salvarAvatar(null));
+    ligarFaixa(document.querySelector('.avd-abas'));
     $('maisGrade').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgMais').close(); });
     document.addEventListener('keydown', (e) => {
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;

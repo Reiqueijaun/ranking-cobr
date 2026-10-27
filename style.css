@@ -2624,3 +2624,94 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .bot-res { grid-template-columns: auto minmax(0, 1fr); }
   .bot-res-top { grid-column: 1 / -1; }
 }
+
+/* ---------- avatar montado pelo jogador ----------
+   a cobrinha dentro da moldura da cor da patente, com o escudo dela no cantinho.
+   Lendário: moldura de ouro girando · Diamantes: moldura de arco-íris + faísca */
+.av-arte { display: block; width: 100%; height: 100%; }
+.av.av-img, .avatar.av-img {
+  --b: 2px; position: relative; padding: 0; overflow: visible; color: transparent;
+  border: var(--b) solid var(--pc); background: var(--fundo);
+}
+.av-g.av-img, .avatar.av-img { --b: 3px; }
+.av-xg.av-img { --b: 4px; width: 116px; height: 116px; }
+.av-img > .av-arte { border-radius: 50%; }
+.av-m.av-img, .av-g.av-img, .avatar.av-img { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 16%, transparent), 0 0 18px color-mix(in srgb, var(--pc) 38%, transparent); }
+.av-xg.av-img { box-shadow: 0 0 0 6px color-mix(in srgb, var(--pc) 14%, transparent), 0 0 44px color-mix(in srgb, var(--pc) 45%, transparent); }
+.av-selo { position: absolute; right: -16%; bottom: -14%; width: 52%; height: 52%; display: none; z-index: 1; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .8)); }
+.av-m .av-selo, .av-g .av-selo, .av-xg .av-selo, .avatar .av-selo { display: block; }
+.av-selo .esc-fx, .av-selo .esc-reflexo { display: none; }
+.av-img.anel-len, .av-img.anel-dia { border-color: transparent; }
+.av-img.anel-len::before, .av-img.anel-dia::before {
+  content: ""; position: absolute; inset: calc(-1 * var(--b)); padding: var(--b); border-radius: 50%; pointer-events: none;
+  background: conic-gradient(#FFF7C2, #FFD84D, #F29A00, #8A4300, #FFD84D, #FFF7C2, #F29A00, #FFF7C2);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: girar 3.2s linear infinite;
+}
+.av-img.anel-dia::before { background: conic-gradient(#7DF9FF, #FFFFFF, #C6A8FF, #FF9FE0, #5BC8FF, #FFFFFF, #7DF9FF); animation-duration: 2.4s; }
+.av-m.anel-len, .av-g.anel-len, .av-xg.anel-len, .avatar.anel-len { box-shadow: 0 0 0 3px rgba(255, 216, 77, .18), 0 0 22px rgba(255, 179, 71, .5); }
+.av-m.anel-dia, .av-g.anel-dia, .av-xg.anel-dia, .avatar.anel-dia { box-shadow: 0 0 0 3px rgba(125, 249, 255, .16), 0 0 26px rgba(125, 249, 255, .55), 0 0 44px rgba(198, 168, 255, .3); }
+.av-g.anel-dia::after, .av-xg.anel-dia::after, .avatar.anel-dia::after {
+  content: ""; position: absolute; top: -8%; left: -6%; width: 26%; height: 26%; pointer-events: none; background: #fff; z-index: 2;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  animation: cintila 1.8s ease-in-out infinite;
+}
+.av-img.av-rei { border-color: #FFD84D; }
+.degrau-gente .av-btn:has(.av-img) { border-radius: 50%; }
+@media (max-width: 760px) { .av-xg.av-img { width: 96px; height: 96px; } }
+
+/* no perfil: o avatar é um botão (dono do perfil ou admin) com lápis no canto */
+.pp-av-btn { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
+.pp-av-btn:hover .av, .pp-av-btn:focus-visible .av { filter: brightness(1.08); }
+.pp-av-btn:focus-visible { outline: 2px solid var(--laranja); outline-offset: 4px; }
+.pp-av-lapis {
+  position: absolute; left: -2px; bottom: -2px; z-index: 3; width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--laranja); color: var(--tinta-btn); border: 3px solid var(--painel); box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
+}
+.btn-avatar-novo { animation: chamar 1.4s ease-in-out infinite; }
+
+/* janela do editor */
+.dlg-avatar { max-width: min(96vw, 620px); max-height: min(94vh, 900px); overflow: hidden; }
+.dlg-avatar[open] { display: flex; flex-direction: column; }
+.avd-palco {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 16px 16px;
+  background: radial-gradient(60% 90% at 50% 40%, rgba(255, 122, 26, .16), transparent 70%);
+}
+.avd-preview { display: flex; justify-content: center; padding-top: 6px; }
+.avd-preview .av-xg.av-img { width: 148px; height: 148px; }
+.avd-preview.avd-pula { animation: avdPula .45s cubic-bezier(.2, .9, .3, 1.4); }
+@keyframes avdPula { 0% { transform: scale(.82) rotate(-8deg); } 100% { transform: none; } }
+.avd-dado { min-height: 40px; gap: 8px; border-radius: 999px; padding: 0 18px; }
+.avd-abas { flex: 0 0 auto; margin: 0 16px; overflow-x: auto; scrollbar-width: none; }
+.avd-abas::-webkit-scrollbar { display: none; }
+.avd-abas .aba { flex: 1 0 auto; padding: 0 12px; }
+.avd-corpo { flex: 1 1 auto; min-height: 150px; overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 16px; }
+.avd-rot { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.avd-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.avd-op {
+  display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 4px 7px; min-width: 0;
+  border-radius: 14px; border: 1px solid var(--linha); background: var(--painel-2); color: var(--texto-2);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .15s, transform .15s;
+}
+.avd-op .av-arte { width: 100%; max-width: 72px; height: auto; aspect-ratio: 1; border-radius: 12px; }
+.avd-op span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avd-op:hover { border-color: var(--linha-forte); transform: translateY(-1px); }
+.avd-op[aria-checked="true"] { border-color: var(--laranja); color: var(--texto); background: color-mix(in srgb, var(--laranja) 12%, var(--painel-2)); box-shadow: inset 0 0 0 1px var(--laranja); }
+.avd-cores { display: flex; flex-wrap: wrap; gap: 8px; }
+.avd-cor {
+  width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35), 0 2px 4px rgba(0, 0, 0, .4); transition: transform .15s;
+}
+.avd-cor:hover { transform: scale(1.08); }
+.avd-cor[aria-checked="true"] { outline: 3px solid var(--laranja); outline-offset: 3px; }
+.avd-pe { flex: 0 0 auto; margin: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--linha); background: var(--painel-2); }
+@media (max-width: 520px) {
+  .dlg-avatar { max-height: 96dvh; }
+  .avd-palco { flex-direction: row; justify-content: center; gap: 18px; padding-block: 8px 12px; }
+  .avd-preview .av-xg.av-img { width: 104px; height: 104px; }
+  .avd-grade { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .avd-cor { width: 36px; height: 36px; }
+  .avd-pe .btn { padding-inline: 14px; }
+}

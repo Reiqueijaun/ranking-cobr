@@ -727,6 +727,33 @@
   <div class="regras-corpo" id="regrasCorpo" role="tabpanel"></div>
 </dialog>
 
+<!-- avatar: o jogador monta a cobrinha dele (aparece no ranking, no chat e no perfil) -->
+<dialog id="dlgAvatar" class="dlg dlg-avatar" aria-labelledby="tituloAvatar" tabindex="-1">
+  <div class="mais-topo">
+    <h2 id="tituloAvatar">SEU <span class="laranja">AVATAR</span></h2>
+    <button type="button" class="tn-x" id="btnFecharAvatar" aria-label="Fechar">×</button>
+  </div>
+  <div class="avd-palco">
+    <div class="avd-preview" id="avdPreview"></div>
+    <button type="button" class="btn btn-sec avd-dado" id="btnAvDado"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/></svg>Sortear</button>
+  </div>
+  <div class="abas avd-abas" role="tablist" aria-label="Parte do avatar">
+    <button type="button" role="tab" class="aba" data-avaba="cobra">Cobra</button>
+    <button type="button" role="tab" class="aba" data-avaba="olhos">Olhos</button>
+    <button type="button" role="tab" class="aba" data-avaba="boca">Boca</button>
+    <button type="button" role="tab" class="aba" data-avaba="cabeca">Cabeça</button>
+    <button type="button" role="tab" class="aba" data-avaba="rosto">Rosto</button>
+    <button type="button" role="tab" class="aba" data-avaba="fundo">Fundo</button>
+  </div>
+  <div class="avd-corpo" id="avdCorpo" role="tabpanel"></div>
+  <div class="linha-btns avd-pe">
+    <button type="button" class="btn btn-perigo-sec" id="btnAvTirar">Tirar</button>
+    <span class="espaco"></span>
+    <button type="button" class="btn btn-sec" id="btnAvCancelar">Cancelar</button>
+    <button type="button" class="btn btn-pri" id="btnAvSalvar">Salvar</button>
+  </div>
+</dialog>
+
 <!-- chat: chamar o bonde, moderação do ADM e punição -->
 <dialog id="dlgBonde" class="dlg" aria-labelledby="tituloBonde">
   <form class="form-admin" id="formBonde">
