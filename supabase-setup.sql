@@ -783,6 +783,35 @@ $;
 revoke all on function public.jogador_avatar(jsonb, uuid) from public, anon;
 grant execute on function public.jogador_avatar(jsonb, uuid) to authenticated;
 
+-- 5g) Vitrine de medalhas: até 3 medalhas que o jogador escolhe mostrar do lado do nome no perfil.
+--     Guarda só o id de cada uma (as medalhas são calculadas no site). Mesma regra do avatar.
+alter table public.players add column if not exists vitrine text[]
+  check (vitrine is null or cardinality(vitrine) <= 3);
+
+-- p_vitrine vazio ou null = volta a mostrar as melhores sozinho. Devolve: ok | sem_jogador | sem_permissao | invalido | nao_existe
+create or replace function public.jogador_vitrine(p_vitrine text[], p_player uuid default null)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_meu uuid := (select player_id from player_contas where user_id = auth.uid());
+  v_player uuid := coalesce(p_player, v_meu);
+begin
+  if v_player is null then return 'sem_jogador'; end if;
+  if v_player is distinct from v_meu and not is_admin() then return 'sem_permissao'; end if;
+  if p_vitrine is not null and (cardinality(p_vitrine) > 3
+     or exists (select 1 from unnest(p_vitrine) x where x is null or x !~ '^[a-z0-9]{1,16}$')
+     or cardinality(p_vitrine) <> (select count(distinct x) from unnest(p_vitrine) x)) then
+    return 'invalido';
+  end if;
+  update players set vitrine = nullif(p_vitrine, '{}') where id = v_player;
+  if not found then return 'nao_existe'; end if;
+  return 'ok';
+end;
+$$;
+revoke all on function public.jogador_vitrine(text[], uuid) from public, anon;
+grant execute on function public.jogador_vitrine(text[], uuid) to authenticated;
+
 
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$

@@ -29,6 +29,7 @@
   let lancamentos = [];       // resultados lançados na mão nos torneios (kills, massa extra...)
   let torneiosOk = true;      // false se as tabelas de torneio ainda não existem no banco
   let torneioAtual = null;    // id do torneio aberto na página própria
+  let vitrineOk = true;       // false se a coluna players.vitrine ainda não existe no banco
   const CARGOS = (Array.isArray(CFG.CARGOS) && CFG.CARGOS.length ? CFG.CARGOS : ['Líder', 'Vice-líder', 'Membro'])
     .map((c) => String(c).trim().slice(0, 24)).filter(Boolean);
   const CARGO_PADRAO = CARGOS.includes('Membro') ? 'Membro' : CARGOS[CARGOS.length - 1];
@@ -357,6 +358,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function render() {
     cachePat = null;
     cacheTrofeus = null;
+    cacheRaras = null;
     cacheRei = undefined;
     const geralMassa = montarRanking('geral', 'massa');
     const geralPontos = montarRanking('geral', 'pontos');
@@ -2028,33 +2030,261 @@ ${frente}
   }
 
   // ---------- medalhas ----------
-  // prog = [quanto tem, quanto precisa] pras trancadas; quando = data em que conquistou (quando dá pra saber)
-  function medalhasDe(j, ctx) {
-    const sem = ctx.semana.find((x) => x.chave === j.chave);
-    const recorde = j.melhor ? j.melhor.mass : 0;
-    const titulos = (ctx.titulos && ctx.titulos.get(j.chave)) || 0;
-    const tnVit = vitoriasTorneio(j.chave), tnVice = vicesTorneio(j.chave);
-    const minhas = j.chave ? partidas.filter((p) => chave(p.player) === j.chave).reverse() : []; // mais antigas primeiro
-    const quando = (teste, n = 1) => { let c = 0; for (const p of minhas) if (teste(p) && ++c >= n) return p.created_at; return null; };
-    const clube = (vezes, id, icone) => ({
-      id, nome: `Clube ${fmtK(MARCO * vezes)}`, como: `1 partida de ${fmtK(MARCO * vezes)}+`, ok: recorde >= MARCO * vezes, icone,
-      prog: [recorde, MARCO * vezes], quando: quando((p) => p.mass >= MARCO * vezes),
-    });
-    return [
-      { id: 'rei', nome: 'Rei do clã', como: '1º lugar em pontos', ok: ctx.pontos[0] && ctx.pontos[0].chave === j.chave, icone: ICONE_COROA },
-      { id: 'recorde', nome: 'Recordista', como: 'maior massa do clã', ok: ctx.massa[0] && ctx.massa[0].chave === j.chave, icone: '<path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/>' },
-      { id: 'semana', nome: 'Cobra da semana', como: 'mais pontos na semana', ok: ctx.semana[0] && ctx.semana[0].chave === j.chave && ctx.semana[0].pontos > 0, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>' },
-      { id: 'clube', nome: `Clube ${marcoTxt}`, como: `1 partida de ${marcoTxt}`, ok: j.cem >= 1, icone: '<circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/>', prog: [recorde, MARCO], quando: quando((p) => p.mass >= MARCO) },
-      { id: 'maquina', nome: `Máquina de ${fmtK(MARCO)}`, como: `5 partidas de ${marcoTxt}`, ok: j.cem >= 5, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', prog: [j.cem, 5], quando: quando((p) => p.mass >= MARCO, 5) },
-      clube(2, 'clube2', '<path d="M7 17l5-5 5 5M7 11l5-5 5 5"/>'),
-      clube(5, 'clube5', '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/>'),
-      clube(10, 'clube10', '<path d="M3 20l6-10 4 6 3-4 5 8z"/><path d="M9 10V4l4 2-4 2"/>'),
-      { id: 'campeao', nome: titulos > 1 ? `Campeão ${titulos}×` : 'Campeão de temporada', como: 'ganhar uma temporada (1º do mês)', ok: titulos > 0, icone: ICONE_TROFEU },
-      { id: 'torneio', nome: tnVit > 1 ? `Rei dos torneios ${tnVit}×` : 'Campeão de torneio', como: 'ganhar um torneio do clã', ok: tnVit > 0, icone: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.8 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0V2z"/>' },
-      { id: 'vice', nome: tnVice > 1 ? `Prata ${tnVice}×` : 'Vice de torneio', como: 'ficar em 2º num torneio do clã', ok: tnVice > 0, icone: ICONE_MEDALHA },
-      { id: 'chamas', nome: 'Em chamas', como: '3 partidas na mesma semana', ok: !!sem && sem.qtd >= 3, icone: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 2 1 3 2 3 4"/>', prog: [sem ? sem.qtd : 0, 3] },
-      { id: 'fiel', nome: 'Fiel ao clã', como: '10 partidas registradas', ok: j.qtd >= 10, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>', prog: [j.qtd, 10], quando: quando(() => true, 10) },
-    ];
+  // Cada medalha sobe de nível (bronze, prata, ouro, diamante) e sai toda do histórico:
+  // nada some quando o jogador perde uma posição. A vitrine guarda o id de até 3 medalhas.
+  const METAIS = {
+    bronze: { nome: 'Bronze', ordem: 1, aro: ['#FFE0C2', '#E0955A', '#A35A28', '#4A220A'], face: ['#FBC79A', '#C47838', '#6A3410'], fita: ['#4A2410', '#B8692F'], luz: '#FFB070' },
+    prata: { nome: 'Prata', ordem: 2, aro: ['#FFFFFF', '#DCE4EE', '#8E9BAB', '#2E3642'], face: ['#FFFFFF', '#BAC5D2', '#5E6A79'], fita: ['#17407A', '#6FB3FF'], luz: '#CFE6FF' },
+    ouro: { nome: 'Ouro', ordem: 3, aro: ['#FFF7C2', '#FFD84D', '#E39A12', '#5E3300'], face: ['#FFF3B0', '#F5BC35', '#8F5600'], fita: ['#A3122A', '#FFD84D'], luz: '#FFE58A' },
+    diamante: { nome: 'Diamante', ordem: 4, aro: ['#FFFFFF', '#9FF6FF', '#A48BFF', '#22307E'], face: ['#F2FFFF', '#86DDF7', '#4152C2'], fita: ['#4B2FB0', '#7DF9FF'], luz: '#B8FBFF' },
+    lenda: { nome: 'Lendária', ordem: 5, aro: ['#FFE3B0', '#FF8A2B', '#9A2A06', '#1C0703'], face: ['#5A2210', '#24100A', '#0A0302'], fita: ['#120705', '#FF7A1A'], luz: '#FF9A3D' },
+  };
+  const ORDEM_METAL = ['bronze', 'prata', 'ouro', 'diamante'];
+  const plural = (n, um, varios) => `${fmt(n)} ${n === 1 ? um : varios}`;
+  // patentes que valem medalha: as 4 de cima (Mestre, Grão-Mestre, Lendário, Diamantes)
+  const NIVEIS_PATENTE = PATENTES.slice(-4).map((p) => p.nivel).filter((n) => n > 0);
+  const MEDALHAS = [
+    { id: 'massa', nome: 'Clube da massa', desc: 'Maior massa numa partida', niveis: [1, 2, 5, 10].map((x) => MARCO * x), massa: true,
+      titulo: (v) => `Clube ${fmtK(v)}`, req: (v) => `1 partida de ${fmtK(v)}+`,
+      icone: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/>' },
+    { id: 'cem', nome: `Máquina de ${fmtK(MARCO)}`, desc: `Partidas de ${marcoTxt}`, niveis: [5, 15, 30, 60],
+      req: (v) => `${fmt(v)} partidas de ${marcoTxt}`, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
+    { id: 'rei', nome: 'Rei do clã', desc: 'Vezes que assumiu o 1º lugar do ranking geral', niveis: [1, 3, 6, 10],
+      req: (v) => (v === 1 ? 'assumir o 1º do ranking geral' : `assumir o 1º do geral ${v}×`), icone: ICONE_COROA },
+    { id: 'recorde', nome: 'Quebra-recorde', desc: 'Vezes que quebrou o recorde de massa do clã', niveis: [1, 2, 4, 7],
+      req: (v) => (v === 1 ? 'quebrar o recorde do clã' : `quebrar o recorde do clã ${v}×`), icone: ICONE_ESTRELA },
+    { id: 'temporada', nome: 'Campeão de temporada', desc: 'Temporadas ganhas (1º em pontos no mês)', niveis: [1, 2, 4, 6],
+      req: (v) => `ganhar ${plural(v, 'temporada', 'temporadas')}`, icone: ICONE_TROFEU },
+    { id: 'semana', nome: 'Cobra da semana', desc: 'Semanas fechadas em 1º em pontos', niveis: [1, 3, 8, 20],
+      req: (v) => `ganhar ${plural(v, 'semana', 'semanas')}`,
+      icone: '<path d="M4 19c3 1.5 7 1.2 9-1.2 2.4-2.8-.6-5.4-3.4-6.6-2.8-1.2-3.8-3.6-1.8-5.6C9.6 3.8 13 3.6 15.4 5"/><path d="M15.4 5l2.6-.6M18 4.4l2.5-1.4M18 4.4l2 1.8"/>' },
+    { id: 'torneio', nome: 'Campeão de torneio', desc: 'Torneios do clã ganhos', niveis: [1, 3, 5, 10],
+      req: (v) => `ganhar ${plural(v, 'torneio', 'torneios')}`,
+      icone: '<path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 17.5L21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>' },
+    { id: 'vice', nome: 'Vice de torneio', desc: 'Vezes em 2º num torneio do clã', niveis: [1, 3, 5, 10],
+      req: (v) => `${v}× vice de torneio`, icone: ICONE_MEDALHA },
+    { id: 'patente', nome: 'Escalada', desc: 'Patente mais alta que já alcançou numa temporada', niveis: NIVEIS_PATENTE, patente: true,
+      titulo: (v) => `Patente ${PATENTES[v].nome}`, req: (v) => `chegar em ${PATENTES[v].nome}`, icone: ICONE_PATENTE },
+    { id: 'superacao', nome: 'Superação', desc: 'Vezes que bateu o próprio recorde', niveis: [3, 6, 10, 15],
+      req: (v) => `bater o próprio recorde ${v}×`, icone: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>' },
+    { id: 'chamas', nome: 'Em chamas', desc: 'Mais partidas numa mesma semana', niveis: [3, 7, 12, 20],
+      req: (v) => `${v} partidas na mesma semana`, icone: '<path d="M12 22c4 0 7-3 7-7 0-5-4-6-5-11-3 2-4 5-4 8-1-1-2-2-2-4-2 2-3 4-3 7 0 4 3 7 7 7z"/>' },
+    { id: 'sequencia', nome: 'Sem folga', desc: 'Dias seguidos com partida', niveis: [3, 7, 14, 30],
+      req: (v) => `${v} dias seguidos jogando`, icone: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.5 2.5 4.5-4.5"/>' },
+    { id: 'fiel', nome: 'Fiel ao clã', desc: 'Partidas registradas', niveis: [10, 30, 75, 150],
+      req: (v) => `${fmt(v)} partidas registradas`, icone: '<path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z"/>' },
+    { id: 'veterano', nome: 'Veterano', desc: 'Tempo no clã', niveis: [30, 90, 180, 365],
+      req: (v) => (v >= 365 ? '1 ano no clã' : `${v} dias no clã`), icone: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>' },
+    { id: 'estilo', nome: 'Estilo próprio', desc: 'Montou o próprio avatar', niveis: [1], metais: ['bronze'],
+      req: () => 'montar o seu avatar', icone: ICONE_AVATAR },
+    { id: 'fundador', nome: 'Fundador', desc: 'Jogou na Temporada 1. Não sai nunca mais.', niveis: [1], metais: ['lenda'], unica: true,
+      req: () => 'jogar na Temporada 1', icone: '<path d="M5 21V4M5 4h12l-2.5 4L17 12H5"/><path d="M9.5 6.5v4"/>' },
+  ];
+  const FAM = Object.fromEntries(MEDALHAS.map((m) => [m.id, m]));
+  const metalDo = (m, i) => (m.metais ? m.metais[i] : ORDEM_METAL[ORDEM_METAL.length - m.niveis.length + i]); // i = 0..n-1
+  const fimT1 = () => fimDoMes(inicioTemp1().getTime());
+
+  // um passe pelo histórico (do mais velho pro mais novo) monta os números de todo mundo,
+  // com a data em que cada nível foi batido
+  let cacheMed = null;
+  function historicoMedalhas() {
+    const ck = `${partidas.length}:${partidas[0] ? partidas[0].id : ''}:${inicioPeriodo('semana')}`;
+    if (cacheMed && cacheMed.k === ck) return cacheMed.v;
+    const por = new Map();
+    const de = (k) => {
+      let x = por.get(k);
+      if (!x) { x = { v: {}, datas: {}, semanas: new Map(), dia: null, corrida: 0, pontos: 0, t1: null }; por.set(k, x); }
+      return x;
+    };
+    const sobe = (x, fam, valor, quando) => {
+      if (valor <= (x.v[fam] || 0)) return;
+      x.v[fam] = valor;
+      const d = x.datas[fam] || (x.datas[fam] = []);
+      FAM[fam].niveis.forEach((n, i) => { if (valor >= n && !d[i]) d[i] = quando; });
+    };
+    const semanas = new Map(); // início da semana -> Map(chave -> { pontos, cem, melhor })
+    const t1 = inicioTemp1().getTime(), t1fim = fimT1();
+    let recordeCla = 0, lider = null;
+    for (let i = partidas.length - 1; i >= 0; i--) {
+      const p = partidas[i];
+      const k = chave(p.player), x = de(k), q = p.created_at, ms = Date.parse(q), pts = pontosDe(p.mass);
+      const melhor = x.v.massa || 0;
+      if (melhor && p.mass > melhor) sobe(x, 'superacao', (x.v.superacao || 0) + 1, q);
+      sobe(x, 'massa', p.mass, q);
+      if (p.mass >= MARCO) sobe(x, 'cem', (x.v.cem || 0) + 1, q);
+      sobe(x, 'fiel', (x.v.fiel || 0) + 1, q);
+      const ini = inicioPeriodo('semana', ms);
+      const n = (x.semanas.get(ini) || 0) + 1;
+      x.semanas.set(ini, n);
+      sobe(x, 'chamas', n, q);
+      const dia = new Date(ms).setHours(0, 0, 0, 0);
+      if (x.dia !== dia) {
+        x.corrida = x.dia != null && Math.round((dia - x.dia) / 86400000) === 1 ? x.corrida + 1 : 1;
+        x.dia = dia;
+        sobe(x, 'sequencia', x.corrida, q);
+      }
+      if (recordeCla && p.mass > recordeCla) sobe(x, 'recorde', (x.v.recorde || 0) + 1, q);
+      recordeCla = Math.max(recordeCla, p.mass);
+      x.pontos += pts;
+      // os pontos só sobem, então basta comparar quem pontuou com o líder da hora
+      if (lider !== k && (!lider || x.pontos > por.get(lider).pontos)) { lider = k; sobe(x, 'rei', (x.v.rei || 0) + 1, q); }
+      let sm = semanas.get(ini);
+      if (!sm) semanas.set(ini, sm = new Map());
+      const w = sm.get(k) || { pontos: 0, cem: 0, melhor: 0 };
+      w.pontos += pts; w.melhor = Math.max(w.melhor, p.mass);
+      if (p.mass >= MARCO) w.cem += 1;
+      sm.set(k, w);
+      if (!x.t1 && ms >= t1 && ms < t1fim) x.t1 = q;
+    }
+    // semanas que já fecharam: quem fez mais pontos leva (desempate igual ao ranking)
+    const agora = inicioPeriodo('semana');
+    for (const [ini, sm] of [...semanas].sort((a, b) => a[0] - b[0])) {
+      if (ini >= agora) continue;
+      const [k, w] = [...sm].sort(([, a], [, b]) => b.pontos - a.pontos || b.cem - a.cem || b.melhor - a.melhor)[0];
+      if (!w.pontos) continue;
+      const x = por.get(k);
+      sobe(x, 'semana', (x.v.semana || 0) + 1, new Date(ini + SEMANA_MS - 1).toISOString());
+    }
+    cacheMed = { k: ck, v: por };
+    return por;
+  }
+
+  // estado de cada medalha do jogador: nivel = quantos níveis já tem (0 = trancada)
+  function medalhasDe(k, ctx) {
+    const h = historicoMedalhas().get(k) || { v: {}, datas: {} };
+    const r = elenco.get(k);
+    const v = { ...h.v }, datas = { ...h.datas };
+    // contagens com data: ordena as datas e marca quando bateu cada nível
+    const porDatas = (fam, lista) => {
+      const ord = lista.slice().sort((a, b) => a - b);
+      v[fam] = ord.length;
+      datas[fam] = FAM[fam].niveis.map((n) => (ord[n - 1] != null ? new Date(ord[n - 1]).toISOString() : null));
+    };
+    porDatas('temporada', ctx.temps.filter((t) => !t.atual && t.top[0].chave === k).map((t) => t.fim - 1));
+    const tn = trofeusDe(k);
+    porDatas('torneio', tn.filter((x) => x.pos === 1).map((x) => x.quando));
+    porDatas('vice', tn.filter((x) => x.pos === 2).map((x) => x.quando));
+    // patente: a mais alta que já teve; a "data" é a temporada em que chegou
+    v.patente = 0; datas.patente = [];
+    for (const [mc, mapa] of patentesPorTemporada()) {
+      const x = mapa.get(k);
+      if (!x) continue;
+      const [a, m] = mc.split('-').map(Number);
+      const ms = new Date(a, m - 1, 1).getTime();
+      v.patente = Math.max(v.patente, x.fim);
+      FAM.patente.niveis.forEach((n, i) => { if (x.fim >= n && !datas.patente[i]) datas.patente[i] = { temp: ms }; });
+    }
+    const desde = r && r.created_at ? Date.parse(r.created_at) : null;
+    v.veterano = desde ? Math.floor((Date.now() - desde) / 86400000) : 0;
+    datas.veterano = FAM.veterano.niveis.map((n) => (desde && v.veterano >= n ? new Date(desde + n * 86400000).toISOString() : null));
+    v.estilo = r && r.avatar ? 1 : 0;
+    datas.estilo = [];
+    v.fundador = h.t1 ? 1 : 0;
+    datas.fundador = [h.t1];
+    return MEDALHAS.map((m) => {
+      const valor = v[m.id] || 0;
+      const nivel = m.niveis.filter((n) => valor >= n).length;
+      return { ...m, valor, nivel, datas: datas[m.id] || [], metal: nivel ? metalDo(m, nivel - 1) : null, prox: m.niveis[nivel] ?? null };
+    }).filter((m) => !m.unica || m.nivel || Date.now() < fimT1()); // a do Fundador some pra quem não tem quando a T1 acaba
+  }
+  // 0 a 1 até o próximo nível
+  const progMed = (m) => (m.prox == null ? 1 : m.patente ? m.valor / m.prox : Math.min(1, m.valor / m.prox));
+  const progTxt = (m) => (m.patente ? PATENTES[m.valor].nome : m.massa
+    ? `${fmt(Math.floor(Math.min(m.valor, m.prox) / 1000))}K/${fmtK(m.prox)}` : `${fmt(Math.min(m.valor, m.prox))}/${fmt(m.prox)}`);
+  const tituloMed = (m, i = m.nivel - 1) => (m.titulo && i >= 0 ? m.titulo(m.niveis[i]) : m.nome);
+  function quandoTxt(d) {
+    if (!d) return '';
+    if (d.temp) return `na ${nomeTemp(d.temp)}`;
+    return `em ${new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/\./g, '')}`;
+  }
+
+  // quantos do clã têm cada nível de cada medalha (pra raridade e pra lista de quem tem)
+  let cacheRaras = null;
+  function membrosMed(ctx) {
+    const ks = new Set(ctx.pontos.map((j) => j.chave));
+    for (const r of jogadores) if (r.ativo) ks.add(chave(r.nick));
+    return [...ks];
+  }
+  function raridades(ctx) {
+    if (cacheRaras) return cacheRaras;
+    const ks = membrosMed(ctx);
+    const donos = new Map(MEDALHAS.map((m) => [m.id, []])); // id -> [{ chave, nivel }]
+    for (const k of ks) for (const m of medalhasDe(k, ctx)) if (m.nivel) donos.get(m.id).push({ chave: k, nivel: m.nivel, metal: m.metal });
+    for (const l of donos.values()) l.sort((a, b) => b.nivel - a.nivel);
+    cacheRaras = { total: ks.length, donos, nomes: new Map(montarRanking('geral', 'pontos', true).map((j) => [j.chave, j.nome])) };
+    return cacheRaras;
+  }
+  const nomeRar = (rar, k) => (elenco.get(k) ? elenco.get(k).nick : rar.nomes.get(k) || k);
+  const qtdCom = (rar, id, nivel) => (rar.donos.get(id) || []).filter((x) => x.nivel >= nivel).length;
+  function raridade(qtd, total, m = null) {
+    if (m && m.unica) return { txt: 'EDIÇÃO ÚNICA', cls: 'r-lenda' };
+    const f = qtd / Math.max(1, total);
+    return f <= 0.05 ? { txt: 'LENDÁRIA', cls: 'r-lenda' } : f <= 0.15 ? { txt: 'ÉPICA', cls: 'r-epica' } : f <= 0.35 ? { txt: 'RARA', cls: 'r-rara' } : { txt: 'COMUM', cls: 'r-comum' };
+  }
+
+  // ---------- desenho da medalha ----------
+  // fita, presilha, aro (liso no bronze, perolado na prata, raiado no ouro/diamante) e a face com o símbolo em relevo.
+  // metal null = trancada (cinza, com o anel de progresso em volta)
+  let numMed = 0;
+  function medalhaSVG(m, metal, prog = 0) {
+    const id = 'md' + (++numMed);
+    const M = METAIS[metal];
+    const aro = M ? M.aro : ['#4E423A', '#30271F', '#1E1813', '#0B0806'];
+    const face = M ? M.face : ['#2C241E', '#1B1511', '#0E0A08'];
+    const fita = M ? M.fita : ['#1A1411', '#33281F'];
+    const cx = 50, cy = 76, R = 32;
+    const raio = (n, r1, r2, giro = 0) => Array.from({ length: n * 2 }, (_, i) => {
+      const a = Math.PI / n * i + giro, d = i % 2 ? r2 : r1;
+      return `${(cx + d * Math.cos(a)).toFixed(1)},${(cy + d * Math.sin(a)).toFixed(1)}`;
+    }).join(' ');
+    const tira = (a, b, c, d, cor) => `<polygon points="${a} ${b} ${c} ${d}" fill="${cor}"/>`;
+    let borda = '';
+    if (metal === 'ouro' || metal === 'diamante' || metal === 'lenda') borda = `<polygon points="${raio(metal === 'diamante' ? 12 : 18, R + 7, R + 1.5)}" fill="url(#${id}a)" stroke="${aro[3]}" stroke-width=".8" stroke-linejoin="round"/>`;
+    const perolas = metal === 'prata' ? Array.from({ length: 26 }, (_, i) => {
+      const a = Math.PI * 2 * i / 26;
+      return `<circle cx="${(cx + (R - 2.6) * Math.cos(a)).toFixed(1)}" cy="${(cy + (R - 2.6) * Math.sin(a)).toFixed(1)}" r="1.25" fill="${aro[0]}" opacity=".85"/>`;
+    }).join('') : '';
+    const facetas = metal === 'diamante' ? `<g stroke="#fff" stroke-opacity=".35" stroke-width=".8">${Array.from({ length: 8 }, (_, i) => {
+      const a = Math.PI / 4 * i + Math.PI / 8;
+      return `<line x1="${cx}" y1="${cy}" x2="${(cx + (R - 5) * Math.cos(a)).toFixed(1)}" y2="${(cy + (R - 5) * Math.sin(a)).toFixed(1)}"/>`;
+    }).join('')}</g>` : '';
+    const anel = M ? '' : (() => {
+      const c = 2 * Math.PI * (R + 5);
+      return `<circle cx="${cx}" cy="${cy}" r="${R + 5}" fill="none" stroke="#2A1D14" stroke-width="3"/>`
+        + (prog > 0 ? `<circle class="md-anel" cx="${cx}" cy="${cy}" r="${R + 5}" fill="none" stroke="#FF7A1A" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(c * Math.min(1, prog)).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>` : '');
+    })();
+    const sombraIc = metal === 'lenda' ? '#000' : aro[3];
+    const corIc = metal === 'lenda' ? `url(#${id}f)` : M ? aro[3] : '#5A4A40';
+    const ic = `<g transform="translate(${cx - 15.6} ${cy - 15.6}) scale(1.3)" fill="none" stroke-linecap="round" stroke-linejoin="round">`
+      + (M ? `<g stroke="${M.luz}" stroke-opacity=".75" stroke-width="2.4" transform="translate(.45 .55)">${m.icone}</g>` : '')
+      + `<g stroke="${corIc}" stroke-width="2.1">${m.icone}</g>`
+      + (M && metal !== 'lenda' ? `<g stroke="${sombraIc}" stroke-opacity=".35" stroke-width="1" transform="translate(-.3 -.35)">${m.icone}</g>` : '')
+      + '</g>';
+    return `<svg class="md-svg" viewBox="0 0 100 120" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="${id}a" x1="0" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="${aro[0]}"/><stop offset=".3" stop-color="${aro[1]}"/><stop offset=".72" stop-color="${aro[2]}"/><stop offset="1" stop-color="${aro[3]}"/></linearGradient>
+<radialGradient id="${id}b" cx=".38" cy=".32" r=".78"><stop offset="0" stop-color="${face[0]}"/><stop offset=".55" stop-color="${face[1]}"/><stop offset="1" stop-color="${face[2]}"/></radialGradient>
+<linearGradient id="${id}c" x1="0" y1="0" x2="1" y2="1"><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".7"/><stop offset=".62" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1B8"/><stop offset=".5" stop-color="#FFB347"/><stop offset="1" stop-color="#FF5A1A"/></linearGradient>
+<clipPath id="${id}k"><circle cx="${cx}" cy="${cy}" r="${R + 7}"/></clipPath>
+</defs>
+<g class="md-fita">
+${tira('56,0', '78,0', '62,50', '42,46', fita[0])}${tira('63,0', '71,0', '55.5,48.5', '49,47', fita[1])}<polygon points="56,0 78,0 62,50 42,46" fill="#000" opacity=".28"/>
+${tira('22,0', '44,0', '58,46', '38,50', fita[0])}${tira('29,0', '37,0', '51,47', '44.5,48.5', fita[1])}
+</g>
+<rect x="38" y="35" width="24" height="9" rx="3" fill="url(#${id}a)" stroke="${aro[3]}" stroke-width=".8"/>
+${anel}${borda}
+<circle cx="${cx}" cy="${cy}" r="${R}" fill="url(#${id}a)" stroke="${aro[3]}" stroke-width="1"/>
+<circle cx="${cx}" cy="${cy}" r="${R - 5.5}" fill="url(#${id}b)" stroke="${aro[3]}" stroke-opacity=".7" stroke-width="1"/>
+<circle cx="${cx}" cy="${cy}" r="${R - 7}" fill="none" stroke="#fff" stroke-opacity="${M ? .22 : .04}" stroke-width=".8"/>
+${perolas}${facetas}${ic}
+${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width="70" height="90" fill="url(#${id}c)"/></g>` : ''}
+</svg>`;
+  }
+  function medalhaEl(m, metal = m.metal, cls = '') {
+    const w = el('span', { class: `md ${metal ? 'md-' + metal : 'md-trancada'} ${cls}` });
+    w.innerHTML = medalhaSVG(m, metal, metal ? 0 : progMed(m));
+    return w;
   }
   function contexto() {
     const temps = montarTemporadas();
@@ -2082,7 +2312,7 @@ ${frente}
     // cobra da semana
     const s1 = ctx.semana[0];
     $('dqSemana').replaceChildren(
-      el('span', { class: 'dq-rot' }, svg(medalhasDe({ chave: '', cem: 0, qtd: 0 }, ctx)[2].icone, 16), 'COBRA DA SEMANA'),
+      el('span', { class: 'dq-rot' }, svg(FAM.semana.icone, 16), 'COBRA DA SEMANA'),
       s1 && s1.pontos > 0
         ? el('div', { class: 'dq-corpo' }, avatarDe(s1.nome, ptsPat(s1.chave), 'av-m'),
             el('div', null, btnPerfil(s1, 'dq-nome'), el('div', { class: 'dq-num', text: `+${ptsTxt(s1.pontos)}` }),
@@ -2188,7 +2418,7 @@ ${frente}
   }
 
   // ---------- como funciona (regras em abas, no lugar dos textos no meio do site) ----------
-  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'chat'];
+  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'medalhas', 'chat'];
   let regraAba = 'temporada';
   // linha de regra: ícone/rótulo curto à esquerda, valor à direita (como tela de regras de jogo)
   const linhaRegra = (rot, ...val) => el('li', { class: 'rg-linha' }, el('span', { class: 'rg-rot', text: rot }), el('span', { class: 'rg-val' }, ...val));
@@ -2196,7 +2426,7 @@ ${frente}
   function abrirRegras(aba = regraAba) {
     regraAba = REGRA_ABAS.includes(aba) ? aba : 'temporada';
     document.querySelectorAll('.aba[data-regra]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.regra === regraAba)));
-    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, chat: regrasChat }[regraAba]();
+    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, medalhas: regrasMedalhas, chat: regrasChat }[regraAba]();
     trocar($('regrasCorpo'), corpo);
     const dlg = $('dlgRegras');
     if (!dlg.open) dlg.showModal();
@@ -2249,6 +2479,27 @@ ${frente}
       el('ul', { class: 'rg-lista' },
         linhaRegra('Nick', `com a tag [${TAG}]`),
         linhaRegra('Massa', 'vem do servidor, sem print')),
+    ];
+  }
+  function regrasMedalhas() {
+    const M = MEDALHAS.filter((m) => !m.unica || Date.now() < fimT1());
+    return [
+      el('div', { class: 'rg-metais' }, ...ORDEM_METAL.map((x) => el('span', { class: `md-conta pip-${x}` }, el('i', { 'aria-hidden': 'true' }), METAIS[x].nome))),
+      el('ul', { class: 'rg-medalhas' }, ...M.map((m) => el('li', null,
+        medalhaEl(m, m.metais ? m.metais[0] : 'ouro'),
+        el('div', { class: 'rg-md-txt' },
+          el('b', { text: m.nome }),
+          el('div', { class: 'rg-md-niveis' }, ...m.niveis.map((n, i) => el('span', { class: `rg-md-niv pip-${metalDo(m, i)}` }, el('i', { 'aria-hidden': 'true' }), m.req(n)))))))),
+      tituloRegra('RARIDADE'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Até 5% do clã tem', el('span', { class: 'md-rar r-lenda', text: 'LENDÁRIA' })),
+        linhaRegra('Até 15%', el('span', { class: 'md-rar r-epica', text: 'ÉPICA' })),
+        linhaRegra('Até 35%', el('span', { class: 'md-rar r-rara', text: 'RARA' })),
+        linhaRegra('Mais que isso', el('span', { class: 'md-rar r-comum', text: 'COMUM' }))),
+      tituloRegra('VITRINE'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Vagas', '3, do lado do nome'),
+        linhaRegra('Sem escolher', 'mostra as mais raras')),
     ];
   }
   // sala de troféus: a taça em disputa primeiro, depois as já entregues
@@ -2504,6 +2755,264 @@ ${frente}
     }));
   }
 
+  // ---------- medalhas no perfil: vitrine, sala de medalhas, detalhe e cerimônia ----------
+  const podeMudarVitrine = (k) => vitrineOk && podeMudarAvatar(k);
+  // as 3 da vitrine: as escolhidas ou, se não escolheu, as mais valiosas (metal e raridade)
+  function vitrineDe(k, meds, rar) {
+    const r = elenco.get(k);
+    const ganhas = meds.filter((m) => m.nivel);
+    const escolhidas = r && Array.isArray(r.vitrine) ? r.vitrine.map((id) => ganhas.find((m) => m.id === id)).filter(Boolean) : [];
+    if (escolhidas.length) return escolhidas;
+    const valor = (m) => METAIS[m.metal].ordem * 1000 - qtdCom(rar, m.id, m.nivel);
+    return ganhas.slice().sort((a, b) => valor(b) - valor(a)).slice(0, 3);
+  }
+  function vitrinePerfil(k, meds, rar) {
+    const lista = vitrineDe(k, meds, rar);
+    const pode = podeMudarVitrine(k);
+    if (!lista.length && !pode) return null;
+    return el('div', { class: 'pp-vitrine' },
+      ...lista.map((m) => el('button', { type: 'button', class: `pp-vit md-t-${m.metal}`, title: `${tituloMed(m)} · ${METAIS[m.metal].nome}`, 'aria-label': `Medalha ${tituloMed(m)}, ${METAIS[m.metal].nome}`, onclick: () => abrirMedalha(k, m.id) },
+        medalhaEl(m))),
+      pode ? el('button', { type: 'button', class: 'pp-vit-editar', onclick: () => abrirVitrine(k), title: 'Escolher as medalhas da vitrine', 'aria-label': 'Escolher as medalhas da vitrine' },
+        svg(lista.length ? ICONE_LAPIS : '<path d="M12 5v14M5 12h14"/>', 16), lista.length ? null : el('span', { text: 'Vitrine' })) : null);
+  }
+  const contaMetais = (meds) => {
+    const c = {};
+    for (const m of meds) if (m.nivel) c[m.metal] = (c[m.metal] || 0) + 1;
+    return ['lenda', 'diamante', 'ouro', 'prata', 'bronze'].filter((x) => c[x]).map((x) => [x, c[x]]);
+  };
+  function tileMedalha(k, m, rar) {
+    const qtd = m.nivel ? qtdCom(rar, m.id, m.nivel) : 0;
+    const rr = raridade(qtd, rar.total, m);
+    return el('li', null, el('button', { type: 'button', class: `md-tile ${m.nivel ? 'ok md-t-' + m.metal : 'trancada'}`, onclick: () => abrirMedalha(k, m.id),
+      'aria-label': `${tituloMed(m)}: ${m.nivel ? METAIS[m.metal].nome : 'trancada'}` },
+      medalhaEl(m),
+      el('b', { class: 'md-nome', text: m.nivel ? tituloMed(m) : m.nome }),
+      m.niveis.length > 1 ? el('span', { class: 'md-pips', 'aria-hidden': 'true' }, ...m.niveis.map((_, i) => el('i', { class: i < m.nivel ? `on pip-${metalDo(m, i)}` : '' }))) : null,
+      m.nivel
+        ? el('span', { class: `md-rar ${rr.cls}`, title: `${qtd} de ${rar.total} do clã têm` }, rr.txt)
+        : el('span', { class: 'md-falta', text: m.valor ? progTxt(m) : m.req(m.niveis[0]) })));
+  }
+  function secaoMedalhas(k, ctx, meds) {
+    const rar = raridades(ctx);
+    const eu = lerEu() === k;
+    const ganhas = meds.filter((m) => m.nivel);
+    const niveis = meds.reduce((s, m) => s + m.nivel, 0), total = meds.reduce((s, m) => s + m.niveis.length, 0);
+    // quase lá: as mais perto do próximo nível (tempo de clã não conta, vem sozinho)
+    const quase = meds.filter((m) => m.prox != null && m.valor > 0 && m.id !== 'veterano').sort((a, b) => progMed(b) - progMed(a)).slice(0, 3);
+    const semAvatar = eu && !meds.find((m) => m.id === 'estilo').nivel;
+    const fundador = meds.find((m) => m.id === 'fundador');
+    const corre = eu && fundador && !fundador.nivel && Date.now() < fimT1(); // ainda dá pra ganhar a do Fundador
+    const ordem = [...ganhas.sort((a, b) => METAIS[b.metal].ordem - METAIS[a.metal].ordem || b.nivel - a.nivel), ...meds.filter((m) => !m.nivel).sort((a, b) => progMed(b) - progMed(a))];
+    return el('section', { class: 'pp-sec md-sala', 'aria-labelledby': 'ppMed' },
+      el('div', { class: 'md-cab' },
+        el('div', { class: 'md-titulo' },
+          el('h2', { class: 'perfil-h3', id: 'ppMed' }, 'MEDALHAS',
+            el('button', { type: 'button', class: 'info-btn', 'data-info': 'medalhas', 'aria-label': 'Como funcionam as medalhas', text: 'i' })),
+          el('div', { class: 'md-placar' },
+            el('span', { class: 'md-placar-num' }, el('b', { text: String(ganhas.length) }), `/${meds.length}`),
+            el('div', { class: 'md-placar-info' },
+              el('div', { class: 'md-metais' }, ...contaMetais(meds).map(([x, n]) => el('span', { class: `md-conta pip-${x}`, title: `${n} de ${METAIS[x].nome}` }, el('i', { 'aria-hidden': 'true' }), String(n)))),
+              el('div', { class: 'md-niveis-barra', role: 'progressbar', 'aria-label': 'Níveis de medalha', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(niveis) },
+                el('span', { style: `width:${Math.round(niveis / Math.max(1, total) * 100)}%` })),
+              el('span', { class: 'md-niveis-txt', text: `${niveis} de ${total} níveis` })))),
+        podeMudarVitrine(k) ? el('button', { type: 'button', class: 'btn btn-sec md-btn-vit', onclick: () => abrirVitrine(k) }, svg(ICONE_ESTRELA, 18), el('span', { text: 'Vitrine' })) : null),
+      quase.length || semAvatar || corre ? el('div', { class: 'md-quase' },
+        el('span', { class: 'md-quase-rot', text: eu ? 'VOCÊ ESTÁ QUASE LÁ' : 'QUASE LÁ' }),
+        el('ul', null,
+          corre ? el('li', null, el('button', { type: 'button', class: 'md-q md-q-corre', onclick: () => abrirMedalha(k, 'fundador') },
+            medalhaEl(fundador, 'lenda', 'md-q-fantasma'),
+            el('span', { class: 'md-q-txt' }, el('b', null, 'Fundador', el('span', { class: 'md-q-metal pip-lenda', text: 'EDIÇÃO ÚNICA' })),
+              el('span', { text: `Registra 1 partida até ${new Date(fimT1() - 1).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')}. Depois, nunca mais.` })),
+            el('span', { class: 'md-q-acao', text: 'Corre' }))) : null,
+          semAvatar ? el('li', null, el('button', { type: 'button', class: 'md-q', onclick: () => abrirAvatar(k) },
+            medalhaEl(meds.find((m) => m.id === 'estilo'), 'bronze', 'md-q-fantasma'),
+            el('span', { class: 'md-q-txt' }, el('b', { text: 'Estilo próprio' }), el('span', { text: 'Monte o seu avatar e ganhe na hora' })),
+            el('span', { class: 'md-q-acao', text: 'Montar' }))) : null,
+          ...quase.slice(0, 3 - (semAvatar ? 1 : 0) - (corre ? 1 : 0)).map((m) => {
+            const prox = metalDo(m, m.nivel);
+            return el('li', null, el('button', { type: 'button', class: `md-q q-${prox}`, onclick: () => abrirMedalha(k, m.id) },
+              medalhaEl(m, prox, 'md-q-fantasma'),
+              el('span', { class: 'md-q-txt' },
+                el('b', null, m.titulo ? tituloMed(m, m.nivel) : m.nome, el('span', { class: `md-q-metal pip-${prox}`, text: METAIS[prox].nome })),
+                el('span', { text: m.req(m.prox) }),
+                el('span', { class: 'md-q-barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(progMed(m) * 100)}%` }))),
+              el('span', { class: 'md-q-num', text: progTxt(m) })));
+          }))) : null,
+      el('ul', { class: 'md-grade' }, ...ordem.map((m) => tileMedalha(k, m, rar))));
+  }
+
+  // janela da medalha: grande, girando, com os níveis, a raridade e quem mais tem.
+  // novas = cerimônia (medalha que o jogador acabou de ganhar; primeira = as que já tinha)
+  function abrirMedalha(k, id, novas = null) {
+    const ctx = contexto();
+    const meds = medalhasDe(k, ctx);
+    const m = meds.find((x) => x.id === id);
+    if (!m) return;
+    const rar = raridades(ctx);
+    const r = elenco.get(k);
+    const nome = nomeRar(rar, k);
+    const eu = lerEu() === k;
+    const festa = !!novas;
+    const naVitrine = !!(r && Array.isArray(r.vitrine) && r.vitrine.includes(id));
+    const qtd = qtdCom(rar, id, Math.max(1, m.nivel));
+    const rr = raridade(qtd, rar.total, m);
+    const cor = METAIS[m.metal || 'bronze'].luz;
+    const donos = (rar.donos.get(id) || []);
+    const confete = festa ? el('div', { class: 'cer-confete', 'aria-hidden': 'true' },
+      ...Array.from({ length: 60 }, (_, n) => el('i', { style: `--x:${Math.random() * 100}%;--d:${(Math.random() * 2).toFixed(2)}s;--t:${(2.4 + Math.random() * 2).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg;--c:${[cor, '#FFD84D', '#FFFFFF', '#FF7A1A'][n % 4]}` }))) : null;
+    trocar($('medalhaCorpo'),
+      confete,
+      el('div', { class: `mdd-palco ${m.metal ? '' : 'mdd-trancada'}` },
+        el('div', { class: 'mdd-raios', 'aria-hidden': 'true' }),
+        medalhaEl(m, m.metal, `mdd-medalha ${festa ? 'mdd-entra' : ''}`)),
+      el('div', { class: 'mdd-info' },
+        festa ? el('span', { class: 'mdd-festa', text: novas.primeira ? 'SUAS MEDALHAS CHEGARAM!' : 'MEDALHA NOVA!' }) : null,
+        el('span', { class: 'mdd-rot', text: m.nivel ? `${METAIS[m.metal].nome.toUpperCase()}${m.niveis.length > 1 ? ` · NÍVEL ${m.nivel} DE ${m.niveis.length}` : ''}` : 'TRANCADA' }),
+        el('h2', { class: 'mdd-nome', id: 'mddNome', text: m.nivel ? tituloMed(m) : m.nome }),
+        el('p', { class: 'mdd-desc', text: m.desc }),
+        el('div', { class: 'mdd-dono' }, avatarDe(nome, ptsPat(k), 'av-p'), m.nivel
+          ? el('span', null, eu ? 'Sua' : 'De ', eu ? null : el('b', { text: nome }), m.datas[m.nivel - 1] ? ` · conquistada ${quandoTxt(m.datas[m.nivel - 1])}` : '')
+          : el('span', null, eu ? 'Você' : el('b', { text: nome }), ' ainda não tem')),
+        m.prox != null && m.niveis.length === 1 ? el('div', { class: 'mdd-prog' },
+          el('div', { class: 'mdd-prog-linha' }, el('span', { text: 'Como ganhar' })),
+          el('b', { class: 'mdd-como', text: m.unica ? `${m.req(m.prox)} (até ${new Date(fimT1() - 1).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')})` : m.req(m.prox) })) : null,
+        m.prox != null && m.niveis.length > 1 ? el('div', { class: 'mdd-prog' },
+          el('div', { class: 'mdd-prog-linha' }, el('span', { text: `Próximo: ${METAIS[metalDo(m, m.nivel)].nome}` }), el('b', { text: progTxt(m) })),
+          el('div', { class: 'md-q-barra', role: 'progressbar', 'aria-label': 'Progresso até o próximo nível', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(progMed(m) * 100)) },
+            el('span', { style: `width:${Math.round(progMed(m) * 100)}%` })),
+          el('span', { class: 'mdd-prog-req', text: m.req(m.prox) })) : null,
+        el('div', { class: 'mdd-rar' },
+          el('span', { class: `md-rar ${rr.cls}`, text: rr.txt }),
+          el('span', { text: qtd ? `${qtd} de ${rar.total} do clã ${qtd === 1 ? 'tem' : 'têm'}${m.niveis.length > 1 && m.nivel ? ' esse nível' : ''}` : 'Ninguém do clã tem ainda' })),
+        m.niveis.length > 1 ? el('ol', { class: 'mdd-niveis' }, ...m.niveis.map((n, i) => {
+          const ok = i < m.nivel, mt = metalDo(m, i);
+          return el('li', { class: ok ? 'ok' : '' },
+            medalhaEl(m, mt, ok ? '' : 'md-apagada'),
+            el('span', { class: 'mdd-niv-txt' }, el('b', { class: `pip-${mt}`, text: METAIS[mt].nome }), el('span', { text: m.req(n) })),
+            el('span', { class: 'mdd-niv-q', text: ok ? (quandoTxt(m.datas[i]).replace(/^(em|na) /, '') || '✓') : `${qtdCom(rar, id, i + 1)} ${qtdCom(rar, id, i + 1) === 1 ? 'tem' : 'têm'}` }));
+        })) : null,
+        donos.length ? el('div', { class: 'mdd-donos' },
+          el('span', { class: 'md-quase-rot', text: 'QUEM TEM NO CLÃ' }),
+          el('ul', null, ...donos.slice(0, 14).map((d) => {
+            const nm = nomeRar(rar, d.chave);
+            return el('li', null, el('button', { type: 'button', class: `mdd-donob ${d.chave === k ? 'eu' : ''}`, onclick: () => { $('dlgMedalha').close(); abrirPerfil(d.chave); }, title: `${nm} · ${METAIS[d.metal].nome}` },
+              avatarDe(nm, ptsPat(d.chave), 'av-p'), el('span', { text: nm }), el('i', { class: `pip-${d.metal}`, 'aria-hidden': 'true' })));
+          }), donos.length > 14 ? el('li', { class: 'mdd-mais', text: `+${donos.length - 14}` }) : null)) : null,
+        festa && novas.length ? el('div', { class: 'mdd-outras' },
+          el('span', { class: 'md-quase-rot', text: novas.primeira ? 'E MAIS ESTAS' : 'TAMBÉM GANHOU' }),
+          el('div', null, ...novas.slice(0, 8).map((x) => el('button', { type: 'button', class: `mdd-outra md-t-${x.metal}`, title: tituloMed(x), onclick: () => abrirMedalha(k, x.id) }, medalhaEl(x))))) : null,
+        el('div', { class: 'linha-btns mdd-btns' },
+          eu && m.nivel && podeMudarVitrine(k)
+            ? el('button', { type: 'button', class: 'btn btn-sec', onclick: () => alternarVitrine(k, id) }, svg(ICONE_ESTRELA, 18), naVitrine ? 'Tirar da vitrine' : 'Pôr na vitrine')
+            : null,
+          el('button', { type: 'button', class: 'btn btn-pri', onclick: () => $('dlgMedalha').close() }, festa ? 'Boa!' : 'Fechar'))));
+    const dlg = $('dlgMedalha');
+    dlg.style.setProperty('--md-cor', cor);
+    dlg.classList.toggle('mdd-modo-festa', festa);
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+  }
+
+  // escolher a vitrine: 3 vagas em cima, as medalhas ganhas embaixo
+  let vitEd = null; // { k, lista }
+  function abrirVitrine(k) {
+    if (!podeMudarVitrine(k)) return;
+    const ctx = contexto();
+    const meds = medalhasDe(k, ctx);
+    vitEd = { k, lista: vitrineDe(k, meds, raridades(ctx)).map((m) => m.id) };
+    desenharVitrine();
+    const dlg = $('dlgMedalha');
+    dlg.style.setProperty('--md-cor', METAIS.ouro.luz);
+    dlg.classList.remove('mdd-modo-festa');
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+  }
+  function desenharVitrine() {
+    const { k, lista } = vitEd;
+    const meds = medalhasDe(k, contexto());
+    const ganhas = meds.filter((m) => m.nivel).sort((a, b) => METAIS[b.metal].ordem - METAIS[a.metal].ordem);
+    const de = (id) => ganhas.find((m) => m.id === id);
+    const tocar = (id) => {
+      const i = vitEd.lista.indexOf(id);
+      if (i >= 0) vitEd.lista.splice(i, 1);
+      else if (vitEd.lista.length < 3) vitEd.lista.push(id);
+      else { toast('A vitrine tem 3 vagas. Toque numa de cima pra tirar.'); return; }
+      desenharVitrine();
+    };
+    trocar($('medalhaCorpo'),
+      el('h2', { class: 'vit-titulo', id: 'mddNome' }, lerEu() === k ? 'SUA ' : `${elenco.get(k).nick.toUpperCase()} · `, el('span', { class: 'laranja', text: 'VITRINE' })),
+      el('div', { class: 'vit-vagas' }, ...[0, 1, 2].map((i) => {
+        const m = de(lista[i]);
+        return m
+          ? el('button', { type: 'button', class: `vit-vaga cheia md-t-${m.metal}`, onclick: () => tocar(m.id), 'aria-label': `Tirar ${tituloMed(m)} da vitrine` }, medalhaEl(m), el('span', { text: tituloMed(m) }))
+          : el('span', { class: 'vit-vaga', text: `${i + 1}` });
+      })),
+      el('p', { class: 'vit-dica', text: ganhas.length ? 'Toque pra escolher. Elas aparecem do lado do seu nome.' : 'Você ainda não tem medalha. Joga uma partida e volta aqui!' }),
+      el('ul', { class: 'md-grade vit-grade' }, ...ganhas.map((m) => el('li', null,
+        el('button', { type: 'button', class: `md-tile ok md-t-${m.metal}`, 'aria-pressed': String(lista.includes(m.id)), onclick: () => tocar(m.id) },
+          medalhaEl(m), el('b', { class: 'md-nome', text: tituloMed(m) }), el('span', { class: 'md-rar', text: METAIS[m.metal].nome }),
+          lista.includes(m.id) ? el('span', { class: 'vit-num', text: String(lista.indexOf(m.id) + 1) }) : null)))),
+      el('div', { class: 'linha-btns vit-pe' },
+        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => $('dlgMedalha').close() }, 'Cancelar'),
+        el('button', { type: 'button', class: 'btn btn-pri', id: 'btnVitSalvar', onclick: () => salvarVitrine(k, lista.slice()) }, 'Salvar')));
+  }
+  function alternarVitrine(k, id) {
+    const r = elenco.get(k);
+    const atual = r && Array.isArray(r.vitrine) && r.vitrine.length ? r.vitrine.slice() : vitrineDe(k, medalhasDe(k, contexto()), raridades(contexto())).map((m) => m.id);
+    const i = atual.indexOf(id);
+    if (i >= 0) atual.splice(i, 1);
+    else if (atual.length >= 3) { abrirVitrine(k); toast('A vitrine tem 3 vagas. Tira uma pra pôr essa.'); return; }
+    else atual.push(id);
+    salvarVitrine(k, atual);
+  }
+  async function salvarVitrine(k, lista) {
+    const r = elenco.get(k);
+    if (!r) return;
+    const bt = $('btnVitSalvar');
+    if (bt) bt.disabled = true;
+    try {
+      if (!DEMO) {
+        const res = await sb.rpc('jogador_vitrine', { p_vitrine: lista, p_player: r.id });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data !== 'ok') throw new Error(res.data);
+      }
+      r.vitrine = lista;
+      $('dlgMedalha').close();
+      render();
+      toast(lista.length ? 'Vitrine salva! Já aparece no seu perfil.' : 'Vitrine vazia: mostra as suas melhores sozinha.');
+    } catch (e) {
+      console.error(e);
+      toast('Não deu pra salvar a vitrine agora. Tenta de novo.', true);
+    } finally {
+      if (bt) bt.disabled = false;
+    }
+  }
+
+  // cerimônia: quem abre o próprio perfil vê as medalhas (ou níveis) que ganhou desde a última vez.
+  // Só marca como vista depois que a janela aparece.
+  let festaMarcada = false;
+  function festejarMedalhas(k, meds) {
+    if (festaMarcada || lerEu() !== k) return;
+    const chaveLS = 'ranking_medalhas_' + k;
+    const agora = meds.filter((m) => m.nivel).map((m) => `${m.id}:${m.nivel}`);
+    let antes;
+    try { antes = JSON.parse(localStorage.getItem(chaveLS) || 'null'); } catch (e) { return; }
+    const novas = meds.filter((m) => m.nivel && !(Array.isArray(antes) && antes.includes(`${m.id}:${m.nivel}`)))
+      .sort((a, b) => METAIS[b.metal].ordem - METAIS[a.metal].ordem);
+    const guardar = () => { try { localStorage.setItem(chaveLS, JSON.stringify(agora)); } catch (e) {} };
+    if (!novas.length) { guardar(); return; }
+    festaMarcada = true;
+    setTimeout(() => {
+      festaMarcada = false;
+      if (document.querySelector('dialog[open]') || perfilAtual !== k) return;
+      const resto = novas.slice(1);
+      resto.primeira = !Array.isArray(antes);
+      guardar();
+      abrirMedalha(k, novas[0].id, resto);
+    }, 900);
+  }
+
   // ---------- perfil do jogador ----------
   function grafico(lista) {
     const W = 560, H = 180, pl = 4, pr = 46, pt = 12, pb = 24;
@@ -2659,6 +3168,7 @@ ${frente}
     // cabeçalho
     const posGeral = posicao(ctx.pontos, k);
     const dia = pat.atual.diamante;
+    const meds = medalhasDe(k, ctx);
     const topo = el('header', { class: `pp-topo ${dia ? 'pp-dia' : pat.atual.nivel >= ESC_NIVEIS.length - 1 ? 'pp-len' : ''} ${ehRei(k) ? 'pp-rei' : ''}`, style: `--pc:${pat.atual.cor}` },
       dia ? el('div', { class: 'pp-dia-fx', 'aria-hidden': 'true' }, el('span', { class: 'pp-dia-raios' }), el('span', { class: 'dia-faiscas' }, ...Array.from({ length: 14 }, () => el('i')))) : null,
       dia ? el('button', { type: 'button', class: 'pp-dia-gema', title: 'Ver a cerimônia de Diamantes', 'aria-label': 'Ver a cerimônia de Diamantes', onclick: () => abrirDiamante(k) }, diamanteSVG()) : null,
@@ -2670,13 +3180,15 @@ ${frente}
         el('div', { class: 'pp-nome-box' },
           el('span', { class: 'pp-tag', text: `[${TAG}]` }),
           el('h1', { id: 'perfilNome', class: 'pp-nome', text: nome }),
-          el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipRei(k), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)))),
+          el('div', { class: 'perfil-chips' }, chipPatente(ptsP, 'patente-g'), chipRei(k), chipTitulos(ctx.titulos.get(k)), ...chipTorneios(k), ...chipsCadastro(r)),
+          vitrinePerfil(k, meds, raridades(ctx)))),
       posGeral ? el('div', { class: `pp-pos-geral p${posGeral}` },
         el('span', { class: 'pp-pos-num', text: `#${posGeral}` }),
         el('span', { class: 'pp-pos-rot', text: `de ${ctx.pontos.length} no ranking geral` })) : null);
 
+    festejarMedalhas(k, meds);
     if (!j) {
-      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }));
+      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }), secaoMedalhas(k, ctx, meds));
       return;
     }
 
@@ -2733,22 +3245,7 @@ ${frente}
     const media = Math.round(minhas.reduce((s, p) => s + p.mass, 0) / Math.max(1, minhas.length));
     const numeros = el('div', { class: 'perfil-stats' },
       ...[['PONTOS', fmt(pts), 'laranja'], ['RECORDE', fmt(j.melhor.mass), ''], ['MÉDIA', fmt(media), ''], ['PARTIDAS', fmt(j.qtd), ''], [marcoTxt, `${j.cem}×`, j.cem ? 'laranja' : ''], ['ÚLTIMA', diaTxt(j.ultima), 'pstat-txt']]
-        .map(([rot, v, c]) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: rot }), el('span', { class: `pstat-num ${c}`, text: v }))));
-
-    // medalhas: conquistadas primeiro; as trancadas mostram quanto falta
-    const meds = medalhasDe(j, ctx);
-    const ganhas = meds.filter((m) => m.ok);
-    const ordem = [...ganhas, ...meds.filter((m) => !m.ok).sort((a, b) => progMed(b) - progMed(a))];
-    const medalhas = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppMed' },
-      el('h2', { class: 'perfil-h3', id: 'ppMed' }, 'MEDALHAS ', el('span', { class: 'sec', text: `${ganhas.length} de ${meds.length}` })),
-      el('ul', { class: 'medalhas' }, ...ordem.map((m) => el('li', { class: `medalha ${m.ok ? 'ok' : 'trancada'}`, title: m.como },
-        el('span', { class: 'med-ic', 'aria-hidden': 'true' }, svg(m.icone, 20)),
-        el('span', { class: 'med-txt' },
-          el('b', { text: m.nome }),
-          el('span', { text: m.ok ? (m.quando ? `conquistada ${diaTxt(m.quando)}` : 'conquistada') : m.como }),
-          !m.ok && m.prog ? el('span', { class: 'med-prog', 'aria-label': `${m.prog[0]} de ${m.prog[1]}` },
-            el('span', { class: 'med-prog-barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.round(progMed(m) * 100)}%` })),
-            el('span', { class: 'med-prog-txt', text: progTxt(m.prog) })) : null)))));
+        .map(([rot, v, c]) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: rot }), el('span', { class: `pstat-num ${c} ${v.length > 7 && c !== 'pstat-txt' ? 'pstat-longo' : ''}`, text: v }))));
 
     // evolução
     const ultimas = minhas.slice(0, 20).reverse();
@@ -2786,12 +3283,21 @@ ${frente}
       })),
       minhas.length > mostrar.length ? el('button', { type: 'button', class: 'btn btn-sec pp-mais', onclick: () => { perfilMais = true; renderPerfil(); } }, `Ver todas as ${fmt(minhas.length)} partidas`) : null);
 
-    box.replaceChildren(barra, topo,
-      el('div', { class: 'pp-grade' },
-        el('div', { class: 'pp-col' }, posicoes, prog, numeros,
-          el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g),
-          medalhas),
-        el('div', { class: 'pp-col' }, secaoTrofeusPerfil(k, ctx), secaoInsigniasPerfil(k), secaoTorneiosPerfil(k), momentos, historico)));
+    // em cima: números e conquistas de temporada; no meio, a sala de medalhas inteira; embaixo, a história
+    const lado = [secaoTrofeusPerfil(k, ctx), secaoInsigniasPerfil(k)].filter(Boolean);
+    const evolucao = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g);
+    trocar(box, barra, topo,
+      el('div', { class: `pp-grade ${lado.length ? '' : 'pp-grade-1'}` },
+        el('div', { class: 'pp-col' }, posicoes, prog, numeros, lado.length ? evolucao : null),
+        lado.length ? el('div', { class: 'pp-col' }, ...lado) : null),
+      lado.length ? null : evolucao,
+      secaoMedalhas(k, ctx, meds),
+      (() => {
+        const hist = [secaoTorneiosPerfil(k), momentos].filter(Boolean);
+        return el('div', { class: `pp-grade ${hist.length ? '' : 'pp-grade-1'}` },
+          hist.length ? el('div', { class: 'pp-col' }, ...hist) : null,
+          el('div', { class: 'pp-col' }, historico));
+      })());
   }
   // troféu (campeão) e medalha de prata (vice) de torneio; curto = só o número (tabela do ranking)
   function chipTorneios(k, curto = false) {
@@ -2801,9 +3307,6 @@ ${frente}
       p ? el('span', { class: 'titulo-chip tn-chip-vice', title: `${p}× vice-campeão de torneio` }, svg(ICONE_MEDALHA, 12), curto ? (p > 1 ? `${p}×` : null) : `${p}× vice`) : null,
     ];
   }
-  // massa vira 121K/200K pra caber; contagem fica 4/5
-  const progTxt = ([a, b]) => (b >= 10000 ? `${fmt(Math.floor(Math.min(a, b) / 1000))}K/${fmtK(b)}` : `${fmt(Math.min(a, b))}/${fmt(b)}`);
-  const progMed = (m) => (m.prog ? Math.min(1, m.prog[0] / m.prog[1]) : 0);
 
   // ============================================================
   //  TORNEIOS E CAMPEONATOS
@@ -5049,14 +5552,16 @@ ${frente}
 
   async function carregar() {
     if (DEMO) return;
-    const [r, rj, rt, rl] = await Promise.all([
+    let [r, rj, rt, rl] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, created_at').order('nick').order('id')),
+      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
+    vitrineOk = !rj.error;
+    if (rj.error) rj = await lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, created_at').order('nick').order('id'));
     // sem a tabela players (script novo ainda não rodado) o site continua funcionando
     elencoOk = !rj.error;
     if (rj.error) console.warn('elenco:', rj.error.message);
@@ -5089,7 +5594,7 @@ ${frente}
     return [
       ['VENO', 'Líder', true, 60], ['Shawdow', 'Vice-líder', true, 55], ['VETERANO', 'Membro', true, 50], ['Kaiser', 'Membro', true, 40],
       ['Mamba', 'Membro', true, 30], ['Naja', 'Membro', true, 6], ['Cascavel', 'Membro', true, 2], ['Sucuri', 'Membro', false, 45],
-    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, avatar: AVATARES_DEMO[nick] || null, created_at: d(dias) }));
+    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, avatar: AVATARES_DEMO[nick] || null, vitrine: nick === 'Shawdow' ? ['massa', 'rei', 'fundador'] : null, created_at: d(dias) }));
   }
   const AVATARES_DEMO = {
     Shawdow: { pele: 'preto', cor2: 'ciano', padrao: 'raio', olhos: 'neon', boca: 'presas', cabeca: 'headset', rosto: 'nada', cor3: 'ciano', fundo: 'noite', estampa: 'grade' },

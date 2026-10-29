@@ -540,15 +540,6 @@ td .cem-chip { margin-left: 0; }
 .grafico .g-marco { stroke: var(--laranja-claro); stroke-width: 1.5; stroke-dasharray: 5 4; }
 .grafico .g-marco-txt { fill: var(--laranja-claro); font: 700 13px var(--f-texto); }
 .grafico .g-txt { fill: var(--texto-3); font: 12px var(--f-texto); }
-.medalhas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 8px; }
-.medalha { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; border: 1px solid var(--linha); background: var(--painel-2); min-width: 0; }
-.med-ic { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.medalha.ok { border-color: var(--linha-forte); background: var(--laranja-fundo); }
-.medalha.ok .med-ic { background: var(--laranja); color: var(--tinta-btn); box-shadow: 0 0 16px rgba(255, 122, 26, .4); }
-.medalha.trancada .med-ic { background: var(--fundo-2); color: #6E6157; border: 1px dashed #4A3B30; }
-.med-txt { display: flex; flex-direction: column; min-width: 0; font-size: 12px; color: var(--texto-3); line-height: 1.3; }
-.med-txt b { font-size: 14px; color: var(--texto); }
-.medalha.trancada .med-txt b { color: var(--texto-2); }
 
 @media (max-width: 760px) {
   .dq-num, .vs-pts { font-size: 38px; }
@@ -843,10 +834,6 @@ button, a, summary { touch-action: manipulation; }
 .pp-mov.desce { background: rgba(255, 90, 78, .12); color: #FFB0A8; }
 .pp-mov.novo { background: var(--laranja-escuro); color: var(--laranja-claro); }
 
-.med-prog { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.med-prog-barra { flex: 1 1 auto; height: 4px; border-radius: 99px; background: var(--fundo-2); overflow: hidden; }
-.med-prog-barra > span { display: block; height: 100%; border-radius: 99px; background: var(--laranja-claro); opacity: .7; }
-.med-prog-txt { font-size: 11px; color: var(--texto-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .conquistas-lista { list-style: none; margin: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; border-radius: 14px; background: var(--painel-2); border: 1px solid var(--linha); }
 .conquistas-lista li { display: flex; gap: 12px; align-items: baseline; font-size: 14px; color: var(--texto-2); }
@@ -906,7 +893,7 @@ button, a, summary { touch-action: manipulation; }
   .pp-acoes .btn-txt, .btn-eu .btn-txt { display: none; }
 }
 .pstat-num.pstat-txt { font-size: 22px; line-height: 1.1; padding-top: 4px; }
-.med-prog-barra { flex: 1 1 40px; min-width: 32px; }
+.pstat-num.pstat-longo { font-size: 23px; padding-top: 5px; }
 
 /* ============ torneios e campeonatos ============ */
 .aba[aria-checked="true"] { background: var(--laranja); color: var(--tinta-btn); font-weight: 700; }
@@ -1815,7 +1802,7 @@ h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY
 .prog-virada .rg-mini { margin-left: 0; }
 .cer-minha-vai { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--texto-3); }
 @media (max-width: 420px) { .cer-minha-vai { justify-content: center; } }
-.regras-abas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: auto !important; }
+.regras-abas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: auto !important; }
 .regras-abas .aba { padding: 0 4px; font-size: 13px; }
 .rg-virada .patente, .rg-escada .patente, .prog-virada .patente, .ft-eu .patente, .cer-minha-vai .patente { flex: 0 0 auto; }
 .pv-item { display: inline-flex; align-items: center; gap: 6px; }
@@ -2715,3 +2702,176 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .avd-cor { width: 36px; height: 36px; }
   .avd-pe .btn { padding-inline: 14px; }
 }
+
+/* ---------- medalhas ---------- */
+/* metal de cada nível (pontinhos, barras e contagem) */
+.pip-bronze, .md-t-bronze { --mc: #E8A06A; }
+.pip-prata, .md-t-prata { --mc: #D5DEE8; }
+.pip-ouro, .md-t-ouro { --mc: #FFD84D; }
+.pip-diamante, .md-t-diamante { --mc: #7DF9FF; }
+.pip-lenda, .md-t-lenda { --mc: #FF8A2B; }
+.md { display: block; line-height: 0; }
+.md-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.md-brilho rect { animation: brilhoMd 6s ease-in-out infinite; }
+.md-grade li:nth-child(3n) .md-brilho rect { animation-delay: 1.4s; }
+.md-grade li:nth-child(3n+1) .md-brilho rect { animation-delay: 2.9s; }
+@keyframes brilhoMd { 0%, 62% { transform: translateX(0); } 100% { transform: translateX(210px); } }
+.md-diamante .md-svg { filter: drop-shadow(0 0 6px rgba(125, 249, 255, .45)); }
+.md-lenda .md-svg { filter: drop-shadow(0 0 8px rgba(255, 122, 26, .55)); }
+.md-apagada { filter: grayscale(1) brightness(.5); opacity: .65; }
+.md-q-fantasma { opacity: .42; filter: grayscale(.35); }
+
+/* sala de medalhas do perfil */
+.md-sala { padding: 18px; border-radius: 18px; border: 1px solid var(--linha);
+  background: radial-gradient(90% 120% at 0% 0%, rgba(255, 184, 0, .07), transparent 55%), radial-gradient(70% 90% at 100% 100%, rgba(125, 249, 255, .05), transparent 60%), var(--painel-2); }
+.md-cab { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.md-sala .md-titulo .perfil-h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.md-placar { display: flex; align-items: center; gap: 16px; }
+.md-placar-num { font-family: var(--f-titulo); font-size: 30px; font-weight: 600; color: var(--texto-3); line-height: .8; white-space: nowrap; }
+.md-placar-num b { font-size: 68px; font-weight: 700; color: var(--texto); }
+.md-placar-info { display: flex; flex-direction: column; gap: 6px; min-width: 190px; }
+.md-metais { display: flex; gap: 6px; flex-wrap: wrap; }
+.md-conta { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 5px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--mc) 40%, transparent); background: color-mix(in srgb, var(--mc) 12%, transparent); color: var(--mc); font-size: 12px; font-weight: 700; }
+.md-conta i, .rg-md-niv i, .mdd-donob i { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, var(--mc) 55%, color-mix(in srgb, var(--mc) 45%, #000)); }
+.md-niveis-barra { height: 6px; border-radius: 99px; background: var(--fundo-2); overflow: hidden; }
+.md-niveis-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #E8A06A, #D5DEE8 40%, #FFD84D 70%, #7DF9FF); }
+.md-niveis-txt { font-size: 12px; color: var(--texto-3); }
+.md-btn-vit { min-height: 40px; }
+
+.md-quase { margin-top: 16px; }
+.md-quase-rot { display: block; margin-bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--texto-3); }
+.md-quase ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 8px; }
+.md-q { width: 100%; height: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--linha-forte); background: rgba(0, 0, 0, .25); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .2s, transform .2s; }
+.md-q:hover, .md-q:focus-visible { border-color: var(--laranja); transform: translateY(-2px); }
+.md-q .md { width: 40px; flex: 0 0 auto; }
+.md-q-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--texto-3); line-height: 1.25; }
+.md-q-txt b { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; font-size: 14px; color: var(--texto); }
+.md-q-metal { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--mc); }
+.md-q-barra { display: block; height: 5px; margin-top: 2px; border-radius: 99px; background: var(--fundo-2); overflow: hidden; }
+.md-q-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--laranja), var(--laranja-claro)); }
+.md-q-num { font-family: var(--f-titulo); font-size: 22px; font-weight: 600; line-height: 1; color: var(--laranja-claro); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.md-q-acao { padding: 6px 12px; border-radius: 8px; background: var(--laranja); color: var(--tinta-btn); font-size: 13px; font-weight: 700; }
+
+.md-grade { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.md-tile { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 8px 10px; border-radius: 14px; border: 1px solid var(--linha);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .02), rgba(0, 0, 0, .25)); color: inherit; font: inherit; cursor: pointer; transition: transform .25s cubic-bezier(.2, .8, .3, 1.3), border-color .2s, box-shadow .2s; }
+.md-tile .md { width: 64px; margin-bottom: 2px; transition: transform .35s cubic-bezier(.2, .8, .3, 1.3); }
+.md-tile:hover, .md-tile:focus-visible { transform: translateY(-3px); border-color: var(--linha-forte); }
+.md-tile:hover .md, .md-tile:focus-visible .md { transform: rotate(-7deg) scale(1.07); }
+.md-tile.ok { border-color: color-mix(in srgb, var(--mc) 32%, var(--linha));
+  background: radial-gradient(80% 55% at 50% 28%, color-mix(in srgb, var(--mc) 15%, transparent), transparent 72%), linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(0, 0, 0, .25)); }
+.md-tile.ok:hover, .md-tile.ok:focus-visible { border-color: color-mix(in srgb, var(--mc) 60%, var(--linha)); box-shadow: 0 10px 26px -10px color-mix(in srgb, var(--mc) 60%, transparent); }
+.md-tile.md-t-diamante { border-color: transparent; background: radial-gradient(80% 55% at 50% 28%, rgba(125, 249, 255, .14), transparent 72%) padding-box, linear-gradient(var(--painel-2), var(--painel-2)) padding-box, var(--dia-prisma) border-box; background-size: 100% 100%, 100% 100%, 200% 100%; animation: prismaBorda 6s linear infinite; }
+@keyframes prismaBorda { to { background-position: 0 0, 0 0, -200% 0; } }
+.md-tile.md-t-lenda { border-color: rgba(255, 122, 26, .65); box-shadow: inset 0 0 26px rgba(255, 122, 26, .14); }
+.md-nome { font-size: 13px; line-height: 1.15; text-align: center; color: var(--texto); overflow-wrap: anywhere; }
+.md-tile.trancada .md-nome { color: var(--texto-3); }
+.md-pips { display: flex; gap: 3px; }
+.md-pips i { width: 14px; height: 4px; border-radius: 99px; background: var(--linha-forte); }
+.md-pips i.on { background: var(--mc); box-shadow: 0 0 6px color-mix(in srgb, var(--mc) 60%, transparent); }
+.md-rar { padding: 1px 7px; border-radius: 6px; background: var(--fundo-2); color: var(--texto-3); font-size: 10px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
+.md-rar.r-comum { color: var(--texto-2); }
+.md-rar.r-rara { background: rgba(59, 164, 255, .14); color: var(--azul-claro); }
+.md-rar.r-epica { background: rgba(185, 139, 255, .16); color: var(--roxo-claro); }
+.md-rar.r-lenda { background: linear-gradient(90deg, #FFB800, #FF7A1A); color: var(--tinta-btn); }
+.md-falta { font-size: 11px; line-height: 1.2; text-align: center; color: var(--texto-3); font-variant-numeric: tabular-nums; }
+
+/* vitrine: até 3 medalhas penduradas do lado do nome */
+.pp-vitrine { display: flex; align-items: flex-end; gap: 6px; margin-top: 4px; }
+.pp-vit { width: 52px; padding: 0; border: 0; background: none; cursor: pointer; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .6)); transition: transform .3s cubic-bezier(.2, .8, .3, 1.3); }
+.pp-vit:hover, .pp-vit:focus-visible { transform: translateY(-4px) scale(1.08); }
+.pp-vit .md { animation: balancoMd 5s ease-in-out infinite; transform-origin: 50% 0; }
+.pp-vit:nth-child(2) .md { animation-delay: -1.7s; }
+.pp-vit:nth-child(3) .md { animation-delay: -3.3s; }
+@keyframes balancoMd { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+.pp-vit-editar { align-self: center; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 36px; height: 36px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--linha-forte); background: rgba(0, 0, 0, .3); color: var(--texto-3); font: 600 13px var(--f-texto); cursor: pointer; }
+.pp-vit-editar:hover, .pp-vit-editar:focus-visible { color: var(--laranja-claro); border-color: var(--laranja); }
+.pp-grade-1 { grid-template-columns: minmax(0, 1fr); }
+
+/* janela da medalha (e cerimônia de medalha nova) */
+.dlg-medalha { max-width: min(94vw, 460px); max-height: 94vh; overflow: auto; background: radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--md-cor, #FFD84D) 20%, var(--painel)), var(--painel) 62%); border-color: color-mix(in srgb, var(--md-cor, #FFD84D) 40%, var(--linha-forte)); }
+.dlg-medalha[open] { animation: cerEntra .45s cubic-bezier(.2, .9, .3, 1.2); }
+#medalhaCorpo { position: relative; }
+.mdd-palco { position: relative; display: flex; justify-content: center; padding: 30px 20px 4px; overflow: hidden; }
+.mdd-raios { position: absolute; left: 50%; top: 55%; width: 560px; height: 560px; margin: -280px 0 0 -280px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--md-cor) 24%, transparent) 0 6deg, transparent 6deg 18deg);
+  -webkit-mask: radial-gradient(closest-side, #000 12%, transparent); mask: radial-gradient(closest-side, #000 12%, transparent); animation: girar 34s linear infinite; }
+.mdd-trancada .mdd-raios { opacity: .2; }
+.mdd-medalha { position: relative; width: min(170px, 46vw); animation: flutuar 4s ease-in-out infinite; filter: drop-shadow(0 0 26px color-mix(in srgb, var(--md-cor) 45%, transparent)) drop-shadow(0 12px 18px rgba(0, 0, 0, .7)); }
+.mdd-trancada .mdd-medalha { filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .7)); }
+.mdd-medalha .md-svg { animation: girarMd 7s ease-in-out infinite; transform-origin: 50% 63%; }
+@keyframes girarMd { 0%, 100% { transform: perspective(500px) rotateY(-18deg); } 50% { transform: perspective(500px) rotateY(18deg); } }
+.mdd-entra { animation: mdEntra 1.2s cubic-bezier(.2, .9, .3, 1.1) both, flutuar 4s 1.2s ease-in-out infinite; }
+@keyframes mdEntra { 0% { opacity: 0; transform: perspective(500px) translateY(-70px) scale(.3) rotateY(720deg); } 70% { opacity: 1; transform: perspective(500px) translateY(6px) scale(1.1) rotateY(0); } 100% { transform: none; } }
+.mdd-info { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 20px 20px; text-align: center; }
+.mdd-festa { padding: 4px 14px; border-radius: 999px; background: linear-gradient(90deg, #FFB800, #FF7A1A); color: var(--tinta-btn); font-size: 13px; font-weight: 700; letter-spacing: 2px; animation: chamar 2s ease-in-out infinite; }
+.mdd-rot { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--md-cor); }
+.mdd-trancada + .mdd-info .mdd-rot { color: var(--texto-3); }
+.mdd-nome { margin: 0; font-family: var(--f-titulo); font-size: clamp(36px, 10vw, 50px); font-weight: 700; line-height: .95; letter-spacing: 1px; }
+.mdd-desc { margin: 0; max-width: 34ch; font-size: 14px; color: var(--texto-2); }
+.mdd-dono { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--texto-3); }
+.mdd-dono b { color: var(--texto); }
+.mdd-prog { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 12px; border-radius: 12px; border: 1px solid var(--linha); background: rgba(0, 0, 0, .3); text-align: left; }
+.mdd-prog-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: var(--texto-2); }
+.mdd-prog-linha b { font-family: var(--f-titulo); font-size: 22px; font-weight: 600; line-height: 1; color: var(--laranja-claro); }
+.mdd-prog-req { font-size: 12px; color: var(--texto-3); }
+.mdd-rar { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; font-size: 13px; color: var(--texto-2); }
+.mdd-niveis { list-style: none; width: 100%; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.mdd-niveis li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--linha); background: rgba(0, 0, 0, .2); }
+.mdd-niveis li.ok { background: rgba(255, 255, 255, .03); border-color: var(--linha-forte); }
+.mdd-niveis .md { width: 30px; flex: 0 0 auto; }
+.mdd-niv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; line-height: 1.25; color: var(--texto-3); }
+.mdd-niv-txt b { font-size: 13px; letter-spacing: .5px; color: var(--mc); }
+.mdd-niveis li:not(.ok) .mdd-niv-txt b { color: var(--texto-2); }
+.mdd-niv-q { font-size: 12px; color: var(--texto-3); white-space: nowrap; }
+.mdd-niveis li.ok .mdd-niv-q { color: var(--texto-2); }
+.mdd-donos, .mdd-outras { width: 100%; margin-top: 10px; text-align: left; }
+.mdd-donos ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.mdd-donob { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 3px 10px 3px 4px; border-radius: 999px; border: 1px solid var(--linha); background: var(--painel-2); color: var(--texto); font: 600 13px var(--f-texto); cursor: pointer; }
+.mdd-donob:hover, .mdd-donob:focus-visible { border-color: var(--laranja); }
+.mdd-donob.eu { border-color: var(--laranja); background: var(--laranja-fundo); }
+.mdd-mais { align-self: center; padding: 0 6px; font-size: 12px; color: var(--texto-3); }
+.mdd-outras > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.mdd-outra { width: 44px; padding: 0; border: 0; background: none; cursor: pointer; transition: transform .2s; }
+.mdd-outra:hover { transform: translateY(-3px); }
+.mdd-btns { width: 100%; margin-top: 14px; }
+.mdd-btns .btn { flex: 1; }
+
+/* escolher a vitrine */
+.vit-titulo { margin: 0; padding: 18px 64px 4px 20px; font-family: var(--f-titulo); font-size: 32px; font-weight: 600; line-height: 1; letter-spacing: 1px; }
+.vit-vagas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px 20px 0; }
+.vit-vaga { min-height: 118px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px 6px; border-radius: 14px; border: 2px dashed var(--linha-forte); background: rgba(0, 0, 0, .25); color: var(--texto-3); font: 600 30px var(--f-titulo); }
+.vit-vaga.cheia { border-style: solid; border-color: color-mix(in srgb, var(--mc) 45%, var(--linha)); background: radial-gradient(80% 60% at 50% 30%, color-mix(in srgb, var(--mc) 18%, transparent), transparent 70%), rgba(0, 0, 0, .25); color: var(--texto); font: 600 12px var(--f-texto); line-height: 1.15; text-align: center; cursor: pointer; }
+.vit-vaga .md { width: 52px; }
+.vit-dica { margin: 10px 20px 0; font-size: 13px; color: var(--texto-3); text-align: center; }
+.vit-grade { margin-top: 12px; padding: 0 20px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.vit-grade .md-tile .md { width: 50px; }
+.vit-grade .md-tile[aria-pressed="true"] { outline: 2px solid var(--laranja); outline-offset: -2px; }
+.vit-num { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--laranja); color: var(--tinta-btn); font: 700 12px/22px var(--f-texto); text-align: center; }
+.vit-pe { position: sticky; bottom: 0; margin: 0; padding: 18px 20px 20px; background: linear-gradient(transparent, var(--painel) 35%); }
+
+/* regras das medalhas (Como funciona) */
+.rg-metais { display: flex; flex-wrap: wrap; gap: 6px; }
+.rg-medalhas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rg-medalhas li { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--linha); }
+.rg-medalhas .md { width: 36px; flex: 0 0 auto; }
+.rg-md-txt { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rg-md-txt b { font-size: 14px; }
+.rg-md-niveis { display: flex; flex-wrap: wrap; gap: 3px 12px; }
+.rg-md-niv { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--texto-2); }
+.rg-linha .md-rar { font-size: 11px; }
+
+@media (max-width: 760px) {
+  .md-sala { padding: 14px; border-radius: 16px; }
+  .md-placar-num b { font-size: 54px; }
+  .md-placar-info { min-width: 0; flex: 1; }
+  .md-placar, .md-titulo { flex: 1 1 100%; }
+  .md-btn-vit { width: 100%; }
+  .md-grade { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .md-tile { padding: 10px 6px 9px; }
+  .md-tile .md { width: 54px; }
+  .pp-vit { width: 44px; }
+}
+.md-q-corre { border-style: solid; border-color: rgba(255, 122, 26, .6); background: radial-gradient(90% 120% at 0% 50%, rgba(255, 122, 26, .14), transparent 70%), rgba(0, 0, 0, .25); }
+.md-q-corre .md-q-fantasma { opacity: .8; filter: none; }
+.mdd-como { font-size: 15px; color: var(--texto); }
