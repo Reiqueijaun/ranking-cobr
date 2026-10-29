@@ -48,6 +48,7 @@
       <button type="button" class="btn btn-sec btn-grande" id="btnPortaoCriar" data-portao="visitante">CRIAR CONTA</button>
       <button type="button" class="btn btn-pri btn-grande" id="btnPortaoNick" data-portao="sem-nick">ESCOLHER NICK</button>
       <button type="button" class="btn btn-pri btn-grande" id="btnPortaoConferir" data-portao="pedido">JÁ FUI APROVADO</button>
+      <button type="button" class="btn-app" data-app data-app-abrir hidden><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/></svg>BAIXAR O APP NO CELULAR</button>
       <button type="button" class="link-btn" id="btnPortaoSair" data-portao="sem-nick pedido">Sair da conta</button>
     </div>
   </div>
@@ -91,6 +92,14 @@
 
 <main id="principal">
   <!-- cada data-pag é uma página: o menu mostra uma de cada vez (o #endereço diz qual) -->
+  <div class="wrap" data-pag="ranking" id="faixaAppBox" hidden>
+    <div class="faixa-app">
+      <img src="icon-192.png" alt="" width="44" height="44">
+      <span class="faixa-app-txt"><b>App do COBR</b><small>Direto na tela do celular</small></span>
+      <button type="button" class="btn btn-pri" data-app-abrir>BAIXAR</button>
+      <button type="button" class="tn-x" id="btnFecharFaixaApp" aria-label="Agora não">×</button>
+    </div>
+  </div>
   <section class="hero wrap" data-pag="ranking">
     <div class="hero-logo"><img src="logo-cobr.webp" alt="Escudo do clã COBR" width="220" height="220"></div>
     <div class="hero-txt">
@@ -706,11 +715,12 @@
     <button type="button" class="tn-x" id="btnFecharMais" aria-label="Fechar">×</button>
   </div>
   <nav class="mais-grade" id="maisGrade" aria-label="Outras páginas">
+    <button type="button" class="mais-regras mais-app" data-app data-app-abrir hidden><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/></svg><b>Baixar o app</b><small>O COBR na tela do celular</small></button>
     <a href="#torneios" id="maisTorneios"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg><b>Torneios</b><small>Campeonatos com placar ao vivo</small></a>
     <a href="#temporadas" id="maisTrofeus"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg><b>Troféus</b><small>A taça de cada temporada</small></a>
     <a href="#hall" id="maisHall"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/></svg><b>Hall da fama</b><small>As maiores partidas do clã</small></a>
     <a href="#jogadores"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2.2.6 3.5 2.8 3.5 6"/></svg><b>Jogadores</b><small>O elenco do clã</small></a>
-    <button type="button" class="mais-regras" id="maisApp"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><b>App e avisos</b><small>Instalar e notificações</small></button>
+    <button type="button" class="mais-regras" id="maisApp"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><b>Notificações</b><small>Avisos do chat no celular</small></button>
     <a href="#partidas"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><b>Partidas</b><small>O que entrou por último</small></a>
     <a href="#patentes"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3.5v5.5c0 4.5-3.4 8-8 9.5-4.6-1.5-8-5-8-9.5V6.5z"/><path d="M8 10.5l4 3 4-3"/></svg><b>Patentes</b><small>A escada até Diamantes</small></a>
     <a href="#painel" id="maisPainel" hidden><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><b>Painel do dono</b><small>Quem usa o site e quando</small></a>
@@ -822,6 +832,19 @@
     <button type="button" class="tn-x" id="btnFecharAvisos" aria-label="Fechar">×</button>
   </div>
   <div class="mod-corpo" id="avisosCorpo"></div>
+</dialog>
+
+<!-- baixar o app: passo a passo do celular de quem abriu (Android ou iPhone) -->
+<dialog id="dlgInstalar" class="dlg dlg-instalar" aria-labelledby="tituloInstalar" tabindex="-1">
+  <div class="mais-topo">
+    <h2 id="tituloInstalar">BAIXAR O <span class="laranja">APP</span></h2>
+    <button type="button" class="tn-x" id="btnFecharInstalar" aria-label="Fechar">×</button>
+  </div>
+  <div class="abas inst-abas" role="tablist" aria-label="Celular">
+    <button type="button" role="tab" class="aba" data-inst="android">Android</button>
+    <button type="button" role="tab" class="aba" data-inst="iphone">iPhone</button>
+  </div>
+  <div class="inst-corpo" id="instalarCorpo" role="tabpanel"></div>
 </dialog>
 
 <div class="chat-emojis" id="chatEmojis" hidden></div>

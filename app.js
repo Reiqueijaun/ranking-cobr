@@ -7147,8 +7147,123 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     // tocou na notificação com o site já aberto: vai pro chat
     navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.ir) irPara(e.data.ir); });
   }
-  addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); pedidoInstalar = e; if ($('dlgAvisos').open) desenharAvisos(); });
-  addEventListener('appinstalled', () => { pedidoInstalar = null; toast('App do clã instalado!'); });
+  addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    pedidoInstalar = e;
+    mostrarBotoesApp();
+    if ($('dlgAvisos').open) desenharAvisos();
+    if ($('dlgInstalar').open) desenharInstalar();
+  });
+  addEventListener('appinstalled', () => { pedidoInstalar = null; instalouAgora = true; mostrarBotoesApp(); $('dlgInstalar').close(); toast('App do clã instalado! Abra pelo ícone COBR.'); });
+
+  // ---------- baixar o app: botão à vista + passo a passo de cada celular ----------
+  // Android com Chrome: um toque abre o "Instalar" do próprio Chrome.
+  // iPhone (e Android sem esse pedido): a janela mostra onde tocar, com o desenho do botão.
+  const UA = navigator.userAgent;
+  const ehAndroid = /android/i.test(UA);
+  const ehCelular = ehIOS || ehAndroid || /mobile/i.test(UA);
+  const ehSamsung = /SamsungBrowser/i.test(UA);
+  const iosOutroNav = ehIOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(UA);
+  // navegador de dentro de outro app (Instagram, Facebook, TikTok…): de lá não dá pra instalar
+  const appDeDentro = (() => {
+    const m = UA.match(/Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|BytedanceWebview|Snapchat|Telegram|Discord/i);
+    if (m) return { fban: 'Facebook', fbav: 'Facebook', fb_iab: 'Facebook', 'line/': 'Line', musical_ly: 'TikTok', bytedancewebview: 'TikTok' }[m[0].toLowerCase()] || m[0];
+    if (ehAndroid && /; wv\)/.test(UA)) return 'app';
+    if (ehIOS && !/Safari\//.test(UA) && !appInstalado()) return 'app';
+    return null;
+  })();
+  const ICONE_BAIXAR_APP = '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/>';
+  const ICONE_COMPARTILHAR = '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H6v11h12V10h-2"/>';
+  const ICONE_ADD_TELA = '<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M12 8.5v7M8.5 12h7"/>';
+  const ICONE_3PONTOS_V = '<circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/>';
+  const ICONE_3PONTOS_H = '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>';
+  const ICONE_MENU = '<path d="M4 7h16M4 12h16M4 17h16"/>';
+  const ICONE_BUSSOLA = '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>';
+  const linkSite = () => location.origin + '/';
+  let instalouAgora = false; // instalou nesta aba: o botão some mesmo continuando no navegador
+  function mostrarBotoesApp() {
+    const pode = !appInstalado() && !instalouAgora && (ehCelular || !!pedidoInstalar);
+    document.querySelectorAll('[data-app]').forEach((b) => { b.hidden = !pode; });
+    let fechou = 0;
+    try { fechou = Number(localStorage.getItem('app_faixa_fechada') || 0); } catch (e) {}
+    $('faixaAppBox').hidden = !pode || !ehCelular || Date.now() - fechou < 7 * 864e5;
+  }
+  async function baixarApp() {
+    if ($('dlgMais').open) $('dlgMais').close();
+    if (pedidoInstalar) {
+      const p = pedidoInstalar;
+      pedidoInstalar = null; // o Chrome só deixa usar uma vez
+      p.prompt();
+      await p.userChoice.catch(() => {});
+      mostrarBotoesApp();
+      return;
+    }
+    abrirInstalar();
+  }
+  let instPlat = 'android';
+  function abrirInstalar() {
+    instPlat = ehIOS ? 'iphone' : 'android';
+    desenharInstalar();
+    const d = $('dlgInstalar');
+    if (!d.open) d.showModal();
+    d.focus();
+  }
+  async function copiarLinkSite() {
+    try { await navigator.clipboard.writeText(linkSite()); toast('Link copiado! Cole no navegador.'); }
+    catch (e) { toast(linkSite()); }
+  }
+  const tecla = (icone, rotulo) => el('span', { class: 'inst-tecla' }, icone && svg(icone, 16), rotulo);
+  const passo = (n, ...txt) => el('li', { class: 'inst-passo' }, el('span', { class: 'inst-n', text: n }), el('span', { class: 'inst-txt' }, ...txt));
+  function desenharInstalar() {
+    document.querySelectorAll('[data-inst]').forEach((a) => a.setAttribute('aria-selected', String(a.dataset.inst === instPlat)));
+    const iphone = instPlat === 'iphone';
+    const aqui = iphone === ehIOS; // é o celular que está com o site aberto (a aba pode ser a do amigo)
+    const abrirChrome = `intent://${location.host}/#Intent;scheme=https;package=com.android.chrome;end`;
+    const abrirSafari = `x-safari-${linkSite()}`;
+    let alerta = null, rapido = null, passos, dica = null;
+    if (aqui && appDeDentro) {
+      alerta = el('div', { class: 'inst-alerta' },
+        el('b', { text: appDeDentro === 'app' ? 'Abra no navegador primeiro' : `Você abriu pelo ${appDeDentro}` }),
+        el('span', { text: `Daqui não dá pra instalar. Abra no ${iphone ? 'Safari' : 'Chrome'} e siga os passos.` }),
+        el('a', { class: 'btn btn-pri', href: iphone ? abrirSafari : abrirChrome, text: `ABRIR NO ${iphone ? 'SAFARI' : 'CHROME'}` }),
+        el('button', { type: 'button', class: 'link-btn', text: 'Copiar o link do site', onclick: copiarLinkSite }));
+    }
+    if (!iphone && aqui && pedidoInstalar) {
+      rapido = el('button', { type: 'button', class: 'btn btn-pri btn-grande', onclick: baixarApp }, svg(ICONE_BAIXAR_APP, 20), 'INSTALAR AGORA');
+    }
+    if (iphone) {
+      passos = [
+        iosOutroNav && aqui
+          ? passo('1', 'Toque em ', tecla(ICONE_COMPARTILHAR, 'Compartilhar'), ' ao lado do endereço')
+          : passo('1', 'No Safari, toque em ', tecla(ICONE_COMPARTILHAR, 'Compartilhar'), ' (se não aparecer, toque em ', tecla(ICONE_3PONTOS_H), ' antes)'),
+        passo('2', 'Role e toque em ', tecla(ICONE_ADD_TELA, 'Adicionar à Tela de Início')),
+        passo('3', 'Toque em ', tecla(null, 'Adicionar'), ' no canto de cima'),
+      ];
+      if (!(aqui && appDeDentro)) dica = el('p', { class: 'inst-dica' }, 'Abriu pelo WhatsApp? Toque em ', tecla(ICONE_BUSSOLA), ' pra abrir no Safari.');
+    } else if (ehSamsung && aqui) {
+      passos = [
+        passo('1', 'Toque em ', tecla(ICONE_MENU, 'Menu'), ' embaixo'),
+        passo('2', 'Toque em ', tecla(ICONE_ADD_TELA, 'Adicionar página a')),
+        passo('3', 'Escolha ', tecla(null, 'Tela inicial')),
+      ];
+    } else {
+      passos = [
+        passo('1', 'No Chrome, toque em ', tecla(ICONE_3PONTOS_V), ' no canto de cima'),
+        passo('2', 'Toque em ', tecla(ICONE_BAIXAR_APP, 'Instalar app'), ' ou ', tecla(ICONE_ADD_TELA, 'Adicionar à tela inicial')),
+        passo('3', 'Confirme em ', tecla(null, 'Instalar')),
+      ];
+      if (!(aqui && appDeDentro)) dica = el('p', { class: 'inst-dica' }, 'Abriu pelo WhatsApp? ', aqui ? el('a', { href: abrirChrome, text: 'Abra no Chrome' }) : 'Abra no Chrome', ' antes.');
+    }
+    trocar($('instalarCorpo'),
+      alerta,
+      rapido,
+      rapido && el('div', { class: 'mod-rot', text: 'OU PELO MENU' }),
+      el('ol', { class: 'inst-passos' }, passos),
+      el('div', { class: 'inst-final' },
+        el('img', { src: 'icon-192.png', alt: '', width: 52, height: 52 }),
+        el('span', {}, el('b', { text: 'Pronto!' }), ' O ícone COBR aparece na tela do celular. Entre por ele.')),
+      dica);
+  }
   const b64uBytes = (s) => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
   async function minhaInscricao() {
     if (!pushPossivel()) return null;
@@ -7178,8 +7293,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     } }, el('i'), txt);
     let app;
     if (appInstalado()) app = el('p', { class: 'av-app-ok', text: 'App instalado neste aparelho.' });
-    else if (pedidoInstalar) app = el('button', { type: 'button', class: 'btn btn-pri', text: 'Instalar o app', onclick: async () => { pedidoInstalar.prompt(); await pedidoInstalar.userChoice.catch(() => {}); pedidoInstalar = null; desenharAvisos(); } });
-    else if (ehIOS) app = el('ol', { class: 'av-passos' }, el('li', { text: 'Abra o site no Safari' }), el('li', { text: 'Toque em Compartilhar (quadrado com seta)' }), el('li', { text: 'Toque em "Adicionar à Tela de Início"' }), el('li', { text: 'Abra pelo ícone e ligue as notificações aqui' }));
+    else if (ehCelular || pedidoInstalar) app = el('button', { type: 'button', class: 'btn btn-pri', text: 'Baixar o app', onclick: () => { $('dlgAvisos').close(); baixarApp(); } });
     else app = el('p', { class: 'mod-sub', text: 'No menu do navegador: "Instalar app" ou "Adicionar à tela inicial".' });
     trocar($('avisosCorpo'),
       el('div', { class: 'mod-rot', text: 'NESTE APARELHO' }),
@@ -7289,6 +7403,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     $('chatAvisosBtn').addEventListener('click', abrirAvisos);
     $('maisApp').addEventListener('click', abrirAvisos);
     $('btnFecharAvisos').addEventListener('click', () => $('dlgAvisos').close());
+    document.querySelectorAll('[data-app-abrir]').forEach((b) => b.addEventListener('click', baixarApp));
+    $('btnFecharFaixaApp').addEventListener('click', () => {
+      try { localStorage.setItem('app_faixa_fechada', String(Date.now())); } catch (e) {}
+      $('faixaAppBox').hidden = true;
+    });
+    $('btnFecharInstalar').addEventListener('click', () => $('dlgInstalar').close());
+    document.querySelectorAll('[data-inst]').forEach((a) => a.addEventListener('click', () => { instPlat = a.dataset.inst; desenharInstalar(); }));
     $('chatMembrosBtn').addEventListener('click', () => $('chatMembros').classList.toggle('aberto'));
     $('chatNovas').addEventListener('click', () => descerChat(true));
     $('chatMsgs').addEventListener('scroll', () => {
@@ -7320,6 +7441,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       desenharTopoChat(); desenharMembrosChat(); desenharComporChat();
     }, 30000);
     registrarSW();
+    mostrarBotoesApp();
   }
 
   // ---------- demonstração: o chat funciona só nesta tela ----------

@@ -2235,7 +2235,6 @@ body[data-pag="chat"] .rodape { display: none; }
 .av-estado .ch-bola { width: 10px; height: 10px; border-radius: 50%; background: var(--texto-3); flex: 0 0 auto; }
 .av-estado .ch-bola.on { background: var(--verde); box-shadow: 0 0 10px rgba(61, 220, 132, .6); }
 .av-prefs { display: flex; flex-direction: column; gap: 2px; padding: 4px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); }
-.av-passos { margin: 0; padding: 12px 14px 12px 32px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; color: var(--texto-2); display: flex; flex-direction: column; gap: 6px; }
 .av-app-ok { margin: 0; font-size: 14px; color: var(--verde); font-weight: 600; }
 @media (max-width: 520px) {
   .mod-linha { flex-wrap: wrap; }
@@ -2875,3 +2874,46 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 .md-q-corre { border-style: solid; border-color: rgba(255, 122, 26, .6); background: radial-gradient(90% 120% at 0% 50%, rgba(255, 122, 26, .14), transparent 70%), rgba(0, 0, 0, .25); }
 .md-q-corre .md-q-fantasma { opacity: .8; filter: none; }
 .mdd-como { font-size: 15px; color: var(--texto); }
+
+/* ---------- baixar o app ---------- */
+.btn-app {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 50px; padding: 0 14px;
+  border-radius: 12px; border: 1px dashed rgba(255, 179, 71, .6); background: rgba(255, 122, 26, .1); color: var(--laranja-claro);
+  font: inherit; font-weight: 700; font-size: 14px; letter-spacing: 1px; cursor: pointer;
+}
+.btn-app:hover { border-style: solid; background: rgba(255, 122, 26, .18); }
+.btn-app[hidden] { display: none; }
+.faixa-app {
+  display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 10px 10px 12px; border-radius: 14px;
+  border: 1px solid var(--linha-forte); background: linear-gradient(90deg, var(--laranja-fundo), var(--painel-2));
+}
+.faixa-app img { width: 44px; height: 44px; border-radius: 11px; flex: 0 0 auto; }
+.faixa-app-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.faixa-app-txt b { font-size: 15px; }
+.faixa-app-txt small { font-size: 12px; color: var(--texto-3); }
+.faixa-app .btn { min-height: 40px; padding: 0 16px; flex: 0 0 auto; }
+.faixa-app .tn-x { width: 40px; height: 40px; font-size: 20px; }
+.mais-grade .mais-app { border-color: var(--laranja); background: var(--laranja-fundo); }
+.mais-grade .mais-app[hidden] { display: none; }
+
+.dlg-instalar { max-width: min(94vw, 440px); max-height: min(92vh, 760px); overflow: auto; }
+.inst-abas { margin: 4px 16px 0; width: auto; }
+.inst-abas .aba { flex: 1 1 0; }
+.inst-corpo { padding: 14px 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.inst-corpo > .btn { width: 100%; gap: 8px; }
+.inst-corpo .mod-rot { margin: 2px 0 -4px; }
+.inst-alerta { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 90, 90, .5); background: rgba(255, 90, 90, .08); font-size: 14px; color: var(--texto-2); }
+.inst-alerta b { color: var(--texto); font-size: 15px; }
+.inst-alerta .btn { width: 100%; }
+.inst-alerta .link-btn { align-self: center; padding: 0; }
+.inst-passos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.inst-passo { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 15px; line-height: 1.9; color: var(--texto-2); }
+.inst-n { flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px; border-radius: 50%; background: var(--laranja); color: var(--tinta-btn); font-family: var(--f-titulo); font-size: 19px; font-weight: 700; line-height: 1; }
+.inst-txt { min-width: 0; }
+.inst-tecla { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--linha-forte); background: var(--painel); color: var(--texto); font-weight: 700; font-size: 14px; line-height: 1.7; vertical-align: middle; }
+.inst-tecla svg { color: var(--laranja-claro); flex: 0 0 auto; }
+.inst-final { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--linha-forte); background: var(--laranja-fundo); font-size: 14px; color: var(--texto-2); }
+.inst-final img { width: 52px; height: 52px; border-radius: 13px; flex: 0 0 auto; }
+.inst-final b { color: var(--texto); }
+.inst-dica { margin: 0; font-size: 13px; color: var(--texto-3); text-align: center; line-height: 1.9; }
+.inst-dica a { color: var(--laranja-claro); font-weight: 600; }
