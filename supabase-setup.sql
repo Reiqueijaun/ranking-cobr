@@ -1084,7 +1084,7 @@ $$;
 
 drop policy if exists "membros leem o chat" on public.chat_mensagens;
 create policy "membros leem o chat" on public.chat_mensagens for select to authenticated
-  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())));
+  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())::text[]));
 drop policy if exists "membros leem reacoes" on public.chat_reacoes;
 create policy "membros leem reacoes" on public.chat_reacoes for select to authenticated
   using ((select public.chat_pode_ler()) and exists (select 1 from public.chat_mensagens m where m.id = msg_id));
@@ -1097,13 +1097,13 @@ drop policy if exists "membros leem adms" on public.chat_adms;
 create policy "membros leem adms" on public.chat_adms for select to authenticated using ((select public.chat_pode_ler()));
 drop policy if exists "membros leem canais" on public.chat_canais_cfg;
 create policy "membros leem canais" on public.chat_canais_cfg for select to authenticated
-  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())));
+  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())::text[]));
 drop policy if exists "membros leem canais criados" on public.chat_canais;
 create policy "membros leem canais criados" on public.chat_canais for select to authenticated
-  using ((select public.chat_pode_ler()) and id = any ((select public.chat_meus_canais())));
+  using ((select public.chat_pode_ler()) and id = any ((select public.chat_meus_canais())::text[]));
 drop policy if exists "membros leem quem esta no canal" on public.chat_canal_membros;
 create policy "membros leem quem esta no canal" on public.chat_canal_membros for select to authenticated
-  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())));
+  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())::text[]));
 -- a punição: a própria pessoa vê a dela; os ADMs veem todas
 drop policy if exists "punicao propria ou adm" on public.chat_punicoes;
 create policy "punicao propria ou adm" on public.chat_punicoes for select to authenticated using (user_id = (select auth.uid()) or (select public.is_chat_adm()));
