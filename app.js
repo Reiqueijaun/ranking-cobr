@@ -5941,6 +5941,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       if (chatVisivel()) desenharMembrosChat();
     })
       .on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
+      .on('broadcast', { event: 'toque' }, ({ payload }) => tocaramChat(payload).catch(() => {}))
       .subscribe((st) => { if (st === 'SUBSCRIBED') pr.track({ player_id: chat.eu.player_id, nome: meuNick() }); });
     chat.presenca = pr;
   }
@@ -6414,6 +6415,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     cancelarRespChat();
     try {
       const id = await chatRpc('chat_enviar', { p_canal: chat.canal, p_txt: txt, p_resp: resp ? resp.id : null });
+      tocarChat('msg', id);
       await buscarMsgChat(id);
     } catch (e) {
       if (!campo.value) campo.value = txt;
@@ -6427,9 +6429,39 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const { data } = await sb.from('chat_mensagens').select('*').eq('id', id).maybeSingle();
     if (data) chegouMsg(data);
   }
+  // o tempo real do banco leva uns segundos pra chegar nos outros: quem mandou avisa na hora pela
+  // conexão do chat e cada um busca no banco (o aviso só leva o id, então não dá pra forjar mensagem)
+  function tocarChat(tipo, id) {
+    if (DEMO || !id || !chat.presenca) return;
+    try { chat.presenca.send({ type: 'broadcast', event: 'toque', payload: { tipo, id } }).catch(() => {}); } catch (e) {}
+  }
+  async function tocaramChat(p) {
+    if (!p || !p.id || !chat.eu) return;
+    if (p.tipo === 'msg') {
+      const { data, error } = await sb.from('chat_mensagens').select('*').eq('id', p.id).maybeSingle();
+      if (error) return;
+      if (!data) { sumiuMsg(p.id); return; }
+      if (data.tipo === 'bonde' && !chat.porId.has(data.id)) await puxarBonde(data.id, false);
+      chegouMsg(data);
+    } else if (p.tipo === 'reac') {
+      const { data, error } = await sb.from('chat_reacoes').select('user_id, emoji').eq('msg_id', p.id);
+      if (error) return;
+      const r = new Map();
+      for (const x of data || []) { if (!r.has(x.emoji)) r.set(x.emoji, new Set()); r.get(x.emoji).add(x.user_id); }
+      chat.reac.set(p.id, r);
+      if (chat.porId.has(p.id)) trocarLinhaChat(chat.porId.get(p.id));
+    } else if (p.tipo === 'bonde') await puxarBonde(p.id, true);
+  }
+  async function puxarBonde(id, redesenhar) {
+    const { data, error } = await sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').eq('msg_id', id).order('created_at');
+    if (error) return;
+    chat.bonde.set(id, (data || []).map((b) => ({ user_id: b.user_id, player_id: b.player_id, nome: b.nome })));
+    if (redesenhar && chat.porId.has(id)) trocarLinhaChat(chat.porId.get(id));
+  }
   async function reagirChat(m, e) {
     try {
       const ficou = await chatRpc('chat_reagir', { p_msg: m.id, p_emoji: e });
+      tocarChat('reac', m.id);
       mexerReac(m.id, e, euChat(), !!ficou);
     } catch (err) { erroChat(err); }
   }
@@ -6463,6 +6495,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (!m || (m.tipo === 'msg' && !txt)) return;
     try {
       const novo = await chatRpc('chat_editar', { p_msg: m.id, p_txt: txt });
+      tocarChat('msg', m.id);
       cancelarRespChat();
       atualizarMsg({ id: m.id, txt: novo ?? txt, editada: true });
     } catch (e) { erroChat(e); }
@@ -6472,6 +6505,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       const r = await chatRpc('chat_bonde_entrar', { p_msg: m.id, p_entrar: entra });
       if (r === 'lotado') { toast('Esse bonde lotou.', true); return; }
       if (r === 'fechado') { toast('Esse bonde já acabou.', true); trocarLinhaChat(m); return; }
+      tocarChat('bonde', m.id);
       mexerBonde({ msg_id: m.id, user_id: euChat(), player_id: chat.eu.player_id, nome: meuNick() }, entra);
       meuStatusChat(entra ? new Date(Date.now() + 90 * 60000).toISOString() : null);
       if (entra) toast('Você entrou no bonde. Bom jogo!');
@@ -6503,6 +6537,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     $('dlgBonde').close();
     try {
       const id = await chatRpc('chat_enviar', { p_canal: canal, p_txt: $('fBondeNota').value.trim(), p_tipo: 'bonde', p_dados: { srv: $('fBondeSrv').value.trim() || 'Servidor BR', max: vagas } });
+      tocarChat('msg', id);
       if (!DEMO) {
         const { data } = await sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').eq('msg_id', id);
         for (const b of data || []) mexerBonde(b, true, false);
@@ -6548,6 +6583,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       urlsFoto.set(path, { url: URL.createObjectURL(blob), ate: Date.now() + 3600000 });
       const resp = chat.resp;
       const id = await chatRpc('chat_enviar', { p_canal: chat.canal, p_txt: $('chatTxt').value.trim(), p_resp: resp ? resp.id : null, p_tipo: 'foto', p_dados: { path, w, h } });
+      tocarChat('msg', id);
       $('chatTxt').value = '';
       $('chatEnviar').disabled = true;
       cancelarRespChat();
@@ -6562,6 +6598,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     confirmar('APAGAR MENSAGEM?', meu ? 'Ela some pra todo mundo.' : `Mensagem de ${nick}. Some pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
       try {
         const foto = await chatRpc('chat_apagar', { p_msg: m.id });
+        tocarChat('msg', m.id);
         if (foto) apagarFotos([foto]);
         atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
         toast('Mensagem apagada.');
@@ -6572,6 +6609,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   async function fixarChat(m, fixar) {
     try {
       await chatRpc('chat_fixar', { p_msg: m.id, p_fixar: fixar });
+      tocarChat('msg', m.id);
       if (fixar) for (const x of chat.msgs[m.canal]) if (x.fixada && x !== m) { x.fixada = false; trocarLinhaChat(x); }
       atualizarMsg({ id: m.id, fixada: fixar });
       toast(fixar ? 'Mensagem fixada no topo do canal.' : 'Mensagem desafixada.');
@@ -6786,6 +6824,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         acao('Apagar', 'btn-perigo', async () => {
           try {
             const foto = await chatRpc('chat_apagar', { p_msg: x.msg_id });
+            tocarChat('msg', x.msg_id);
             if (foto) apagarFotos([foto]);
             if (m) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
             toast('Mensagem apagada.');
