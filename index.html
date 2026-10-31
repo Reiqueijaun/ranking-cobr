@@ -358,6 +358,7 @@
         <div class="chat-topo">
           <h2 class="chat-titulo" id="chatTitulo"></h2>
           <button type="button" class="chat-jogando" id="chatJogando" aria-pressed="false" hidden></button>
+          <button type="button" class="chat-ico" id="chatCanalBtn" aria-label="Editar canal" title="Editar canal" hidden></button>
           <button type="button" class="chat-ico" id="chatModBtn" aria-label="Moderação" hidden></button>
           <button type="button" class="chat-ico" id="chatAvisosBtn" aria-label="Notificações e app" title="Notificações e app"></button>
           <button type="button" class="chat-ico" id="chatMembrosBtn" aria-label="Membros"></button>
@@ -790,6 +791,31 @@
     <div class="linha-btns">
       <button type="button" class="btn btn-sec" id="btnCancelarBonde">Cancelar</button>
       <button type="submit" class="btn btn-pri">Chamar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- canal criado pelo ADM: nome, ícone, quem vê e quem escreve -->
+<dialog id="dlgCanal" class="dlg dlg-canal" aria-labelledby="tituloCanal">
+  <form class="form-admin" id="formCanal">
+    <h2 id="tituloCanal">NOVO <span class="laranja">CANAL</span></h2>
+    <label for="fCanalNome">NOME</label>
+    <input id="fCanalNome" type="text" maxlength="24" placeholder="ex: copa-cobr" autocomplete="off">
+    <label>ÍCONE</label>
+    <div class="canal-emojis" id="canalEmojis" role="radiogroup" aria-label="Ícone"></div>
+    <label>QUEM VÊ</label>
+    <div class="abas punir-op" id="canalVe" role="radiogroup" aria-label="Quem vê"></div>
+    <div class="canal-membros" id="canalMembros" hidden>
+      <span class="mod-sub" id="canalQtd"></span>
+      <input id="fCanalBusca" type="text" placeholder="Buscar nick" autocomplete="off" aria-label="Buscar nick">
+      <div class="canal-lista" id="canalLista"></div>
+    </div>
+    <label>QUEM ESCREVE</label>
+    <div class="abas punir-op" id="canalFala" role="radiogroup" aria-label="Quem escreve"></div>
+    <div class="linha-btns">
+      <button type="button" class="btn btn-perigo" id="btnApagarCanal" hidden>Apagar</button>
+      <button type="button" class="btn btn-sec" id="btnCancelarCanal">Cancelar</button>
+      <button type="submit" class="btn btn-pri" id="btnSalvarCanal">Criar</button>
     </div>
   </form>
 </dialog>

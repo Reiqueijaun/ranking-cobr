@@ -5685,6 +5685,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const ICONE_SETA = '<path d="M5 12h14M13 6l6 6-6 6"/>';
   const ICONE_DESCE = '<path d="M12 5v14M6 13l6 6 6-6"/>';
   const ICONE_FOTO = '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 5l1.5-2h5L16 5"/>';
+  const ICONE_MAIS = '<path d="M12 5v14M5 12h14"/>';
   const ICONE_SINO = '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>';
   const CANAIS_CHAT = [
     { id: 'geral', nome: 'geral', ico: ICONE_HASH, vazio: 'Manda o primeiro oi pro clã.' },
@@ -5709,16 +5710,44 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     online: new Map(),                // user_id -> { player_id, nome }
     equipe: new Map(),                // user_id -> 'dono' | 'adm'
     cfg: new Map(),                   // canal -> { travado, lento }
+    criados: [],                      // canais que os ADMs criaram (só os que esta conta vê)
     digitando: new Map(), lido: {}, novas: 0, denuncias: 0, antigas: false,
   };
+  // tocou numa notificação com o app fechado: o site abre com ?canal= e o chat vai direto pra ele
+  let canalPedido = null;
+  try {
+    const u = new URL(location.href);
+    canalPedido = u.searchParams.get('canal');
+    if (canalPedido) { u.searchParams.delete('canal'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); }
+  } catch (e) {}
   const euChat = () => (chat.eu && chat.eu.user_id) || null;
   const admChat = () => !!(chat.eu && chat.eu.adm);
   const donoChat = () => !!(chat.eu && chat.eu.dono);
   const papelDe = (u) => (u ? chat.equipe.get(u) || null : null);
-  const canalChat = (id) => CANAIS_CHAT.find((c) => c.id === id);
+  const todosCanais = () => [...CANAIS_CHAT, ...chat.criados];
+  const canalChat = (id) => todosCanais().find((c) => c.id === id) || CANAIS_CHAT[0];
+  const nomeCanal = (id, nome) => (todosCanais().find((c) => c.id === id) || {}).nome || nome || id;
   const cfgCanal = (c) => chat.cfg.get(c) || { travado: false, lento: 0, desligado: false };
   // o Dono pode desligar o #recordes: some pra todo mundo até ele ligar de novo
-  const canaisChat = () => CANAIS_CHAT.filter((c) => !cfgCanal(c.id).desligado);
+  const canaisChat = () => todosCanais().filter((c) => !cfgCanal(c.id).desligado);
+  const icoCanal = (c, tam) => (c.emoji ? el('span', { class: 'ch-emoji-canal', style: `font-size:${Math.round(tam * 0.9)}px`, 'aria-hidden': 'true', text: c.emoji }) : svg(c.ico, tam));
+  function canalCriado(c) {
+    return {
+      id: c.id, nome: c.nome, emoji: c.emoji, ve: c.ve, fala: c.fala, criado_por: c.criado_por, ordem: c.ordem, criado: true, soAdm: c.fala === 'adm',
+      vazio: c.ve === 'adm' ? 'Só o Dono e os ADMs veem este canal.' : 'Manda a primeira mensagem.',
+    };
+  }
+  // troca a lista de canais criados (e esquece as mensagens dos que sumiram)
+  function aplicarCriados(lista) {
+    chat.criados = lista.map(canalCriado).sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    const ids = new Set(todosCanais().map((c) => c.id));
+    for (const id of Object.keys(chat.msgs)) {
+      if (ids.has(id)) continue;
+      for (const m of chat.msgs[id]) chat.porId.delete(m.id);
+      delete chat.msgs[id];
+    }
+    for (const c of chat.criados) if (!chat.msgs[c.id]) { chat.msgs[c.id] = []; chat.temMais[c.id] = false; }
+  }
   const horaChat = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const nickDoPlayer = (pid, nome) => (pid && jogPorId.get(pid) ? jogPorId.get(pid).nick : nome || 'Membro');
@@ -5743,6 +5772,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const meMarcou = (m) => !!m.txt && !!meuNick() && new RegExp('@' + escRe(meuNick()) + '(?![\\p{L}\\p{N}_])', 'iu').test(m.txt);
   const chatVisivel = () => pagAtual === 'chat' && !perfilAtual && !torneioAtual && !document.hidden && !document.body.classList.contains('trancado');
   const podeFalar = (c) => !!chat.eu && !punicaoAtiva() && !canalChat(c).soSite && (!canalChat(c).soAdm || admChat()) && (!cfgCanal(c).travado || admChat());
+  // bonde chamado no #geral ou num canal criado fica nele; nos outros, vai pro #bonde
+  const canalDoBonde = () => (chat.canal === 'geral' || canalChat(chat.canal).criado ? chat.canal : 'bonde');
 
   // ---------- falar com o banco (na demonstração tudo fica só nesta tela) ----------
   async function chatRpc(nome, args) {
@@ -5759,13 +5790,16 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     else if (/travado/.test(t)) toast('Canal travado pelo ADM.', true);
     else if (/tarde/.test(t)) toast('Só dá pra editar até 15 minutos depois de mandar.', true);
     else if (/foto/.test(t)) toast('Não deu pra enviar essa foto. Tenta outra.', true);
+    else if (/muitos canais/.test(t)) toast('Já tem 20 canais criados. Apague um antes.', true);
     else if ((e && e.code === '42501') || /acesso negado/.test(t)) toast('Sem permissão pra isso.', true);
     else toast('Não deu agora. Tenta de novo.', true);
   }
 
   // ---------- carregar ----------
   function limparChat() {
-    for (const c of CANAIS_CHAT) { chat.msgs[c.id] = []; chat.temMais[c.id] = false; }
+    chat.msgs = Object.fromEntries(CANAIS_CHAT.map((c) => [c.id, []]));
+    chat.temMais = {};
+    chat.criados = [];
     chat.porId.clear(); chat.reac.clear(); chat.bonde.clear(); chat.status.clear(); chat.digitando.clear(); chat.equipe.clear(); chat.cfg.clear();
     chat.resp = null; chat.editando = null; chat.novas = 0; chat.denuncias = 0;
   }
@@ -5794,10 +5828,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     chat.eu = re.data;
     limparChat();
     if (!foraDoChat()) {
-      const rs = await Promise.all(CANAIS_CHAT.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
+      const rc = await sb.from('chat_canais').select('id, nome, emoji, ve, fala, ordem, criado_por').order('ordem').order('created_at');
+      aplicarCriados(rc.error ? [] : rc.data);
+      const canais = todosCanais();
+      const rs = await Promise.all(canais.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
       rs.forEach((r, i) => {
         if (r.error) throw new Error(r.error.message);
-        chat.temMais[CANAIS_CHAT[i].id] = r.data.length === POR_CANAL;
+        chat.temMais[canais[i].id] = r.data.length === POR_CANAL;
         for (const m of r.data) guardarMsg(m);
       });
       const [, rst, req, rcf] = await Promise.all([
@@ -5814,6 +5851,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     depoisDeCarregarChat();
   }
   function depoisDeCarregarChat() {
+    if (canalPedido && canaisChat().some((c) => c.id === canalPedido)) chat.canal = canalPedido;
+    canalPedido = null;
     lerLidosChat();
     atualizarBadgesChat();
     if (chatVisivel()) desenharChat();
@@ -5880,7 +5919,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       .on(...tabela('chat_bonde', (p) => mexerBonde(p.eventType === 'DELETE' ? p.old : p.new, p.eventType !== 'DELETE')))
       .on(...tabela('chat_status', (p) => { if (p.new && p.new.user_id) { chat.status.set(p.new.user_id, p.new); if (chatVisivel()) { desenharMembrosChat(); desenharTopoChat(); } } }))
       .on(...tabela('chat_punicoes', () => { recarregarEuChat(); if (admChat() && $('dlgModeracao').open) abrirModeracao(); }))
-      .on(...tabela('chat_adms', () => { recarregarEquipe(); recarregarEuChat(); }))
+      .on(...tabela('chat_adms', () => { recarregarEquipe(); recarregarEuChat(); canaisMudaram(); }))
+      .on(...tabela('chat_canais', canaisMudaram))
+      .on(...tabela('chat_canal_membros', canaisMudaram))
       .on(...tabela('chat_canais_cfg', (p) => { if (p.new && p.new.canal) chat.cfg.set(p.new.canal, p.new); atualizarBadgesChat(); if (chatVisivel()) desenharChat(); }))
       .on(...tabela('chat_denuncias', (p) => {
         if (!admChat()) return;
@@ -5920,9 +5961,15 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     atualizarBadgesChat();
   }
 
+  // criaram, mudaram ou apagaram um canal (ou esta conta entrou ou saiu de um): carrega tudo de novo
+  let canaisTimer = 0;
+  function canaisMudaram() {
+    clearTimeout(canaisTimer);
+    canaisTimer = setTimeout(() => carregarChat().catch((e) => console.warn('chat:', e.message)), 500);
+  }
   function chegouMsg(m) {
     if (chat.porId.has(m.id)) { atualizarMsg(m); return; }
-    if (!chat.msgs[m.canal]) return;
+    if (!chat.msgs[m.canal]) { if (!DEMO) canaisMudaram(); return; }
     if (m.fixada) for (const x of chat.msgs[m.canal]) x.fixada = false;
     chat.digitando.delete(m.user_id);
     const i = guardarMsg(m), l = chat.msgs[m.canal];
@@ -5941,7 +5988,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       desenharDigitando();
       if (m.fixada) desenharFixadaChat();
     } else if (!meu && meMarcou(m)) {
-      toast(`${nickMsg(m)} te marcou no #${m.canal}`);
+      toast(`${nickMsg(m)} te marcou no #${nomeCanal(m.canal)}`);
     }
     atualizarBadgesChat();
   }
@@ -5985,7 +6032,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     try { salvo = JSON.parse(localStorage.getItem('chat_lido_' + euChat()) || 'null'); } catch (e) {}
     chat.lido = salvo || {};
     // primeira vez neste aparelho: começa sem nada pendente
-    for (const c of CANAIS_CHAT) if (!(c.id in chat.lido)) { const l = chat.msgs[c.id]; chat.lido[c.id] = l.length ? l[l.length - 1].id : 0; }
+    for (const c of todosCanais()) if (!(c.id in chat.lido)) { const l = chat.msgs[c.id]; chat.lido[c.id] = l.length ? l[l.length - 1].id : 0; }
     salvarLidosChat();
   }
   function salvarLidosChat() { try { localStorage.setItem('chat_lido_' + euChat(), JSON.stringify(chat.lido)); } catch (e) {} }
@@ -6204,7 +6251,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
   function desenharChat() {
     if (!chat.eu) { trocar($('chatMsgs'), el('div', { class: 'ch-vazio', text: 'Carregando o chat…' })); return; }
-    if (cfgCanal(chat.canal).desligado) chat.canal = 'geral';
+    if (cfgCanal(chat.canal).desligado || !canaisChat().some((c) => c.id === chat.canal)) chat.canal = 'geral';
     desenharCanaisChat(); desenharTopoChat(); desenharBraboChat(); desenharMsgsChat(); desenharComporChat(); desenharMembrosChat(); desenharDigitando();
   }
   function desenharCanaisChat() {
@@ -6212,10 +6259,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       const n = chat.eu ? naoLidasChat(c.id) : 0;
       const travado = c.soAdm || cfgCanal(c.id).travado;
       return el('button', { type: 'button', class: `ch-canal ${n ? 'tem' : ''}`, 'aria-current': String(c.id === chat.canal), onclick: () => abrirCanalChat(c.id) },
-        svg(c.ico, 17), el('span', { class: 'ch-canal-nome', text: c.nome }),
+        icoCanal(c, 17), el('span', { class: 'ch-canal-nome', text: c.nome }),
+        c.ve === 'adm' ? el('span', { class: 'ch-canal-tag', text: 'ADM', title: 'Só Dono e ADMs veem' })
+          : c.ve === 'escolhidos' ? svg(ICONE_GENTE, 13, 'class="ch-trava"') : null,
         travado ? svg(ICONE_TRAVA, 13, 'class="ch-trava"') : null,
         n ? el('span', { class: 'ch-badge', text: n > 99 ? '99+' : String(n) }) : null);
-    }));
+    }), admChat() && !foraDoChat() ? el('button', { type: 'button', class: 'ch-canal ch-canal-novo', onclick: () => abrirCanalForm() }, svg(ICONE_MAIS, 17), el('span', { class: 'ch-canal-nome', text: 'Novo canal' })) : null);
   }
   function desenharTopoChat() {
     const cfg = cfgCanal(chat.canal);
@@ -6227,6 +6276,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     b.classList.toggle('on', !!ate);
     b.setAttribute('aria-pressed', String(!!ate));
     trocar(b, el('i', { class: 'ch-bola' }), ate ? `JOGANDO · até ${horaChat(ate)}` : 'TÔ JOGANDO');
+    const ed = $('chatCanalBtn'), c = canalChat(chat.canal);
+    ed.hidden = !podeEditarCanal(c);
+    if (!ed.firstChild) ed.append(svg(ICONE_LAPIS, 18));
+    ed.onclick = () => abrirCanalForm(c);
     const mod = $('chatModBtn');
     mod.hidden = !admChat();
     trocar(mod, svg(ICONE_MODERAR, 18), el('span', { class: 'ch-mod-rot', text: 'Moderação' }), chat.denuncias ? el('span', { class: 'ch-badge', text: String(chat.denuncias) }) : null);
@@ -6255,7 +6308,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     }
     const lista = chat.msgs[chat.canal], filhos = [];
     let ant = null, dia = null;
-    if (!lista.length) filhos.push(el('div', { class: 'ch-vazio' }, svg(canalChat(chat.canal).ico, 30), el('span', { text: canalChat(chat.canal).vazio })));
+    if (!lista.length) filhos.push(el('div', { class: 'ch-vazio' }, icoCanal(canalChat(chat.canal), 30), el('span', { text: canalChat(chat.canal).vazio })));
     else filhos.push(el('div', { class: 'ch-inicio', text: chat.temMais[chat.canal] ? 'Carregando as mais antigas…' : `Começo do #${canalChat(chat.canal).nome}` }));
     for (const m of lista) {
       const d = new Date(m.created_at).toDateString();
@@ -6279,7 +6332,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const trava = !chat.eu ? 'Carregando…'
       : p ? (p.tipo === 'ban' ? 'Você está fora do chat' : `Você está silenciado ${ateTxt(p.ate)}`)
       : c.soSite ? 'O site posta aqui quando alguém registra massa'
-      : c.soAdm && !admChat() ? 'Só ADM escreve em #avisos'
+      : c.soAdm && !admChat() ? `Só ADM escreve em #${c.nome}`
       : cfg.travado && !admChat() ? 'Canal travado pelo ADM' : null;
     $('chatCaixa').hidden = !!trava;
     $('chatTrancado').hidden = !trava;
@@ -6437,7 +6490,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     } catch (e) { erroChat(e); }
   }
   function abrirBonde() {
-    const canal = chat.canal === 'geral' ? 'geral' : 'bonde';
+    const canal = canalDoBonde();
     if (!podeFalar(canal)) { toast(punicaoAtiva() ? 'Você está silenciado no chat.' : 'Canal travado pelo ADM.', true); return; }
     $('fBondeSrv').value = $('fBondeSrv').value || 'Servidor BR';
     $('fBondeNota').value = '';
@@ -6446,7 +6499,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   async function chamarBonde() {
     const vagas = Number((document.querySelector('[data-vagas][aria-checked="true"]') || {}).dataset?.vagas || 6);
-    const canal = chat.canal === 'geral' ? 'geral' : 'bonde';
+    const canal = canalDoBonde();
     $('dlgBonde').close();
     try {
       const id = await chatRpc('chat_enviar', { p_canal: canal, p_txt: $('fBondeNota').value.trim(), p_tipo: 'bonde', p_dados: { srv: $('fBondeSrv').value.trim() || 'Servidor BR', max: vagas } });
@@ -6528,6 +6581,98 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     confirmar('DENUNCIAR MENSAGEM?', `Os ADMs vão olhar essa mensagem de ${nick}.`, 'Denunciar', async () => {
       try { await chatRpc('chat_denunciar', { p_msg: m.id, p_motivo: '' }); toast('Denúncia enviada pros ADMs.'); }
       catch (e) { erroChat(e); }
+    });
+  }
+
+  // ---------- canais criados pelos ADMs ----------
+  // Quem cria escolhe nome, ícone, quem vê (todo o clã, só ADMs ou escolhidos) e quem escreve.
+  // Quem criou e o Dono editam e apagam; o #adm (que já vem pronto) só o Dono.
+  const EMOJIS_CANAL = ['💬', '🛡️', '🏆', '🔥', '🐍', '🎮', '⚔️', '📢', '👑', '💎', '🎯', '🤝', '😂', '📸', '🎉', '🔒'];
+  let formCanal = null;
+  const podeEditarCanal = (c) => !!c && !!c.criado && admChat() && (donoChat() || (!!c.criado_por && c.criado_por === euChat()));
+  async function abrirCanalForm(c = null) {
+    formCanal = { id: c ? c.id : null, emoji: c ? c.emoji : EMOJIS_CANAL[0], ve: c ? c.ve : 'todos', fala: c ? c.fala : 'todos', membros: new Set(), contas: null };
+    trocar($('tituloCanal'), c ? 'EDITAR ' : 'NOVO ', el('span', { class: 'laranja', text: 'CANAL' }));
+    $('fCanalNome').value = c ? c.nome : '';
+    $('fCanalBusca').value = '';
+    $('btnApagarCanal').hidden = !c;
+    $('btnSalvarCanal').textContent = c ? 'Salvar' : 'Criar';
+    desenharCanalForm();
+    $('dlgCanal').showModal();
+    if (!c) $('fCanalNome').focus();
+    try {
+      const [contas, membros] = await Promise.all([chatRpc('chat_contas', {}), c ? membrosDoCanal(c.id) : []]);
+      if (!formCanal || formCanal.id !== (c ? c.id : null)) return;
+      formCanal.contas = (contas || []).filter((x) => !protegido(x.user_id));
+      for (const u of membros) formCanal.membros.add(u);
+      desenharMembrosCanal();
+    } catch (e) { erroChat(e); }
+  }
+  async function membrosDoCanal(id) {
+    if (DEMO) return [...(demoChat.membros.get(id) || [])];
+    const { data, error } = await sb.from('chat_canal_membros').select('user_id').eq('canal', id);
+    if (error) throw new Error(error.message);
+    return data.map((x) => x.user_id);
+  }
+  function desenharCanalForm() {
+    const f = formCanal;
+    const opc = (campo, valor, txt) => el('button', { type: 'button', class: 'aba', role: 'radio', 'aria-checked': String(f[campo] === valor), text: txt,
+      onclick: () => { f[campo] = valor; desenharCanalForm(); } });
+    trocar($('canalEmojis'), EMOJIS_CANAL.map((e) => el('button', { type: 'button', role: 'radio', 'aria-checked': String(f.emoji === e), 'aria-label': e, text: e,
+      onclick: () => { f.emoji = e; desenharCanalForm(); } })));
+    trocar($('canalVe'), opc('ve', 'todos', 'Todo o clã'), opc('ve', 'adm', 'Só ADMs'), opc('ve', 'escolhidos', 'Escolhidos'));
+    trocar($('canalFala'), opc('fala', 'todos', 'Quem vê'), opc('fala', 'adm', 'Só ADMs'));
+    $('canalMembros').hidden = f.ve !== 'escolhidos';
+    desenharMembrosCanal();
+  }
+  function desenharMembrosCanal() {
+    const f = formCanal;
+    if (!f || f.ve !== 'escolhidos') return;
+    $('canalQtd').textContent = f.contas ? `${f.membros.size} ${f.membros.size === 1 ? 'escolhido' : 'escolhidos'} · Dono e ADMs sempre veem` : 'Carregando…';
+    if (!f.contas) { $('canalLista').replaceChildren(); return; }
+    const q = busca($('fCanalBusca').value.trim());
+    const lista = f.contas.filter((x) => !q || busca(nickDoPlayer(x.player_id, x.nome)).includes(q))
+      .sort((a, b) => f.membros.has(b.user_id) - f.membros.has(a.user_id) || nickDoPlayer(a.player_id, a.nome).localeCompare(nickDoPlayer(b.player_id, b.nome), 'pt-BR'));
+    trocar($('canalLista'), lista.length ? lista.map((x) => {
+      const nick = nickDoPlayer(x.player_id, x.nome);
+      const cx = el('input', { type: 'checkbox' });
+      cx.checked = f.membros.has(x.user_id);
+      cx.addEventListener('change', () => {
+        if (cx.checked) f.membros.add(x.user_id); else f.membros.delete(x.user_id);
+        $('canalQtd').textContent = `${f.membros.size} ${f.membros.size === 1 ? 'escolhido' : 'escolhidos'} · Dono e ADMs sempre veem`;
+      });
+      return el('label', { class: 'ch-check canal-pessoa' }, cx, avatarChat(nick, 'av-p'), el('span', { text: nick }));
+    }) : [el('p', { class: 'mod-sub', text: 'Ninguém com esse nome.' })]);
+  }
+  async function salvarCanal() {
+    const f = formCanal, nome = $('fCanalNome').value.trim().replace(/^#+/, '').trim();
+    if (!f) return;
+    if (!nome) { $('fCanalNome').focus(); return; }
+    if (f.ve === 'escolhidos' && !f.contas) return;
+    const bt = $('btnSalvarCanal');
+    bt.disabled = true;
+    try {
+      const id = await chatRpc('chat_salvar_canal', { p_id: f.id, p_nome: nome, p_emoji: f.emoji, p_ve: f.ve, p_fala: f.fala, p_membros: f.ve === 'escolhidos' ? [...f.membros] : [] });
+      $('dlgCanal').close();
+      if (DEMO) { aplicarCriados(demoChat.canais); lerLidosChat(); } else await carregarChat();
+      abrirCanalChat(id);
+      toast(f.id ? 'Canal salvo.' : `#${nome} criado.`);
+    } catch (e) { erroChat(e); } finally { bt.disabled = false; }
+  }
+  function apagarCanal() {
+    const f = formCanal, c = f && canalChat(f.id);
+    if (!c || !c.criado) return;
+    confirmar('APAGAR O CANAL?', `#${c.nome} e todas as mensagens dele somem pra todo mundo. Não dá pra desfazer.`, 'Apagar', async () => {
+      try {
+        const fotos = await chatRpc('chat_apagar_canal', { p_id: c.id });
+        apagarFotos(fotos);
+        $('dlgCanal').close();
+        aplicarCriados(DEMO ? demoChat.canais : chat.criados.filter((x) => x.id !== c.id));
+        if (chat.canal === c.id) chat.canal = 'geral';
+        atualizarBadgesChat();
+        if (chatVisivel()) desenharChat();
+        toast(`#${c.nome} apagado.`);
+      } catch (e) { erroChat(e); }
     });
   }
 
@@ -6631,7 +6776,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const acao = (txt, cls, fn) => el('button', { type: 'button', class: `btn ${cls}`, onclick: fn, text: txt });
     return el('div', { class: 'mod-item' },
       el('div', { class: 'mod-cab' }, avatarChat(nick, 'av-p'), el('b', { text: nick }),
-        el('span', { class: 'mod-sub', text: `#${x.canal} · ${haQuanto(x.created_at)}` }),
+        el('span', { class: 'mod-sub', text: `#${nomeCanal(x.canal)} · ${haQuanto(x.created_at)}` }),
         el('span', { class: 'mod-qtd', text: `${x.qtd} ${x.qtd > 1 ? 'denúncias' : 'denúncia'}` })),
       el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.tipo === 'foto' ? `[foto] ${x.txt || ''}` : x.txt || '—' }),
       el('div', { class: 'mod-sub', text: 'denunciou: ' + x.quem.map((q) => q.quem).join(', ') }),
@@ -6666,7 +6811,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   // travar canal, modo lento e a lista de palavrões
   function painelCanais(d) {
-    const linhas = CANAIS_CHAT.filter((c) => !c.soSite).map((c) => {
+    const linhas = canaisChat().filter((c) => !c.soSite).map((c) => {
       const cfg = (d.canais && d.canais[c.id]) || { travado: false, lento: 0 };
       const salvar = async (novo) => {
         try {
@@ -6677,7 +6822,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         } catch (e) { erroChat(e); }
       };
       return el('div', { class: 'mod-item mod-canal' },
-        el('div', { class: 'mod-cab' }, svg(c.ico, 16), el('b', { text: `#${c.nome}` })),
+        el('div', { class: 'mod-cab' }, icoCanal(c, 16), el('b', { text: `#${c.nome}` })),
         el('div', { class: 'mod-canal-ops' },
           el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!cfg.travado), onclick: () => salvar({ travado: !cfg.travado, lento: cfg.lento }) },
             el('i'), cfg.travado ? 'Travado' : 'Aberto'),
@@ -6798,7 +6943,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       chat_punir: `${d.tipo === 'ban' ? 'tirou do chat' : 'silenciou'} ${d.quem || '?'} · ${prazo}${d.motivo ? ` · ${d.motivo}` : ''}`,
       chat_perdoar: `liberou ${d.quem || '?'}`, chat_ignorar_denuncia: 'ignorou uma denúncia',
       chat_limpar: `apagou as mensagens de ${d.quem || '?'}${d.horas ? ` das últimas ${d.horas} h` : ''}`,
-      chat_canal: `#${d.canal}: ${d.travado ? 'travou' : 'abriu'}${d.lento ? ` · lento ${tempoTxt(d.lento)}` : ''}`,
+      chat_canal: `#${nomeCanal(d.canal)}: ${d.travado ? 'travou' : 'abriu'}${d.lento ? ` · lento ${tempoTxt(d.lento)}` : ''}`,
+      chat_canal_criar: `criou o canal #${d.nome || '?'}${d.ve === 'adm' ? ' (só ADMs)' : d.ve === 'escolhidos' ? ' (escolhidos)' : ''}`,
+      chat_canal_editar: `editou o canal #${d.nome || '?'}${d.antes && d.antes !== d.nome ? ` (era #${d.antes})` : ''}`,
+      chat_canal_apagar: `apagou o canal #${d.nome || '?'}`,
       chat_palavroes: `mudou a lista de palavrões (${d.qtd || 0})`,
       chat_faxina: `${d.manual ? 'fez a faxina' : 'faxina automática'}: ${d.fotos || 0} ${d.fotos === 1 ? 'foto' : 'fotos'} e ${d.msgs || 0} ${d.msgs === 1 ? 'mensagem' : 'mensagens'}`,
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
@@ -7145,7 +7293,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (DEMO || !('serviceWorker' in navigator) || location.protocol !== 'https:') return;
     navigator.serviceWorker.register('sw.js').catch(() => {});
     // tocou na notificação com o site já aberto: vai pro chat
-    navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.ir) irPara(e.data.ir); });
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (!e.data || !e.data.ir) return;
+      irPara(e.data.ir);
+      if (e.data.canal && chat.eu && canaisChat().some((c) => c.id === e.data.canal)) abrirCanalChat(e.data.canal);
+      else if (e.data.canal) canalPedido = e.data.canal;
+    });
   }
   addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -7277,7 +7430,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     desenharAvisos();
   }
   async function desenharAvisos() {
-    let sub = null, eu = { prefs: { mencao: true, resposta: true, aviso: true, bonde: true }, inscrito: false };
+    let sub = null, eu = { prefs: { mencao: true, resposta: true, aviso: true, bonde: true, tudo: false, mudos: [] }, inscrito: false };
     try { sub = await minhaInscricao(); eu = await chatRpc('push_eu', { p_endpoint: sub ? sub.endpoint : null }) || eu; } catch (e) {}
     const ligado = !!sub && eu.inscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted';
     let estado, botao = null;
@@ -7285,12 +7438,29 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     else if (Notification.permission === 'denied') estado = 'Notificações bloqueadas neste aparelho. Libere nas configurações do navegador.';
     else if (ligado) { estado = 'Ligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-sec', text: 'Desligar', onclick: desligarPush }); }
     else { estado = 'Desligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-pri', text: 'Ligar notificações', onclick: ligarPush }); }
-    const prefs = { ...eu.prefs };
-    const chave = (k, txt) => el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!prefs[k]), onclick: async (ev) => {
+    const prefs = { tudo: false, ...eu.prefs, mudos: new Set(eu.prefs.mudos || []) };
+    const salvar = async () => {
+      try {
+        await chatRpc('push_salvar_prefs', { p_mencao: prefs.mencao, p_resposta: prefs.resposta, p_aviso: prefs.aviso, p_bonde: prefs.bonde, p_tudo: prefs.tudo, p_mudos: [...prefs.mudos] });
+      } catch (e) { erroChat(e); }
+    };
+    const chave = (k, txt, depois) => el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!prefs[k]), onclick: (ev) => {
       prefs[k] = !prefs[k];
       ev.currentTarget.setAttribute('aria-checked', String(prefs[k]));
-      try { await chatRpc('push_salvar_prefs', { p_mencao: prefs.mencao, p_resposta: prefs.resposta, p_aviso: prefs.aviso, p_bonde: prefs.bonde }); } catch (e) { erroChat(e); }
+      if (depois) depois();
+      salvar();
     } }, el('i'), txt);
+    // com "todas as mensagens" ligado, cada canal pode ir pro mudo (marcação e resposta continuam chegando)
+    const canais = el('div', { class: 'av-prefs av-canais' }, ...canaisChat().filter((c) => !c.soSite).map((c) => el('button', {
+      type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!prefs.mudos.has(c.id)), onclick: (ev) => {
+        if (prefs.mudos.has(c.id)) prefs.mudos.delete(c.id); else prefs.mudos.add(c.id);
+        ev.currentTarget.setAttribute('aria-checked', String(!prefs.mudos.has(c.id)));
+        salvar();
+      },
+    }, el('i'), icoCanal(c, 15), `#${c.nome}`)));
+    const canaisRot = el('div', { class: 'mod-rot', text: 'CANAIS QUE TOCAM' });
+    const mostrarCanais = () => { canais.hidden = canaisRot.hidden = !prefs.tudo; };
+    mostrarCanais();
     let app;
     if (appInstalado()) app = el('p', { class: 'av-app-ok', text: 'App instalado neste aparelho.' });
     else if (ehCelular || pedidoInstalar) app = el('button', { type: 'button', class: 'btn btn-pri', text: 'Baixar o app', onclick: () => { $('dlgAvisos').close(); baixarApp(); } });
@@ -7299,7 +7469,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'mod-rot', text: 'NESTE APARELHO' }),
       el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
       el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
-      el('div', { class: 'av-prefs' }, chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
+      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', mostrarCanais), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
+      canaisRot, canais,
       el('div', { class: 'mod-rot', text: 'APP DO CLÃ' }),
       app);
   }
@@ -7431,6 +7602,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     document.querySelectorAll('[data-mod]').forEach((b) => b.addEventListener('click', () => abrirModeracao(b.dataset.mod)));
     $('btnFecharMod').addEventListener('click', () => $('dlgModeracao').close());
     $('btnCancelarPunir').addEventListener('click', () => $('dlgPunir').close());
+    $('formCanal').addEventListener('submit', (e) => { e.preventDefault(); salvarCanal(); });
+    $('btnCancelarCanal').addEventListener('click', () => $('dlgCanal').close());
+    $('btnApagarCanal').addEventListener('click', apagarCanal);
+    $('fCanalBusca').addEventListener('input', desenharMembrosCanal);
     $('btnAplicarPunir').addEventListener('click', aplicarPunicao);
     addEventListener('resize', ajustarChat);
     if (window.visualViewport) visualViewport.addEventListener('resize', ajustarChat);
@@ -7445,7 +7620,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
 
   // ---------- demonstração: o chat funciona só nesta tela ----------
-  const demoChat = { id: 0, denuncias: [], punidos: [], historico: [], adms: new Set(['u-dj1']), palavroes: [], prefs: { mencao: true, resposta: true, aviso: true, bonde: true } };
+  const demoChat = {
+    id: 0, denuncias: [], punidos: [], historico: [], adms: new Set(['u-dj1']), palavroes: [], prefs: { mencao: true, resposta: true, aviso: true, bonde: true, tudo: false, mudos: [] },
+    canais: [{ id: 'adm', nome: 'adm', emoji: '🛡️', ve: 'adm', fala: 'todos', ordem: 0, criado_por: null }], membros: new Map(), canalN: 0,
+  };
   function demoChatSemear() {
     limparChat();
     const nomeEu = admin && !euId ? admin.nome : nickDoPlayer(euId, 'Você');
@@ -7453,6 +7631,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const u = (pid) => 'u-' + pid;
     chat.equipe = new Map([['u-dj0', 'dono'], ...[...demoChat.adms].map((x) => [x, 'adm'])]);
     if (admin) chat.equipe.set('eu', 'dono');
+    // o membro comum não vê o #adm (nem canal de escolhidos em que não está)
+    aplicarCriados(demoChat.canais.filter((c) => !!admin || c.ve === 'todos' || (c.ve === 'escolhidos' && (demoChat.membros.get(c.id) || new Set()).has('eu'))));
     const min = (m) => new Date(Date.now() - m * 60000).toISOString();
     const msg = (canal, pid, txt, m, extra = {}) => {
       const r = jogPorId.get(pid);
@@ -7482,6 +7662,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     msg('geral', 'dj5', `@${nickDoPlayer('dj3', '')} guarda vaga pra mim`, 12, { editada: true });
     msg('bonde', 'dj6', 'alguém pra jogar de madrugada?', 50);
     msg('avisos', 'dj0', 'Copa COBR no sábado às 21h. Cada um com a tag [COBR] no nick.', 900);
+    if (chat.msgs.adm) {
+      msg('adm', 'dj0', 'galera da staff: sábado cada um fica de olho num grupo da copa', 240);
+      msg('adm', 'dj1', 'fechou, fico com o grupo A', 230);
+    }
     for (const pid of ['dj3', 'dj4', 'dj5']) chat.status.set(u(pid), { user_id: u(pid), player_id: pid, nome: jogPorId.get(pid).nick, jogando_ate: new Date(Date.now() + 70 * 60000).toISOString() });
     chat.online = new Map([['eu', { player_id: euId, nome: nomeEu }], ...['dj0', 'dj1', 'dj6'].map((pid) => [u(pid), { player_id: pid, nome: jogPorId.get(pid).nick }])]);
     demoChat.denuncias = [{ msg_id: b.id, user_id: u('dj2') }];
@@ -7552,7 +7736,26 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       case 'dono_promover': if (a.p_adm) { demoChat.adms.add(a.p_user); chat.equipe.set(a.p_user, 'adm'); } else { demoChat.adms.delete(a.p_user); chat.equipe.delete(a.p_user); } log(a.p_adm ? 'dono_promover' : 'dono_rebaixar', { quem: nomeDaConta(a.p_user) }); return 'ok';
       case 'dono_expulsar': { const r = jogPorId.get(a.p_user.replace('u-', '')); if (r) r.ativo = false; log('dono_expulsar', { quem: nomeDaConta(a.p_user) }); return 'ok'; }
       case 'push_eu': return { prefs: demoChat.prefs, inscrito: false };
-      case 'push_salvar_prefs': demoChat.prefs = { mencao: a.p_mencao, resposta: a.p_resposta, aviso: a.p_aviso, bonde: a.p_bonde }; return null;
+      case 'push_salvar_prefs': demoChat.prefs = { mencao: a.p_mencao, resposta: a.p_resposta, aviso: a.p_aviso, bonde: a.p_bonde, tudo: a.p_tudo ?? demoChat.prefs.tudo, mudos: a.p_mudos ?? demoChat.prefs.mudos }; return null;
+      case 'chat_contas': return [...jogadores.filter((r) => r.ativo && r.id !== 'dj7').map((r) => ({ user_id: u(r.id), player_id: r.id, nome: r.nick })), ...(admin && !euId ? [{ user_id: 'eu', player_id: null, nome: admin.nome }] : [])];
+      case 'chat_salvar_canal': {
+        const dados = { nome: a.p_nome.slice(0, 24), emoji: a.p_emoji, ve: a.p_ve, fala: a.p_fala };
+        let c = demoChat.canais.find((x) => x.id === a.p_id);
+        if (c) { Object.assign(c, dados); log('chat_canal_editar', { canal: c.id, ...dados }); }
+        else {
+          c = { id: 'c' + (++demoChat.canalN), ...dados, ordem: demoChat.canais.length, criado_por: eu.user_id };
+          demoChat.canais.push(c);
+          log('chat_canal_criar', dados);
+        }
+        demoChat.membros.set(c.id, new Set(a.p_ve === 'escolhidos' ? a.p_membros : []));
+        return c.id;
+      }
+      case 'chat_apagar_canal': {
+        const c = demoChat.canais.find((x) => x.id === a.p_id);
+        demoChat.canais = demoChat.canais.filter((x) => x.id !== a.p_id);
+        if (c) log('chat_canal_apagar', { canal: c.id, nome: c.nome });
+        return [];
+      }
       case 'push_chave': return null;
     }
     return null;
@@ -7567,8 +7770,14 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         linhaRegra('#bonde', 'chamada pra jogar junto'),
         cfgCanal('recordes').desligado ? null : linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
         linhaRegra('#avisos', 'só ADM escreve'),
+        linhaRegra('#adm', 'só Dono e ADMs veem'),
+        linhaRegra('Canal novo', 'o ADM cria e escolhe quem vê e quem escreve'),
         linhaRegra('Massa de 100k+', 'aparece também no #geral'),
         linhaRegra('Editar', 'até 15 min depois de mandar')),
+      tituloRegra('NOTIFICAÇÕES'),
+      el('ul', { class: 'rg-lista' },
+        linhaRegra('Todas as mensagens', 'liga no sino do chat'),
+        linhaRegra('Canal no mudo', 'só toca se te marcarem ou responderem')),
       tituloRegra('STATUS'),
       el('ul', { class: 'rg-lista' },
         linhaRegra('Online', 'com o site aberto'),
